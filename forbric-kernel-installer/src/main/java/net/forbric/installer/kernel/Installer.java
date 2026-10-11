@@ -192,6 +192,10 @@ public final class Installer {
 	 * Every library the base version lists, as a launcher-substituted path. Entries whose rules exclude this
 	 * platform are skipped — a Windows natives jar has no business on a macOS classpath, and the kernel only ever
 	 * opens files that exist.
+	 *
+	 * <p>The rule filter is {@link MinecraftLibraries#onThisPlatform}: the same answer decides what
+	 * {@link ArtifactBuilder} downloads before the merge reads it, and two copies of it would eventually disagree
+	 * into a classpath entry nothing fetched.
 	 */
 	@SuppressWarnings("unchecked")
 	private static List<String> minecraftLibraryPaths(Map<String, Object> baseJson) {
@@ -200,7 +204,7 @@ public final class Installer {
 		if (!(libs instanceof List<?> list)) return paths;
 		for (Object entry : list) {
 			if (!(entry instanceof Map<?, ?> lib)) continue;
-			if (!appliesToThisPlatform((Map<String, Object>) lib)) continue;
+			if (!MinecraftLibraries.onThisPlatform((Map<String, Object>) lib)) continue;
 			Object name = lib.get("name");
 			Map<String, Object> downloads = (Map<String, Object>) lib.get("downloads");
 			Map<String, Object> artifact = downloads == null ? null : (Map<String, Object>) downloads.get("artifact");
@@ -209,29 +213,6 @@ public final class Installer {
 			else if (name instanceof String n) paths.add(LIBRARY_DIR + "/" + Util.coordinateToPath(n));
 		}
 		return paths;
-	}
-
-	/** Mojang's rule list, read the way a launcher reads it: last matching rule wins, default allow. */
-	@SuppressWarnings("unchecked")
-	private static boolean appliesToThisPlatform(Map<String, Object> lib) {
-		Object rules = lib.get("rules");
-		if (!(rules instanceof List<?> list) || list.isEmpty()) return true;
-		String os = osName();
-		boolean allowed = false;
-		for (Object entry : list) {
-			if (!(entry instanceof Map<?, ?> rule)) continue;
-			Map<String, Object> osSpec = (Map<String, Object>) rule.get("os");
-			if (osSpec != null && !os.equals(osSpec.get("name"))) continue;
-			allowed = "allow".equals(rule.get("action"));
-		}
-		return allowed;
-	}
-
-	private static String osName() {
-		String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
-		if (os.contains("win")) return "windows";
-		if (os.contains("mac")) return "osx";
-		return "linux";
 	}
 
 	// --- staging ----------------------------------------------------------------------------------------------

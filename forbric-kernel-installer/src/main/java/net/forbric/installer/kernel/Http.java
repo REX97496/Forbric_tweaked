@@ -210,7 +210,11 @@ final class Http {
 				return streamOnce(url, dest);
 			} catch (IOException e) {
 				last = e;
-				deleteQuietly(dest);
+				// The partial transfer is NOT deleted here, and that is the whole point of this method's shape.
+				// It used to be, so every attempt re-requested from byte zero: fastutil is 22.9 MB, the transfer
+				// died around 84%, and three attempts that each restart cannot get past the same place however
+				// many times they are made. streamOnce resumes with a Range request, so what arrived is kept and
+				// the next attempt adds to it.
 				if (attempt == ATTEMPTS) break;
 				info(PROGRESS + "  " + fileName(url) + "  " + brief(e)
 						+ " - retrying (" + (attempt + 1) + "/" + ATTEMPTS + ")");
@@ -222,21 +226,36 @@ final class Http {
 
 	private int streamOnce(String url, Path dest) throws IOException {
 		String name = fileName(url);
-		info(PROGRESS + "  " + name + "  connecting...");
-		HttpResponse<InputStream> r = send(request(url).build(),
+		long already = partialSize(dest);
+		info(PROGRESS + "  " + name + (already > 0 ? "  resuming at " + human(already) : "  connecting..."));
+		HttpRequest.Builder builder = request(url);
+		if (already > 0) builder.header("Range", "bytes=" + already + "-");
+		HttpResponse<InputStream> r = send(builder.build(),
 				HttpResponse.BodyHandlers.ofInputStream());
-		long done = 0;
+		long done = already;
 		try (InputStream in = r.body()) {
-			if (r.statusCode() != 200) {
+			int status = r.statusCode();
+			// 206 is the resumed answer. A server that ignores Range answers 200 with the WHOLE body, and
+			// appending that onto the half already on disk would produce a file whose length looks plausible and
+			// whose bytes are wrong — which for a library jar means a class the merge silently cannot read. So a
+			// 200 restarts from zero instead.
+			if (status != 200 && status != 206) {
 				deleteQuietly(dest);
-				return r.statusCode();
+				return status;
 			}
+			boolean appending = status == 206;
+			if (!appending) already = 0;
 			// Absent on a chunked response, in which case we can still report bytes moved -- which is all the
-			// question "is it stuck?" actually needs.
+			// question "is it stuck?" actually needs. On a 206 it counts only what is still to come, so the
+			// total the reader sees is the whole file rather than the remainder.
 			long total = r.headers().firstValueAsLong("content-length").orElse(-1L);
+			if (total >= 0) total += already;
 			if (dest.getParent() != null) Files.createDirectories(dest.getParent());
-			try (OutputStream out = Files.newOutputStream(dest)) {
-				done = copy(in, out, total, name);
+			try (OutputStream out = appending
+					? Files.newOutputStream(dest, java.nio.file.StandardOpenOption.APPEND)
+					: Files.newOutputStream(dest, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+							java.nio.file.StandardOpenOption.CREATE)) {
+				done = copy(in, out, already, total, name);
 			}
 		} catch (IOException e) {
 			// The body is read OUTSIDE send(), so a mid-transfer failure never passes through its wrapper and
@@ -244,7 +263,18 @@ final class Http {
 			throw new IOException("transfer of " + name + " from " + URI.create(url).getHost() + " failed after "
 					+ human(done) + " - offline? Cause: " + e, e);
 		}
+		// 200 whichever way it happened: every caller asks "did the file complete", and tryStream compares this
+		// to 200. A resumed transfer returning 206 would read as a failure to all of them.
 		return 200;
+	}
+
+	/** The bytes already on disk for a partially transferred file, or 0. Companion to the Range request above. */
+	private static long partialSize(Path dest) {
+		try {
+			return Files.isRegularFile(dest) ? Files.size(dest) : 0L;
+		} catch (IOException unreadable) {
+			return 0L;
+		}
 	}
 
 	/** Short form of a failure, for the one-line retry notice. */
@@ -265,9 +295,13 @@ final class Http {
 	}
 
 	/** Copy the body across, reporting progress, under a watchdog that gives up on a silent peer. */
-	private long copy(InputStream in, OutputStream out, long total, String name) throws IOException {
+	/**
+	 * @param already bytes that were already on disk and are being resumed from, so the progress line reports the
+	 *                whole file rather than the remainder of it
+	 */
+	private long copy(InputStream in, OutputStream out, long already, long total, String name) throws IOException {
 		byte[] buf = new byte[65536];
-		long done = 0;
+		long done = already;
 		long lastReport = System.nanoTime();
 		boolean reported = false;
 

@@ -121,6 +121,17 @@ final class ArtifactBuilder {
 				.run(jvm, mcDir, out.resolve("patched-mc-neoforge-" + mcVersion + ".jar"),
 						nfa.patchedMcCoordinate(), mcVersion, build.resolve("dl").resolve("server.jar"));
 
+		// ---- the libraries the merge has to be able to read, fetched BEFORE it reads them ----
+		// The merge is handed mcDir/libraries and its proof engine reads the classes there — Guava among them,
+		// because proving ImmutableList.Builder.build() non-null means reading ImmutableList.builder(). Nothing
+		// downloaded them, and on a fresh .dev/minecraft that made the first library the merge needed look like
+		// unsafe bytecode: the build aborted, so the step that WOULD have fetched them never ran, so a clean
+		// checkout could not complete at all. See MinecraftLibraries for the whole account.
+		log.accept("");
+		log.accept("== Minecraft libraries ==");
+		MinecraftLibraries.ensure(mcDir, MinecraftLibraries.declared(
+				MinecraftLibraries.versionJson(mcDir, mcVersion)), http, log);
+
 		// ---- the merge, and the interop patch the merge makes necessary ----
 		log.accept("");
 		log.accept("== merging ==");
