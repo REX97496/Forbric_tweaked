@@ -56,6 +56,12 @@ class RedundantModsTest {
 
     @AfterEach
     void removeModsDir() {
+        // Forget the notices as well as the files. This is not tidiness: KernelLoadReport appends
+        // RedundantMods.suppressedThisBoot() to the switched-off list it renders, and writes its file whenever that
+        // list is non-empty. A notice left set here therefore keeps the load report existing for every later test in
+        // the JVM, and KernelCompatibilityPromptsTest asserts the file does NOT exist before anything has failed —
+        // so it failed, with "nothing has failed yet", because of a notice from this class. Measured, not feared.
+        RedundantMods.forget();
         // Best effort, and never a failure: a directory this test made must not be able to fail a suite on a
         // platform whose handles are released late.
         try (var walk = Files.walk(mods)) {
