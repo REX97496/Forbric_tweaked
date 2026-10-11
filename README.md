@@ -1,315 +1,280 @@
-# Forbric
+# Forbric_tweaked
 
 English | [简体中文](README.zh-CN.md)
 
-**One Minecraft instance that runs Fabric mods, Forge mods and NeoForge mods at the same time.**
+A fork of [Forbric](https://github.com/Ray-T-r/Minecraft-Forbric-mod-loader), based on **Forbric 0.3.0**
+· Minecraft 26.2.
 
-Version 0.3.0 · Minecraft 26.2
+Forbric_tweaked runs Fabric mods, Forge mods and NeoForge mods in **one** Minecraft instance — the same
+thing Forbric does. **This README is only about what is different here.** For what the loader is and how
+it works inside, read the upstream [introduction.md](introduction.md) and
+[forbric-kernel/README.md](forbric-kernel/README.md); none of that has changed.
 
-## What it does
+The changes below fall into two groups: things that were **broken and now work**, and things that were
+**failing silently and now say so**.
 
-Minecraft mods come in three kinds, and normally you have to pick one. A mod is built for **Fabric**, or
-for **Forge**, or for **NeoForge**, and it only works on the one it was built for. Put a Fabric mod into
-a Forge game and nothing happens. So most people keep several separate setups, and whichever one they
-start, most of their mods are sitting in the other ones.
+---
 
-Forbric is a fourth thing you install instead of those three. You put **every** mod into **one** folder —
-Fabric, Forge and NeoForge mixed together, no sorting — and Forbric opens each file, works out what kind
-it is, and loads it. All of them are running in the same world at the same time.
+## 1. The merged base could not be built at all
 
-It also gives you one list of everything you have installed. The pause menu and the title screen get a
-Forbric mods button, and from that list you can open a mod's own settings screen, whichever of the
-three it belongs to (for Fabric mods, only when Mod Menu is installed too).
+This was the big one. `tools/dev.py prepare` downloaded everything and then died at the merge step:
 
-**You may have heard of Kilt or Sinytra Connector.** Those are mods you add to a normal loader, and they
-re-create one side's features inside the other — a translator in the room. Forbric is the loader itself.
-Fabric Loader and the loaders inside Forge and NeoForge never start; Forbric does their job — finding the
-mods, starting them, running them in order — and tries to do it the way each mod's own loader would. Your
-mods call the real Fabric API and the real Forge and NeoForge code; that part is not re-created. So this is
-not three loaders running side by side: it is one new loader that puts all three kinds of mods, and the
-real code they rely on, into one game.
+```
+[merge] reading jars
+[merge]   vanilla=10952  forge-patched=10963  neo-patched=10964 classes
+Exception in thread "main" java.lang.IllegalStateException: Incompatible initializer dependency on
+  net/minecraft/world/level/chunk/ChunkGenerator#featuresPerStep
+```
 
-But Forge and NeoForge both change Minecraft, often in the same spots, and one game can hold only one
-version of each spot, so Forbric mostly keeps NeoForge's. Its own glue then keeps the other mods working:
-it passes game events on to Forge mods, moves Fabric mods' changes to where the code now sits, and lets
-mods from different loaders hand each other items, fluids and energy. That glue is translation too, and
-it is not finished, which is one reason some mods still fail.
+`patched-mc-forge-26.2.jar` and `patched-mc-neoforge-26.2.jar` were both produced; the jar that combines
+them was not. Since the merged base is what the game runs, **nothing downstream could be tested or
+verified** — no mod compatibility work, no event audit, nothing.
 
-Connector is mature and Forbric is not, so if Connector already runs the mods you want, use Connector.
-Forbric is for the cases it cannot reach.
+**Why.** `FieldContractReconciler` tries to reconcile a private field that the two ecosystems retyped
+differently (`ChunkGenerator.featuresPerStep`), and refuses unless it can prove the constructors compute it
+the same way. The proof failed — but it failed for a reason no one could see from the message, because that
+method had six separate ways to say "no" and the message named none of them.
 
-## How to install
+Chasing it through the real bytecode:
+
+- the failing check was the last one: the lambda `lambda$new$1` "has no non-null return proof";
+- that lambda returns `FeatureSorter.buildFeaturesPerStep(...)`, whose `List` comes from
+  `ImmutableList$Builder.build()`;
+- proving that non-null requires reading `ImmutableList.builder()` — **Guava**;
+- the proof engine asks a class graph for it and gets `null`, because **Guava was not on disk**.
+
+**The root cause: `prepare` downloads no Minecraft libraries at all.** `MojangDownloader` fetches only
+`versions/<v>/<v>.json` and `<v>.jar` and leaves `libraries/` to a launcher, while the merge is handed
+`mcDir/libraries` and reads it for the classes it needs to prove things about. On a machine where that
+directory is empty, the proof engine cannot tell **"this code is unsafe"** from **"the library that would
+prove it safe was never downloaded"** — so it blamed the bytecode and killed the build.
+
+Two things were done about it:
+
+- **The refusal now says which check failed.** `sameConstruction` returns the reason instead of a bare
+  `false`, and the message reads, for example:
+  `… ChunkGenerator#featuresPerStep: (…)V — the lambda body lambda$new$1(…)Ljava/util/List; has no
+  non-null return proof on net/minecraft/world/level/chunk/ChunkGenerator`.
+  "The two patches disagree" and "this checker does not model what one of them does" are now different
+  messages, because they are different problems.
+- **`libraries/` has to be populated for the merge to run.** With
+  `guava-33.6.0-jre.jar` and `failureaccess-1.0.3.jar` in `forbric-kernel/.dev/minecraft/libraries`
+  (SHA-1 checked against the version JSON), `prepare` completes: the merged base is written, **88 MB**,
+  with the link check reporting 7 dangling references, all 7 already known, 0 new.
+
+## 2. What the merge loses is worse than this repository claimed
+
+Now that the merge can actually run, the coverage figure could be measured instead of inherited. The
+report committed under `forbric-loader/run/merged-base/merge-conflicts.txt` is a snapshot, and it is
+optimistic:
+
+| | Committed snapshot | Actually produced now |
+|---|---|---|
+| Hook losses, total | 1006 | **1144** |
+| …in data generators (unreachable in a player's game) | 314 | 330 |
+| **…reachable by a player** | **692** | **814** |
+| Distinct classes carrying runtime losses | 400 | — |
+
+**The runtime loss is 122 hooks — 17.6% — larger than the committed number.** Anything that decided
+priority from that snapshot was working from a figure that was too kind.
+
+The committed snapshot is also the only thing the pinned coverage test read, which means **the test that
+exists to stop the number drifting was itself pinning a stale one.** Re-pinning it against a freshly
+produced report is the next step.
+
+## 3. Windows: things that did not run, or ran wrongly
+
+- **`gradlew` could not be executed.** Two development scripts invoked the wrapper directly. On Windows
+  the wrapper is a `.bat`, which cannot be spawned as a program, and running it through the shell instead
+  produced `WinError 193`. Builds driven from those scripts did not report their result at all.
+- **Gradle's output was decoded as UTF-8 under a Chinese locale.** Gradle writes GBK there, so reading its
+  output raised `UnicodeDecodeError` — which looked like a broken script rather than a build that had
+  failed, and meant a failed build was not actually being checked.
+- **A launcher was judged runnable by the wrong test.** `DependencyDialog` asked `Files.isExecutable`,
+  which on Windows answers from readability — so a text file named `java` passed, and the fork then failed
+  with `CreateProcess error=5`. Its own contract says the point is to answer *before* forking, so on
+  Windows a launcher is now recognised by its `MZ` header.
+- **Any mod jar with brackets, spaces or non-ASCII in its name became unattributable.**
+  `ContendedCallSites.codeRoot` swallowed every exception and returned `null`, and its fallback handed a
+  **percent-encoded** URL path to `Path.of`, which names no file. A jar called
+  `[补丁] cloak patch+1.0.jar` therefore resolved to a path containing `%5B补丁%5D%20…`, and a mixin's
+  owning jar could not be determined. Decoding `%XX` fixes it — deliberately *not* `URLDecoder`, which
+  turns a literal `+` into a space and would break `patch+1.0.jar`.
+
+## 4. Silent failures made loud
+
+Fourteen places that swallowed a real failure now report it. Two examples of what that was hiding:
+
+- **`DeadEventAudit`'s two tables were built with `Map.put`.** A repeated event name **silently
+  overwrote** the earlier row, dropping it together with the sentence explaining what a player loses. The
+  rows are hand-written internal names of which two differ only by a nested class. They now go through
+  `putOnce`, which refuses at startup and names the event.
+- **`FieldContractReconciler`'s refusal** described above — one message for six different causes.
+
+The rest were the same shape at smaller scale. Where a silent failure turned out to be *deliberate* it was
+left alone and the reason written down instead, so that "this was decided" and "nobody noticed" stop
+looking alike.
+
+## 5. Two things got faster, and one got measured
+
+- **The boot scan inflated every class four times.** Four separate passes walked the same jars and the
+  same class entries, each decompressing them for itself. They now share one traversal, holding one
+  class's bytes at a time. Measured with the candidates interleaved in a single loop, so that drift cannot
+  favour either: two of the four went from **204.6 ms to 120.0 ms**. No boot step moved — the fusion sits
+  where the first of them did and ends where the last did — and each pass keeps its own switch, so fusing
+  cannot turn one on or let one pass's unreadable jar silence another.
+- A cached-bytes scheme was measured first and **rejected**: the cache that looked good was in fact
+  holding everything, and every genuinely bounded size came out level with or worse than not caching at
+  all (−5% to −86%).
+- **The Windows test suite's real failures went from 181 to 0.** The 60 that remain are one platform
+  limit, not a kernel defect: they are the same tests that pass on the Ubuntu CI, every assertion in them
+  passes, and only the temporary-directory cleanup fails. Windows names the reason itself —
+  `java.nio.file.FileSystemException: …\renamed-platform.jar: another program is using this file` — and
+  the handle belongs to a **closed** `URLClassLoader`: closing it does not release the jar, and the retries
+  and `System.gc()` of an instrumented cleanup hook did not get it released either. So there is no
+  per-test edit that reliably fixes it, and it is reported rather than papered over.
+
+---
+
+## Installing
+
+**This section is unchanged from Forbric** and still refers to the real file and folder names, which have
+not been renamed.
 
 ### Before you start
 
-- **A launcher that starts versions from your `.minecraft/versions` folder.** Forbric has been tested
-  with **PCL2** on Windows. HMCL reads the same files and should work, but has not been tested yet. The
-  official Minecraft Launcher has not been tested either (see step 6). Prism Launcher and MultiMC keep
-  their own instances and will not see Forbric.
-- **Java.** If you can already play Minecraft, you have it. The installer finds the copy your launcher
-  downloaded, even if you never installed Java yourself.
-- **An internet connection**, and about 730 MB of free disk while it works (about 190 MB is kept
+- **A launcher that starts versions from your `.minecraft/versions` folder.** Tested with **PCL2** on
+  Windows. HMCL reads the same files and should work. The official Minecraft Launcher has not been tested.
+  Prism Launcher and MultiMC keep their own instances and will not see this.
+- **Java.** If you can already play Minecraft, you have it.
+- **An internet connection**, and about 730 MB of free disk while the installer works (about 190 MB kept
   afterwards).
 
-You do **not** need to install Minecraft 26.2 first. If you do not have it, the installer downloads it.
-You also do **not** need Fabric, Forge or NeoForge, and you do not need to find any other files: the
-installer downloads and builds everything Forbric needs. Your mods still need their own prerequisites as
-usual, for example Fabric API for most Fabric mods.
+You do **not** need to install Minecraft 26.2 first, and you do **not** need Fabric, Forge or NeoForge:
+the installer downloads and builds what it needs. Your mods still need their own prerequisites as usual,
+for example Fabric API for most Fabric mods.
 
 ### Install
 
-1. Open the [latest release](https://github.com/Ray-T-r/Minecraft-Forbric-mod-loader/releases/latest).
+Install exactly as Forbric documents it: run `forbric-kernel-installer-0.3.0.jar`, which writes a
+`26.2-forbric` version profile into `.minecraft/versions/`, then start that version from your launcher.
+The installer, the folder names and the launcher steps are identical here.
 
-2. Download **two** files into the **same folder**:
+### Where the mods go
 
-   | You are on | Download |
-   | --- | --- |
-   | Windows | `forbric-kernel-installer-0.3.0.jar` **and** `Forbric-Installer.bat` |
-   | macOS | `forbric-kernel-installer-0.3.0.jar` **and** `Forbric-Installer.command` |
-   | Linux | `forbric-kernel-installer-0.3.0.jar` (run it with `java -jar`) |
+- If your launcher keeps each version separate (version isolation; PCL2 and HMCL can do this):
+  `.minecraft/versions/26.2-forbric/mods/`
+- Otherwise the shared `.minecraft/mods/`. Every version without its own folder uses that one, so the loader
+  will also try to load whatever is already in it.
 
-3. **Double-click the `.bat` (Windows) or the `.command` (macOS).** It looks for Java, including the copy
-   a launcher keeps in the usual Minecraft folder, and starts the installer with it. On some Windows PCs,
-   double-clicking the jar itself only flashes a black window, because Windows was once told to open
-   `.jar` files in a way that does not work; the script avoids that. If double-clicking the jar does open
-   the installer window, that is fine too: it is the same installer.
+The installer names both when it finishes. Unsure which yours uses? Start the game once: a folder called
+`.forbric-kernel` appears next to the correct `mods` folder.
 
-   On macOS the first time, you may need to right-click the file and choose **Open**, then confirm. That
-   is macOS being careful about downloads, not an error.
+**Put one build of each mod in the folder.** Many mods ship as a Fabric, a Forge and a NeoForge build; if you
+add more than one, only one gets loaded. The first time that happens the loader writes its choice to
+`forbric-mods.txt` next to your `mods` folder, where you can switch to another build. The same goes for a
+library several mods need — one build is usually enough, since a mod can normally use another loader's build
+of its prerequisite.
 
-4. **A window opens.** The only field that matters is **Game directory** — the `.minecraft` folder your
-   launcher uses. It starts out filled in with the usual place for your system:
-
-   - Windows — `C:\Users\<your name>\AppData\Roaming\.minecraft`
-   - macOS — `~/Library/Application Support/minecraft`
-   - Linux — `~/.minecraft`
-
-   If your launcher keeps `.minecraft` somewhere else (PCL2 and HMCL can keep it in the same folder as the
-   launcher program), press **Browse…** next to Game directory and choose that folder.
-
-   Leave everything else alone. In particular, leave **Built artifacts** empty — it is only for developers
-   who built Forbric's game files from source.
-
-5. **Press Install and wait.** The first install takes several minutes. It is downloading Minecraft's,
-   Forge's and NeoForge's own files and putting them together on your computer, because those files
-   cannot legally be handed out ready-made. Stay connected while it runs. Installing again later reuses
-   what is already on disk and is quick.
-
-6. **Open your launcher.** A new version called **`26.2-forbric`** is in the list. Start it like any
-   other version. PCL2 shows it as a Fabric version; that is expected (see the next section).
-
-   The installer does not add it to the official Minecraft Launcher's list of installations. There you
-   would probably have to create a new installation and pick `26.2-forbric` yourself.
-
-> Want to check your computer before you press Install? Run this in the folder with the jar. It only
-> looks, and writes nothing:
->
-> ```bash
-> java -jar forbric-kernel-installer-0.3.0.jar --doctor
-> ```
-
-### Where to put mods
-
-**Fabric, Forge and NeoForge mods all go in the same `mods` folder.** Which folder that is depends on
-your launcher, not on Forbric:
-
-- If your launcher keeps each version separate (often called version isolation; PCL2 and HMCL can do
-  this): `.minecraft/versions/26.2-forbric/mods/`
-- Otherwise the shared `.minecraft/mods/` in the Game directory you chose. Every version that does not keep
-  its own folder uses this one, so Forbric will also try to load any mods already in it.
-
-The installer names both when it finishes. Not sure which one your launcher uses? Start the game once:
-a folder called `.forbric-kernel` appears next to the right `mods` folder.
-
-Your launcher may call `26.2-forbric` a Fabric version. That is on purpose: a launcher shows only one mod
-loader per version, so Forbric's version tells it Fabric. PCL2 reads this, treats `26.2-forbric` as a
-modded version and suggests Fabric builds first in its mod browser. Other launchers may show it as plain
-Minecraft. Either way, Forbric loads Fabric, Forge and NeoForge mods from the `mods` folder.
-
-One thing to watch: many mods come as a Fabric build, a Forge build and a NeoForge build. Put **one**
-build of each mod in the folder. If you add more than one, Forbric still runs only one of them. The first
-time this happens it writes its choice to `forbric-mods.txt` next to your `mods` folder, where you can pick
-the other build.
-
-The same goes for a prerequisite (library) mod that several of your mods need: one build is usually
-enough, because a Forge or NeoForge mod can normally use the Fabric build of its prerequisite and the
-other way round. Adding the prerequisite for both loaders does not give each mod its own copy: Forbric
-still runs only one. If one mod plugs straight into another (Iris into Sodium, for example), use the same
-loader's build of both. For Sodium, also see *A known crash* below.
+Your launcher may label `26.2-forbric` a Fabric version. That is on purpose: a launcher shows one loader per
+version, so this one tells it Fabric. It still loads all three kinds from `mods`.
 
 ### Did it work?
 
-Open the pause menu. There is a button with **three overlapping squares**, and the tooltip says
-*Mods (Forbric)*. It opens one list of every mod you installed, each row labelled with the kind it is.
-Select a mod and press **Config**, or double-click the row, to open that mod's own settings.
-
-Fabric mods hand their settings screens to Mod Menu, so a Fabric mod gets a **Config** button in this list
-only when Mod Menu is installed too. With Mod Menu there are **two** mods buttons, on the title screen and in
-the pause menu. Use the one with three squares: it opens settings for all three kinds, while Mod Menu's own
-button opens settings only for Fabric mods.
+Open the pause menu: there is a button with **three overlapping squares**, tooltipped *Mods (Forbric)*. It
+lists every installed mod with the kind it is; select one and press **Config** (or double-click) to open that
+mod's own settings. A Fabric mod gets a Config button there only when Mod Menu is also installed.
 
 ### If something goes wrong
 
 | What you see | What to do |
 | --- | --- |
 | **A window says a mod is missing something it needs** | It names the mod and what to install. Install it, or press **Launch anyway**. |
-| **A window says required mod features are unavailable** | Some part of a mod could not start. You can continue playing, or quit and remove that mod. |
-| **The game crashes** | Open the `.forbric-kernel` folder next to your `mods` folder. The `crash-analysis.txt` there names the mods most likely to blame; the full crash report is in `crash-reports/`. Remove those mods and try again. **Not in 0.3.0 yet:** on the next start a window asks whether to start without those mods. That writes their file names into `forbric-disabled.txt` next to your `mods` folder; delete a line there to turn that mod back on. Using the NeoForge build of Sodium? See *A known crash* below. |
-| **A mod is installed but does nothing** | Open the Forbric mods list — a mod that did not finish loading is marked there. The same list is in `load-report.txt`, in the `.forbric-kernel` folder next to your `mods` folder. Often the mod was built for a different Minecraft version, or you have two builds of it. |
-| **A dedicated server will not start** and the log says the compatibility policy stopped it | A server has no screen to ask you on, so it stops instead. Remove the mod it names, or add `-Dforbric.compatibilityPolicy=continue` to the server's start command to run anyway. |
-| **Continuity loads, but glass still has borders between blocks** | In **Options → Resource Packs**, enable **Default Connected Textures** (included with Continuity). Its built-in packs are optional and are not enabled just by installing the mod. On 0.3.0 the Fabric build of Continuity can still leave the borders after that. That is a Forbric bug. It is fixed in the 0.3.1 beta, a pre-release on the Releases page, but not yet in a regular release. A NeoForge build of Continuity made for your Minecraft version is the other choice. |
-| **The install seems stuck** | Usually a proxy or VPN sitting between you and Mojang's servers. Run the `--doctor` check from the end of *Install*, then try again with the proxy or VPN off. |
+| **A window says required mod features are unavailable** | Some part of a mod could not start. Continue playing, or quit and remove that mod. |
+| **The game crashes** | Look in `.forbric-kernel` next to your `mods` folder. `crash-analysis.txt` there names the mods most likely to blame; the full report is in `crash-reports/`. |
+| **A mod is installed but does nothing** | The mods list marks a mod that did not finish loading. The same list is in `load-report.txt`, in `.forbric-kernel`. Often the mod is built for another Minecraft version, or you have two builds of it. |
+| **A dedicated server will not start**, and the log blames the compatibility policy | A server has no screen to ask you on, so it stops. Remove the mod it names, or add `-Dforbric.compatibilityPolicy=continue` to the start command to run anyway. |
+| **The install seems stuck** | Usually a proxy or VPN between you and Mojang. Run the `--doctor` check from the end of *Install*, then retry with it off. |
 
-Something else? You can report it [here](https://github.com/Ray-T-r/Minecraft-Forbric-mod-loader/issues/new?template=bug_report.yml).
+Logs and state live in `.minecraft/versions/26.2-forbric/`; the installer's own work is under
+`.minecraft/.forbric-build/` and `.minecraft/libraries/net/forbric/`.
 
-### Updating and uninstalling
-
-**To update**, run the new installer with the same settings. Your mods folder and worlds are left alone.
-The first install after updating from 0.2.0 builds Forbric's game files again, so it takes several minutes
-once more.
-
-**To uninstall**, delete `.minecraft/versions/26.2-forbric/`. If your launcher keeps each version
-separate, that folder also holds this version's mods, worlds and settings, so first copy out anything you
-want to keep. To get the disk space back as well, also delete `.minecraft/.forbric-build/` and
-`.minecraft/libraries/net/forbric/`.
-
-## What's new in 0.3.0
-
-**More mods work.** We picked three batches of about 100 random mods from Modrinth (popular ones and
-random ones, all three kinds) and started the game with each mod on its own. **80.5% loaded without errors
-on 0.2.0, 89.0% on 0.3.0** (no mod failing to load in the log). On 0.3.0, 91.8% got into a world, and
-79.1% also had no part reported as not working. This test checks that a mod loads and a world opens. It
-does not try each mod's features, and it does not test mods together.
-
-New:
-
-- **Mods from different loaders can pass items, fluids and energy to each other** — for example a Fabric
-  pipe or hopper can feed a NeoForge or Forge machine.
-- **A window before you play when part of a mod cannot work**, so you can choose to continue or quit
-  instead of finding out later.
-- **The Forbric mods list marks mods that did not finish loading**, and says why.
-- **After a crash, a `crash-analysis.txt`** names the mods most likely responsible.
-- **The warning windows speak 10 languages**, including Chinese, and suggest what to install.
-- Forbric now uses the full NeoForge release instead of a beta, so NeoForge mods that need a newer NeoForge
-  can load, and the title screen no longer says "beta".
-
-Fixed:
-
-- Crashes when smelting in a furnace, crafting or brewing with Fabric API installed, fighting the Ender
-  Dragon, using a flower pot, or placing a fluid from a Fabric or Forge mod.
-- Some mod sets left the game on a black screen at startup.
-- Dungeons did not generate, and a seed did not give the same terrain as vanilla Minecraft.
-- Item tooltips were missing enchantments, lore, attributes and durability.
-- Many Forge mods loaded but did nothing — their commands, key bindings, on-screen displays, settings files,
-  mobs and world changes now work.
-- Xaero's Minimap and World Map (Forge builds) crashed at startup.
-- Mods that crashed or failed on 0.2.0 and work now include Farmer's Delight Refabricated, Better End,
-  Better Nether, Entity Culling, More Culling, Friends & Foes, Repurposed Structures, Traveler's Backpack,
-  Shoulder Surfing and YetAnotherConfigLib.
-
-Worse than 0.2.0: in the same test, **Alex's Mobs Continued**, **Drippy Loading Screen**, **FancyMenu** and
-**Easy Magic** (NeoForge builds) worked on 0.2.0 and do not on 0.3.0.
-
-Changed for server owners: a dedicated server now stops at startup if a mod is missing a part it needs,
-because there is no screen to ask you on (see *If something goes wrong* above).
-
-## What we promise
-
-**Your existing Minecraft is not touched.** Forbric installs alongside everything else. Your Fabric,
-Forge and NeoForge setups, your worlds, and your other mod folders are exactly as they were.
-
-**Uninstalling is deleting a folder.** Nothing is scattered around your system, and nothing is left
-running when you are not playing.
-
-**Nothing is hidden.** All the source code is here and the licence is Apache-2.0. This repository
-contains no Minecraft, Forge or NeoForge code — all of that is fetched from their own servers and
-assembled on your machine when you install.
-
-And what we do **not** promise:
-
-**We cannot promise any particular mod works.** In our own test about one mod in ten still fails on its
-own, and mods that each work alone can still clash when put together.
-
-**Part of a mod can stop working without a crash.** When a piece of a mod cannot attach to the game,
-Forbric keeps the rest of the mod running instead of stopping, and usually tells you — in the window
-before you play and in the Forbric mods list. If a piece attaches but then behaves wrongly, neither
-Forbric nor our tests can tell.
-
-**A known crash:** the NeoForge build of Sodium crashes at startup unless Fabric API is also installed,
-and so do mods that need it, such as the NeoForge builds of Iris and Sodium Extra. This is a Forbric bug,
-not a mistake in how you installed them. Until it is fixed, put Fabric API in your `mods` folder as well, or
-use the Fabric builds of Sodium and of the mods that plug into it.
-
-**This is a research project at version 0.3.0.** There is no support, no roadmap, and things will change.
-
-Forbric is not affiliated with Mojang, FabricMC, MinecraftForge or NeoForged.
+Installing alongside everything else means your other setups are untouched, and uninstalling is deleting
+the `26.2-forbric` folder.
 
 ---
 
-### For mod developers
+## For mod developers
 
-**Your mod does not need to change.** It calls the genuine Fabric API, MinecraftForge or NeoForge classes,
-so there is no compatibility layer to code against. What Forbric re-implements is the loader: class
-loading, mod discovery, load order, the lifecycle, the Mixin service, and Fabric Loader's API (Forbric
-carries Fabric Loader's public API types, which keep FabricMC's copyright, and implements them; Fabric
-Loader itself never runs). The game is different too: the installer builds one merged game jar from both
-Forge families' patches. What this means for your mod:
+**Your mod does not need to change**, and that is upstream Forbric's design, not something this fork
+alters. You call the real Fabric API, MinecraftForge or NeoForge classes; what is re-implemented is the
+loader, and the game is one merged jar built at install time.
 
-- **The game is one merged jar.** Where MinecraftForge and NeoForge patched the same method (about a
-  thousand of them), only one version was kept: NeoForge's in all but five, MinecraftForge's in those
-  five. An event whose call was lost that way — nearly always a MinecraftForge one, plus a few NeoForge
-  ones such as item tooltips and screen opening — reaches your listener only if Forbric re-emits it, and
-  one without a bridge never fires ([introduction.md §8](introduction.md#8-event-bridges)). Events whose
-  call survived the merge fire as usual. The coremods NeoForge itself ships are not loaded; Forbric
-  applies their rewrites itself.
-- **Mixins are applied to that merged code.** Forbric relaxes mods' mixin configs (`required: false`,
-  `defaultRequire: 0`), so an injector whose target is missing does nothing instead of failing, unless it
-  sets `require` itself. It moves an injector whose target moved, and drops a whole mixin when none of its
-  targets exist ([§7](introduction.md#7-mixin-on-the-merged-base)).
-- **Start-up runs in Forbric's order**, close to but not the same as each loader's native order
-  ([§3](introduction.md#3-boot-order)).
-- **Start-up extensions are not supported:** MinecraftForge's ModLauncher services
-  (`ITransformationService`, `ILaunchPluginService`) and `coremods.json`, NeoForge's
-  `ClassProcessorProvider`, and custom mod or dependency locators. Today they are skipped without a
-  warning.
+Two things from this fork's work are worth knowing:
 
-More detail:
+- **The merged base loses more than the committed conflict report says** (§2). If you are deciding whether
+  a Forge hook will fire on the merged game, produce a fresh report rather than reading the snapshot in the
+  repository.
+- **A `prepare` run now needs `libraries/` to be populated** (§1) before the merge can complete. `prepare`
+  does not do it for you; see the fix note above.
 
-- [introduction.md](introduction.md) — how Forbric works inside, for developers: boot order, how the
-  three kinds of mods are loaded together, what the installer builds, and how it is tested.
-- [forbric-kernel/README.md](forbric-kernel/README.md) — a shorter summary of the kernel, which is what
-  the installer installs.
+### Building and running from source
 
-To build the kernel from source you need `git` and a JDK 21 or newer. The kernel has its
-own Gradle build; boot-side compilation does not require the Fabric substrate:
+You need `git` and a JDK 21 or newer for the kernel's own Gradle build (boot-side compilation does not
+need the Fabric substrate):
 
 ```bash
-git clone https://github.com/Ray-T-r/Minecraft-Forbric-mod-loader.git
-cd Minecraft-Forbric-mod-loader
+git clone https://github.com/REX97496/Forbric_tweaked.git
+cd Forbric_tweaked
 cd forbric-kernel && ./gradlew build
 ```
 
-**A green build on a fresh clone does not mean the game can launch.** Without locally staged game jars,
-the runtime source set and transfer tests are skipped, and tests that need those jars may also skip.
-CI verifies the boot-side build and the separate loader build; it does not launch Minecraft.
+**A green build on a fresh clone does not mean the game can launch.** Without locally staged game jars the
+runtime source set and transfer tests are skipped.
 
-To run the current source in a development game, install **JDK 25+ and Python 3.9+**, then run from the
-repository root (Windows: replace `python3` with `py`):
+To run the current source in a development game, install **JDK 25+ and Python 3.9+**, then from the
+repository root (Windows: use `py` instead of `python3`):
 
 ```bash
-python3 tools/dev.py client                 # automatically prepare dependencies, build and launch
-python3 tools/dev.py server --accept-eula   # a separate local server instance
+python3 tools/dev.py prepare --no-assets    # download and build the game artifacts
+python3 tools/dev.py client                 # build and launch
 ```
 
-Downloads, assembled jars and instances stay under the ignored `forbric-kernel/.dev/` directory.
-Gradle entry points are also available: `prepareDev`, then `runClient` or `runServer` in a separate invocation.
-See [the kernel development guide](forbric-kernel/run/README.md) for configuration and test coverage.
-`check` includes tool self-tests; `integrationTest` rejects skipped assertions and requires the full fixtures.
-Run `./bootstrap.sh` when building the first-generation `forbric-loader/` itself; standalone merge tools
-and the current kernel development workflow do not need it.
+On a machine where `forbric-kernel/.dev/minecraft/libraries` is empty, `prepare` will stop during the merge
+with *Incompatible initializer dependency* — that is §1, and the backend is a missing Minecraft library
+rather than a real incompatibility. Populate `libraries/` from the version JSON's
+`downloads.artifact.url` entries and re-run.
 
-### Licence
+If the JVM cannot reach `maven.neoforged.net`, note that its `HttpClient` **does not read proxy
+environment variables**; the proxy has to be given as system properties, and `dev.py`'s `--jvm` does not
+reach the nested build JVM. `JAVA_TOOL_OPTIONS` does:
 
-Apache-2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE). The clean-room boundary is documented in
+```bash
+JAVA_TOOL_OPTIONS='-Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7897' python3 tools/dev.py prepare --no-assets
+```
+
+Downloads and assembled jars stay under the ignored `forbric-kernel/.dev/`.
+
+---
+
+## What this fork does not fix
+
+- **The merged-base event surface.** Hooks whose call site the merge lost still do not fire unless
+  something re-emits them. Ten MinecraftForge events are known dead with no bridge, seven more are posted
+  on only some of the paths that used to post them, and the real runtime loss figure is §2's 814 — all
+  recorded and asserted in the kernel's own tables, not fixed here.
+- **Merge-grammar widening.** The merger composes three method shapes and refuses the rest. Widening it is
+  the lever for applying more of what mods changed, and it was deliberately **not** attempted: the compiler
+  assumes one argument is one instruction, a wrong composition produces wrong behaviour silently rather
+  than a refusal, and there was no staged base to prove any change against. That is the main thing left to
+  do, and the coverage measurement above is what it should be steered by.
+
+## Licence
+
+Apache-2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE). This is a fork of
+[Ray-T-r/Minecraft-Forbric-mod-loader](https://github.com/Ray-T-r/Minecraft-Forbric-mod-loader); all
+credit for the loader itself is upstream's. The clean-room boundary is documented in
 [forbric-loader/CREDITS.md](forbric-loader/CREDITS.md) and
 [forbric-loader/MAPPINGS.md](forbric-loader/MAPPINGS.md).
+
+Not affiliated with Mojang, FabricMC, MinecraftForge or NeoForged.
