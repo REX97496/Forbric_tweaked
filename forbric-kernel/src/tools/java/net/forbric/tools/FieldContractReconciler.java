@@ -19,7 +19,8 @@ final class FieldContractReconciler {
             for(MethodNode constructor:new ArrayList<>(merged.methods))if(constructor.name.equals("<init>")){
                 MethodNode chosen=ContractGraph.ownMethod(canonical,constructor.name,constructor.desc),alternative=ContractGraph.ownMethod(other,constructor.name,constructor.desc);
                 if(chosen==null||alternative==null||!functionalFactory(chosen,selected.name)||!functionalFactory(alternative,selected.name))continue;
-                if(!sameConstruction(canonical,chosen,other,alternative,selected.name,graph))throw new IllegalStateException("Incompatible initializer dependency on "+merged.name+"#"+selected.name+": "+chosen.desc);
+                String difference=sameConstruction(canonical,chosen,other,alternative,selected.name,graph);
+                if(difference!=null)throw new IllegalStateException("Incompatible initializer dependency on "+merged.name+"#"+selected.name+": "+chosen.desc+" — "+difference);
                 if(List.of(a,canonical).stream().flatMap(source->source.methods.stream()).filter(method->!method.name.equals("<init>")).anyMatch(method->ContractGraph.code(method).stream().anyMatch(i->i instanceof FieldInsnNode field&&field.getOpcode()==Opcodes.PUTFIELD&&field.owner.equals(merged.name)&&field.name.equals(selected.name))))throw new IllegalStateException("Mutable provider field cannot share a coherent cell: "+merged.name+"#"+selected.name);
                 MethodInsnNode nativeFactory=factory(chosen,selected.name),peerFactory=factory(alternative,selected.name);String nativeProvider=allocation(nativeFactory,graph),peerProvider=allocation(peerFactory,graph);
                 ClassNode provider=graph.node(nativeProvider),peer=graph.node(peerProvider);MemoizedSupplierContract.Proof nativeProof=provider==null?null:MemoizedSupplierContract.prove(provider,graph),peerProof=peer==null?null:MemoizedSupplierContract.prove(peer,graph);
@@ -93,24 +94,44 @@ final class FieldContractReconciler {
         return false;
     }
 
-    private static boolean sameConstruction(ClassNode a,MethodNode am,ClassNode b,MethodNode bm,String field,ContractGraph graph){
-        if(!am.tryCatchBlocks.isEmpty()||!bm.tryCatchBlocks.isEmpty())return false;
-        List<AbstractInsnNode> x=ContractGraph.code(am),y=ContractGraph.code(bm);if(x.size()!=y.size())return false;
+    /**
+     * Why the two constructors are not the same computation, or null when they are.
+     *
+     * <p>Returns the reason rather than a bare {@code false}, because the caller ABORTS THE WHOLE MERGE on it.
+     * "Incompatible initializer dependency" with nothing after it leaves six different early returns
+     * indistinguishable, and the difference between them is the difference between "the two patches genuinely
+     * disagree, the merge is right to stop" and "this checker does not model what one of them does, and the merge
+     * gave up on a case it could have composed". Refusing loudly is correct; refusing without saying why is what
+     * made the first real-jar run of this merge impossible to act on from its own message.
+     */
+    private static String sameConstruction(ClassNode a,MethodNode am,ClassNode b,MethodNode bm,String field,ContractGraph graph){
+        if(!am.tryCatchBlocks.isEmpty()||!bm.tryCatchBlocks.isEmpty())
+            return "a constructor has an exception handler, whose coverage this cannot compare";
+        List<AbstractInsnNode> x=ContractGraph.code(am),y=ContractGraph.code(bm);
+        if(x.size()!=y.size())return "instruction counts differ: "+x.size()+" vs "+y.size();
         for(int i=0;i<x.size();i++){
             AbstractInsnNode l=x.get(i),r=y.get(i);
-            if(l instanceof FieldInsnNode lf&&r instanceof FieldInsnNode rf&&lf.name.equals(field)&&rf.name.equals(field)&&lf.owner.equals(a.name)&&rf.owner.equals(b.name)){if(lf.getOpcode()!=rf.getOpcode())return false;continue;}
-            if(l instanceof MethodInsnNode lc&&r instanceof MethodInsnNode rc&&i+1<x.size()&&x.get(i+1) instanceof FieldInsnNode f&&f.name.equals(field)){
-                if(!transparentFactory(lc,graph)||!transparentFactory(rc,graph)||!Arrays.equals(Type.getArgumentTypes(lc.desc),Type.getArgumentTypes(rc.desc))||i==0
-                        ||!(x.get(i-1) instanceof InvokeDynamicInsnNode supplier)||!supplier.bsm.getOwner().equals("java/lang/invoke/LambdaMetafactory")||!supplier.bsm.getName().equals("metafactory")
-                        ||!Type.getReturnType(supplier.desc).equals(Type.getObjectType("java/util/function/Supplier"))||supplier.bsmArgs.length!=3||!(supplier.bsmArgs[1] instanceof Handle handle)||!handle.getOwner().equals(a.name))return false;continue;
+            if(l instanceof FieldInsnNode lf&&r instanceof FieldInsnNode rf&&lf.name.equals(field)&&rf.name.equals(field)&&lf.owner.equals(a.name)&&rf.owner.equals(b.name)){
+                if(lf.getOpcode()!=rf.getOpcode())return "instruction "+i+" touches "+field+" with different opcodes: "+lf.getOpcode()+" vs "+rf.getOpcode();
+                continue;
             }
-            if(!instructionToken(x,l).equals(instructionToken(y,r)))return false;
+            if(l instanceof MethodInsnNode lc&&r instanceof MethodInsnNode rc&&i+1<x.size()&&x.get(i+1) instanceof FieldInsnNode f&&f.name.equals(field)){
+                if(!transparentFactory(lc,graph)||!transparentFactory(rc,graph))return "instruction "+i+" is a factory for "+field+", but not a transparent one ("+lc.owner+"."+lc.name+lc.desc+" vs "+rc.owner+"."+rc.name+rc.desc+")";
+                if(!Arrays.equals(Type.getArgumentTypes(lc.desc),Type.getArgumentTypes(rc.desc)))return "the two factories for "+field+" take different arguments: "+lc.desc+" vs "+rc.desc;
+                if(i==0||!(x.get(i-1) instanceof InvokeDynamicInsnNode supplier)||!supplier.bsm.getOwner().equals("java/lang/invoke/LambdaMetafactory")||!supplier.bsm.getName().equals("metafactory")
+                        ||!Type.getReturnType(supplier.desc).equals(Type.getObjectType("java/util/function/Supplier"))||supplier.bsmArgs.length!=3||!(supplier.bsmArgs[1] instanceof Handle handle)||!handle.getOwner().equals(a.name))
+                    return "instruction "+i+" is a factory for "+field+" that is not fed by a Supplier lambda over "+a.name;
+                continue;
+            }
+            if(!instructionToken(x,l).equals(instructionToken(y,r)))return "instruction "+i+" differs: '"+instructionToken(x,l)+"' vs '"+instructionToken(y,r)+"'";
             if(l instanceof InvokeDynamicInsnNode indy)for(Object value:indy.bsmArgs)if(value instanceof Handle handle&&handle.getOwner().equals(a.name)){
                 MethodNode ah=ContractGraph.ownMethod(a,handle.getName(),handle.getDesc()),bh=ContractGraph.ownMethod(b,handle.getName(),handle.getDesc());
-                if(ah==null||bh==null||!tokens(ah).equals(tokens(bh))||!NonNullReturnProof.method(graph,a.name,ah))return false;
+                if(ah==null||bh==null)return "the lambda body "+handle.getName()+handle.getDesc()+" exists on only one side";
+                if(!tokens(ah).equals(tokens(bh)))return "the lambda body "+handle.getName()+handle.getDesc()+" differs between the two sides";
+                if(!NonNullReturnProof.method(graph,a.name,ah))return "the lambda body "+handle.getName()+handle.getDesc()+" has no non-null return proof on "+a.name;
             }
         }
-        return true;
+        return null;
     }
     private static boolean transparentFactory(MethodInsnNode call,ContractGraph graph){
         if(call.getOpcode()!=Opcodes.INVOKESTATIC)return false;MethodNode method=graph.method(call.owner,call.name,call.desc);if(method==null||!method.tryCatchBlocks.isEmpty())return false;
