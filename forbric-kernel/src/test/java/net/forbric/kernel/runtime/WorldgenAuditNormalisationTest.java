@@ -82,7 +82,7 @@ class WorldgenAuditNormalisationTest {
 
 	private static Method normaliser() throws Exception {
 		Path compiled = Path.of(System.getProperty("user.dir"), "build", "classes", "java", "runtime").normalize();
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled), "the game-side set is not compiled");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "the game-side set is not compiled", compiled);
 
 		Path gson = newestUnder("com/google/code/gson");
 		TestFixtures.require(Fixture.MC_LIBRARIES, gson != null, "no gson jar in the local Minecraft libraries");

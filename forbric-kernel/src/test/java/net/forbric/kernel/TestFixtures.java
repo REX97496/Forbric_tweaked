@@ -18,6 +18,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.opentest4j.AssertionFailedError;
@@ -142,6 +143,34 @@ public final class TestFixtures {
 	/** {@link #require(Fixture, boolean, String)} for a directory, such as a local mod pack. */
 	public static void requireDirectory(Fixture kind, String what, Path directory) {
 		require(kind, Files.isDirectory(directory), what + ": " + directory);
+	}
+
+	/**
+	 * {@link #require(Fixture, boolean, String)} for a directory that must hold COMPILED CLASSES, not merely
+	 * exist.
+	 *
+	 * <p>{@code Files.isDirectory} is not a test that a source set was compiled, and 106 guards in this suite use
+	 * it as one. Gradle creates a task's output directory whether or not the task writes anything into it, so
+	 * {@code build/classes/java/runtime} can exist and be EMPTY — which happens whenever the game-side compile is
+	 * skipped for want of staged jars, or after a compile that failed. Every guard then passes, the test proceeds
+	 * to load a class that is not there, and reports {@code ClassNotFoundException: net.forbric.kernel.runtime.…}:
+	 * a missing-fixture failure wearing the shape of a broken kernel. Measured while chasing exactly that — 15
+	 * tests failed this way in one run, and deleting the empty directory was what cleared them.
+	 *
+	 * <p>Use this wherever the guard means "the game side is compiled". {@link #requireDirectory} stays for
+	 * directories whose contents are not source-set output.
+	 */
+	public static void requireCompiledJava(Fixture kind, String what, Path classes) {
+		boolean holdsClasses = false;
+		if (Files.isDirectory(classes)) {
+			try (Stream<Path> walk = Files.walk(classes)) {
+				holdsClasses = walk.anyMatch(entry -> entry.toString().endsWith(".class"));
+			} catch (IOException unreadable) {
+				holdsClasses = false;
+			}
+		}
+		require(kind, holdsClasses, what + ": " + classes
+				+ " exists but holds no compiled classes, so nothing was built into it");
 	}
 
 	/**

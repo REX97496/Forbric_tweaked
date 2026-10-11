@@ -34,7 +34,7 @@ public final class StagedGameClassLoader {
 		if (!Files.isRegularFile(forge)) forge = run.resolve("forge-runtime/forge-runtime.jar");
 		TestFixtures.require(Fixture.STAGED, Files.isRegularFile(merged) && Files.isRegularFile(neo) && Files.isRegularFile(forge),
 				"the staged game is absent");
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled), "the compiled game side is absent");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "the compiled game side is absent", compiled);
 		List<URL> urls = new ArrayList<>(List.of(compiled.toUri().toURL(), merged.toUri().toURL(), neo.toUri().toURL(), forge.toUri().toURL()));
 		Path libraries = TestFixtures.minecraftDir().resolve("libraries");
 		Path version = libraries.resolveSibling("versions/26.2/26.2.json");

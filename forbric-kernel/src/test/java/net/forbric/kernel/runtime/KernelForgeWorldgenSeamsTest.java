@@ -85,7 +85,7 @@ class KernelForgeWorldgenSeamsTest {
 		Path merged = run.resolve("merged-base/patched-mc-merged-26.2.jar");
 		TestFixtures.require(Fixture.STAGED, Files.isRegularFile(forgeRt) && Files.isRegularFile(neoRt) && Files.isRegularFile(merged),
 				"the staged artifacts are absent");
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled), "the game-side set is not compiled");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "the game-side set is not compiled", compiled);
 		List<URL> urls = new java.util.ArrayList<>(List.of(compiled.toUri().toURL(), forgeRt.toUri().toURL(), neoRt.toUri().toURL(), merged.toUri().toURL()));
 		// The bridge's signatures name DataFixerUpper and gson types; the game supplies both at runtime, and the
 		// build takes them from the local Minecraft install by the same last-name-per-pattern rule as build.gradle.

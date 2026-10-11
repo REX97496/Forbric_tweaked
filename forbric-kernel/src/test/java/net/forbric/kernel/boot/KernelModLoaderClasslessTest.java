@@ -294,7 +294,7 @@ class KernelModLoaderClasslessTest {
 		Path forge = STAGED.resolve("forge-runtime/forge-runtime.jar");
 		TestFixtures.require(Fixture.STAGED, Files.isRegularFile(neo) && Files.isRegularFile(forge),
 				"staged runtime classes/carriers absent");
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled), "staged runtime classes/carriers absent");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "staged runtime classes/carriers absent", compiled);
 		Path stubs = PassiveSeederLoadingModListTest.loggingStubs(shared.resolve("stubs"));
 		Set<URL> urls = new LinkedHashSet<>(List.of(compiled.toUri().toURL(), stubs.toUri().toURL(),
 				neo.toUri().toURL(), forge.toUri().toURL(), modJar.toUri().toURL()));

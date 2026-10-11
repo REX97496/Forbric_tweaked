@@ -76,7 +76,7 @@ class UncalledMethodCensusTest {
 		for (Path jar : List.of(MERGED, INTEROP, NEO_RUNTIME, FORGE_RUNTIME, VANILLA, FORGE, NEOFORGE)) {
 			TestFixtures.require(jar == VANILLA ? Fixture.MC_LIBRARIES : Fixture.STAGED, Files.isRegularFile(jar), jar + " required");
 		}
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(KERNEL_RUNTIME), "the game-side classes are compiled only with staged jars");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "the game-side classes are compiled only with staged jars", KERNEL_RUNTIME);
 
 		// The merged game: what it declares, what it names, and every string it holds.
 		Map<String, Shape> game = new HashMap<>();

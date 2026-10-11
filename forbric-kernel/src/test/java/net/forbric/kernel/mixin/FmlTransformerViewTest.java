@@ -278,7 +278,7 @@ class FmlTransformerViewTest {
 			Path compiled = Path.of(System.getProperty("forbric.testRuntimeClasses", "build/classes/java/runtime"));
 			Path carrier = STAGED.resolve("neoforge-runtime/neoforge-runtime.jar");
 			TestFixtures.require(Fixture.STAGED, Files.isRegularFile(carrier), "staged runtime classes/carrier absent");
-			TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled), "staged runtime classes/carrier absent");
+			TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "staged runtime classes/carrier absent", compiled);
 			// A compileOnly dependency build.gradle resolves and hands every test run, staged or not.
 			String log4j = System.getProperty("forbric.log4jApiForTests", "");
 			assertTrue(!log4j.isEmpty() && Files.isRegularFile(Path.of(log4j)), "log4j-api absent: '" + log4j + "'");

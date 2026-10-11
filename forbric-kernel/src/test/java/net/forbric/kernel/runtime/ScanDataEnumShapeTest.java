@@ -64,7 +64,7 @@ class ScanDataEnumShapeTest {
 
 	/** Builds a one-annotation index through {@code builder} and returns the wrapped {@code registry} member. */
 	private static Object registryMember(String builder, Path carrier) throws Exception {
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(RUNTIME), "game-side classes not compiled: " + RUNTIME);
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "game-side classes not compiled: " + RUNTIME, RUNTIME);
 		ModFileScanner.Found found = new ModFileScanner.Found(
 				"Lcom/supermartijn642/core/registry/RegistryEntryAcceptor;",
 				ElementType.FIELD,

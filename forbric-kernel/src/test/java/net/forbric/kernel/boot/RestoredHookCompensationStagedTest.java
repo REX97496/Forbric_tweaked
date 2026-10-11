@@ -101,7 +101,7 @@ class RestoredHookCompensationStagedTest {
 	private static List<Path> kernelClassDirectories() throws Exception {
 		Path main = Path.of(DeadEventAudit.class.getProtectionDomain().getCodeSource().getLocation().toURI());
 		Path runtime = Path.of(System.getProperty("forbric.testRuntimeClasses", "build/classes/java/runtime"));
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(runtime), "game-side classes absent: " + runtime);
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "game-side classes absent: " + runtime, runtime);
 		return List.of(main, runtime);
 	}
 

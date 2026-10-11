@@ -103,7 +103,7 @@ class KernelGameEntityEventsTest {
 		Path forgeRt = run.resolve("forge-runtime/forge-runtime.jar");
 		Path neoRt = run.resolve("neoforge-runtime/neoforge-runtime.jar");
 		TestFixtures.require(Fixture.STAGED, Files.isRegularFile(forgeRt) && Files.isRegularFile(neoRt), "the staged carriers are absent");
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled), "the game-side set is not compiled");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "the game-side set is not compiled", compiled);
 		List<URL> urls = new ArrayList<>(List.of(compiled.toUri().toURL(), forgeRt.toUri().toURL(),
 				neoRt.toUri().toURL()));
 		return new URLClassLoader(urls.toArray(new URL[0]), ClassLoader.getPlatformClassLoader());

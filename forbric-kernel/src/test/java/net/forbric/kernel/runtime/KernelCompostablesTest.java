@@ -33,7 +33,7 @@ class KernelCompostablesTest {
 		Path run = TestFixtures.stagedRoot();
 		Path merged = run.resolve("merged-base/patched-mc-merged-26.2.jar"), neoRt = run.resolve("neoforge-runtime/neoforge-runtime.jar");
 		TestFixtures.require(Fixture.STAGED, Files.isRegularFile(merged) && Files.isRegularFile(neoRt), "the staged game required");
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled), "game-side classes required");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "game-side classes required", compiled);
 		TestFixtures.require(Fixture.MC_LIBRARIES, Files.isRegularFile(fastutil), "fastutil required: " + fastutil);
 		// The game's jars are there for the signatures only (reflection resolves every declared method's types); nothing
 		// here initialises a game class.

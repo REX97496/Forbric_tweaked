@@ -32,7 +32,17 @@ class FabricModelContextTransformerTest {
 	}
 
 	private static byte[] resolve(String name) {
-		try { return game(name); } catch (Exception e) { throw new AssertionError(e); }
+		try {
+			return game(name);
+		} catch (org.opentest4j.TestAbortedException abort) {
+			// The fixture guard throws this to SKIP, and catching it here as an ordinary failure turned every skip
+			// into an error: the report said "the child JVM itself failed" with a TestAbortedException inside an
+			// AssertionError, which reads as a broken kernel rather than as a missing staged jar. A skip has to
+			// keep propagating or the suite cannot tell the two apart.
+			throw abort;
+		} catch (Exception e) {
+			throw new AssertionError(e);
+		}
 	}
 
 	@Test void defaultEmissionPassesTheRealLevelPositionAndStateToNativeModels() throws Exception {

@@ -282,7 +282,7 @@ class MergedBaseKeyMappingFaceTest {
 		Path run = TestFixtures.stagedRoot();
 		Path forgeRt = run.resolve("forge-runtime/forge-runtime.jar");
 		Path neoRt = run.resolve("neoforge-runtime/neoforge-runtime.jar");
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled), "the game-side set is not compiled");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "the game-side set is not compiled", compiled);
 		TestFixtures.require(Fixture.STAGED, Files.isRegularFile(forgeRt) && Files.isRegularFile(neoRt) && Files.isRegularFile(MERGED),
 				"the staged artifacts are absent");
 		List<java.net.URL> urls = new ArrayList<>(List.of(compiled.toUri().toURL(), forgeRt.toUri().toURL(),

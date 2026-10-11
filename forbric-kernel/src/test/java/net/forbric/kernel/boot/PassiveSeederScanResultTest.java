@@ -229,8 +229,7 @@ class PassiveSeederScanResultTest {
 		Path compiled = Path.of(System.getProperty("forbric.testRuntimeClasses", "build/classes/java/runtime"));
 		TestFixtures.require(Fixture.STAGED, Files.isRegularFile(PassiveSeederLoadingModListTest.NEO_RUNTIME),
 				"staged neoforge-runtime or compiled game side absent");
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled),
-				"staged neoforge-runtime or compiled game side absent");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "staged neoforge-runtime or compiled game side absent", compiled);
 		Path stubs = PassiveSeederLoadingModListTest.loggingStubs(tmp.resolve("stubs"));
 		return new URLClassLoader(new URL[] {stubs.toUri().toURL(), compiled.toUri().toURL(),
 				PassiveSeederLoadingModListTest.NEO_RUNTIME.toUri().toURL()},

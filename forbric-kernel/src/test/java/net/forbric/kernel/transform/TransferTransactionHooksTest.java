@@ -24,7 +24,7 @@ class TransferTransactionHooksTest {
 	private static Path fabric() throws Exception {
 		Path modules = Path.of("build/transfer-api-compile");
 		// Extracted from Fabric API by extractTransferApis, which runs only where the game side is built.
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(modules), "the game side's transfer API modules are not extracted: " + modules);
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "the game side's transfer API modules are not extracted: " + modules, modules);
 		try (var paths = Files.list(modules)) { return paths.filter(p -> p.getFileName().toString().startsWith("fabric-transfer-api-")).findFirst().orElseThrow(); }
 	}
 	private static byte[] bytes(Path jar, String name) throws Exception {

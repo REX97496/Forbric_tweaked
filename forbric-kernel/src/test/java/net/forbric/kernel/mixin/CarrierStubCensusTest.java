@@ -81,7 +81,7 @@ class CarrierStubCensusTest {
 					// the stub, nothing reaches it (see MixinStubRebind.Delegation).
 					if (delegation.computed()) {
 						if (mergedCalls == null) {
-							TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(KERNEL_RUNTIME), "the merged game's callers include the kernel's");
+							TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "the merged game's callers include the kernel's", KERNEL_RUNTIME);
 							mergedCalls = callers(List.of(MERGED, INTEROP, NEO_RUNTIME, KERNEL_MAIN, KERNEL_RUNTIME));
 						}
 						String self = merged.name + "#" + stub.name + stub.desc;

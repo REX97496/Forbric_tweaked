@@ -30,7 +30,7 @@ class KernelWrapOperationsFramesTest {
 		String extras = System.getProperty("forbric.mixinExtrasForTests", "");
 		Path runtime = Path.of(System.getProperty("forbric.test.runtimeClasses", "build/classes/java/runtime"));
 		assertFalse(extras.isEmpty(), "Gradle hands every test task MixinExtras, from nestedMods, as forbric.mixinExtrasForTests");
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(runtime), "game-side classes required");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "game-side classes required", runtime);
 		// The frames' Deferred comes from the kernel's boot side, as ForbricClassLoader always takes that package from it.
 		loader = new URLClassLoader(new URL[] { runtime.toUri().toURL(), Path.of(extras).toUri().toURL() }, getClass().getClassLoader());
 		Class<?> operations = loader.loadClass("net.forbric.kernel.runtime.KernelWrapOperations");

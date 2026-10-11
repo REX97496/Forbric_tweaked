@@ -217,7 +217,7 @@ class ForbricSwitchesTest {
 
 	@Test void theGameSideReadsRenamedSwitchesThroughTheTableToo() throws Exception {
 		Path runtime = runtimeClasses();
-		TestFixtures.requireDirectory(Fixture.GAME_SIDE, "compiled game side", runtime);
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "compiled game side", runtime);
 		Set<String> through = new TreeSet<>();
 		List<String> problems = new ArrayList<>();
 		for (ClassNode type : classes(runtime)) {
@@ -296,7 +296,7 @@ class ForbricSwitchesTest {
 
 	@Test void everySwitchTheReleaseLineDeclaredIsStillLiveOrListedHere() throws Exception {
 		Path runtime = runtimeClasses();
-		TestFixtures.requireDirectory(Fixture.GAME_SIDE, "compiled game side", runtime);
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "compiled game side", runtime);
 		Set<String> live = new HashSet<>();
 		for (ClassNode type : classes(mainClasses())) {
 			if (!type.name.equals(HELPER)) live.addAll(constants(type));

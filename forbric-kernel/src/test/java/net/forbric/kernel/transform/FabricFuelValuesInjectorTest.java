@@ -207,7 +207,7 @@ class FabricFuelValuesInjectorTest {
 
 		Game(boolean shortCircuit, boolean headCancel) throws Exception {
 			Path compiled = Path.of(System.getProperty("user.dir"), "build", "classes", "java", "runtime").normalize();
-			TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled), "the game side is absent");
+			TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "the game side is absent", compiled);
 			TestFixtures.require(Fixture.STAGED, Files.isRegularFile(MERGED), "the merged game is absent");
 			byte[] original = NativeCoremodParityTest.read(MERGED, FUEL_VALUES);
 			byte[] woven = shortCircuit ? FabricFuelValuesInjector.shortCircuitTheBody(original) : original;

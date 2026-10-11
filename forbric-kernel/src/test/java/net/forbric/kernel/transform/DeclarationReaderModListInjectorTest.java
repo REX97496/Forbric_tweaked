@@ -383,7 +383,7 @@ class DeclarationReaderModListInjectorTest {
 	 */
 	static URLClassLoader neoGameSide() throws Exception {
 		Path compiled = Path.of(System.getProperty("forbric.testRuntimeClasses", "build/classes/java/runtime"));
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled), "the game side is not compiled");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "the game side is not compiled", compiled);
 		List<URL> urls = new ArrayList<>(List.of(compiled.toUri().toURL(), carrier().toUri().toURL()));
 		for (String library : List.of("com/mojang/logging", "org/slf4j/slf4j-api", "org/apache/logging/log4j/log4j-api")) {
 			Path jar = newestUnder(library);

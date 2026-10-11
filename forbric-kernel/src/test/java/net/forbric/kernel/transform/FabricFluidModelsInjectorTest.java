@@ -100,7 +100,7 @@ class FabricFluidModelsInjectorTest {
 	/** The compiled game-side hook, plus (when given) a Fabric registry, in a loader of their own. */
 	private static URLClassLoader runtimeLoader(byte[] registry) throws Exception {
 		Path compiled = Path.of(System.getProperty("user.dir"), "build", "classes", "java", "runtime").normalize();
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled), "the game-side set is not compiled");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "the game-side set is not compiled", compiled);
 		return new URLClassLoader(new URL[] { compiled.toUri().toURL() }, FabricFluidModelsInjectorTest.class.getClassLoader()) {
 			@Override
 			protected Class<?> findClass(String name) throws ClassNotFoundException {

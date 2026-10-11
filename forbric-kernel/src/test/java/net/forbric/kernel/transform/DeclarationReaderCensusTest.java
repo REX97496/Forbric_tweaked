@@ -101,7 +101,7 @@ class DeclarationReaderCensusTest {
 	void everyRedirectedModListMemberHasItsHook() throws IOException {
 		Path run = TestFixtures.stagedRoot();
 		Path compiled = Path.of(System.getProperty("forbric.testRuntimeClasses", "build/classes/java/runtime"));
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled), "the game side is not compiled");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "the game side is not compiled", compiled);
 		java.util.Map<net.forbric.api.Ecosystem, Path> carriers = java.util.Map.of(
 				net.forbric.api.Ecosystem.NEOFORGE, run.resolve("neoforge-runtime/neoforge-runtime.jar"),
 				net.forbric.api.Ecosystem.FORGE, run.resolve("forge-runtime/forge-runtime.jar"));

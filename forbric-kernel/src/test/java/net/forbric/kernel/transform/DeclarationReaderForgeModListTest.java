@@ -144,7 +144,7 @@ class DeclarationReaderForgeModListTest {
 		Path merged = run.resolve("merged-base/patched-mc-merged-26.2.jar");
 		TestFixtures.require(Fixture.STAGED, Files.isRegularFile(neo) && Files.isRegularFile(merged),
 				"the staged artifacts are absent");
-		TestFixtures.require(Fixture.GAME_SIDE, Files.isDirectory(compiled), "the game side is not compiled");
+		TestFixtures.requireCompiledJava(Fixture.GAME_SIDE, "the game side is not compiled", compiled);
 		List<URL> urls = new ArrayList<>(List.of(compiled.toUri().toURL(), forge.toUri().toURL(), neo.toUri().toURL(),
 				merged.toUri().toURL()));
 		for (String library : List.of("com/mojang/logging", "org/slf4j/slf4j-api", "org/apache/logging/log4j/log4j-api",
