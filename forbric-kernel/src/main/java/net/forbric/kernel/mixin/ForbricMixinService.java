@@ -575,13 +575,41 @@ public final class ForbricMixinService
 				// misfitting injection is reported, while still setting required=false so the launch survives to
 				// collect them all. Mixin itself stays silent about a relaxed, non-matching injection; the final
 				// class audit emits a WARN with its owner, handler and target instead (FinalMixinApplications).
+				String beforeRelaxing = json;
+				boolean loosenedInjections = false;
 				if (!DIAGNOSTICS) {
-					json = json.replaceAll("(\"requireAnnotations\"\\s*:\\s*)true", "$1false")
+					String loosened = json.replaceAll("(\"requireAnnotations\"\\s*:\\s*)true", "$1false")
 							.replaceAll("(\"defaultRequire\"\\s*:\\s*)\\d+", "$10");
+					loosenedInjections = !loosened.equals(json);
+					json = loosened;
 				}
 
-				json = json.replaceAll("(\"required\"\\s*:\\s*)true", "$1false");
-				ForbricLog.debug("[Forbric/Mixin] relaxed %s for merged-base compatibility", name);
+				String withoutRequired = json.replaceAll("(\"required\"\\s*:\\s*)true", "$1false");
+				boolean droppedRequirement = !withoutRequired.equals(json);
+				json = withoutRequired;
+
+				// Told at INFO, once per config, and naming WHICH lever moved — never at debug.
+				//
+				// This used to be a single debug line saying only "relaxed <config>", which meant a player running
+				// with the default log level had their mod's mixins turned optional without being told, and an
+				// author reading the log could not tell "your injectors may now miss" from "your config no longer
+				// aborts the launch" — three different relaxations announced as one word. This project has been
+				// criticised for exactly this shape: making a failure go away quietly and calling it fixed. The
+				// relaxation itself stays, because a required mixin whose target the byte-merge changed would
+				// otherwise abort the launch on a base its author never saw; being able to SEE it is the part
+				// that was missing.
+				if (droppedRequirement || loosenedInjections) {
+					StringBuilder what = new StringBuilder();
+					if (droppedRequirement) what.append("required:true -> false (this config no longer aborts the launch)");
+					if (loosenedInjections) {
+						if (what.length() > 0) what.append("; ");
+						what.append("injection requirements -> 0 (a point whose anchor the merge moved may skip"
+								+ " without a word; -Dforbric.mixinDiagnostics keeps them strict so the final"
+								+ " class audit reports each one)");
+					}
+					ForbricLog.info("[Forbric/Mixin] relaxed %s for merged-base compatibility: %s [config %d -> %d bytes]",
+							name, what, beforeRelaxing.length(), json.length());
+				}
 			}
 
 			for (String mixin : drop) {
