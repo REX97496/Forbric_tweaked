@@ -191,7 +191,12 @@ public final class DuplicateModArbiter {
 					+ "will BOTH load, shadowing each other's classes and applying each other's mixins", SWITCH);
 			// The switch turns off arbitration, not the player's own list. Cached, because the seeder asks
 			// current() rather than being handed this, and would otherwise list a jar nobody loaded.
-			Set<Path> disabled = DisabledMods.load(modsDir == null ? null : modsDir.getParent(), modsDir);
+			// The switch turns off arbitration, not the player's own list, and not the kernel's redundant-mod list
+			// either: a mod the kernel already replaces is redundant whether or not ids are being arbitrated, and the
+			// whole point of the notice is that the player is told rather than left with two copies of one job.
+			Set<Path> disabled = new java.util.LinkedHashSet<>(
+					DisabledMods.load(modsDir == null ? null : modsDir.getParent(), modsDir));
+			disabled.addAll(RedundantMods.suppress(modsDir, disabled));
 			if (disabled.isEmpty()) return Decision.none();
 			cached = new Decision(disabled, Map.of(), List.of(), Set.of());
 			cachedDir = modsDir;
@@ -204,7 +209,13 @@ public final class DuplicateModArbiter {
 		loadOverrideFile(rundir);
 		// Read before the scan, so a switched-off jar never becomes a claim: it cannot win an id, lose one to a
 		// build that is also off, or have its nested jars inventoried.
-		Set<Path> disabled = DisabledMods.load(rundir, modsDir);
+		//
+		// The kernel's own redundant-mod list is unioned in here rather than filtered later, so those jars take the
+		// same path as the player's forbric-disabled.txt: they never become claims, never reach the classpath, and
+		// cannot shadow a class or apply a mixin on the way. Filtering after the scan would leave the losing copy of
+		// a shared id able to do both, which is the failure the arbitration exists to prevent.
+		Set<Path> disabled = new java.util.LinkedHashSet<>(DisabledMods.load(rundir, modsDir));
+		disabled.addAll(RedundantMods.suppress(modsDir, disabled));
 		List<Alias> universalAliases = new ArrayList<>();
 		List<Claim> claims = scan(modsDir, envType, universalAliases, disabled);
 		topLevelClaims = List.copyOf(claims);
