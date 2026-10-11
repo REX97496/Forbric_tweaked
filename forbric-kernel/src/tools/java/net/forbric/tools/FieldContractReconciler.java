@@ -128,7 +128,18 @@ final class FieldContractReconciler {
                 MethodNode ah=ContractGraph.ownMethod(a,handle.getName(),handle.getDesc()),bh=ContractGraph.ownMethod(b,handle.getName(),handle.getDesc());
                 if(ah==null||bh==null)return "the lambda body "+handle.getName()+handle.getDesc()+" exists on only one side";
                 if(!tokens(ah).equals(tokens(bh)))return "the lambda body "+handle.getName()+handle.getDesc()+" differs between the two sides";
-                if(!NonNullReturnProof.method(graph,a.name,ah))return "the lambda body "+handle.getName()+handle.getDesc()+" has no non-null return proof on "+a.name;
+                if(!NonNullReturnProof.method(graph,a.name,ah)){
+                    Set<String> unreadable=NonNullReturnProof.missingClasses(graph,a.name,ah);
+                    String where="the lambda body "+handle.getName()+handle.getDesc()+" has no non-null return proof on "+a.name;
+                    // Which of the two this is decides what the reader does about it, and the merge used to report
+                    // both as the same sentence. An unreadable class is almost always an unpopulated libraries/
+                    // (see NonNullReturnProof's class comment for how that aborted the build); an empty set means
+                    // the prover had everything and the code genuinely does not prove.
+                    return unreadable.isEmpty()
+                            ? where+" (every class it reads was available, so this is the code)"
+                            : where+" — and the proof could not read "+unreadable.size()+" class(es) it needed: "
+                                    +unreadable+" — THAT is usually an unpopulated libraries/, not unsafe code";
+                }
             }
         }
         return null;

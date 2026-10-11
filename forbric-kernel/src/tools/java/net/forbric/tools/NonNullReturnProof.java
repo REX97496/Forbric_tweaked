@@ -6,41 +6,84 @@ import org.objectweb.asm.*;
 import org.objectweb.asm.tree.*;
 
 /** A restricted successful-return proof: allocations, initialized final statics, and closed native calls.
- * An opaque argument/field or virtual receiver without one exact allocating producer is never assumed non-null. */
+ * An opaque argument/field or virtual receiver without one exact allocating producer is never assumed non-null.
+ *
+ * <h2>Unprovable is not the same as absent, and this could not say which</h2>
+ *
+ * <p>Every question this prover asks goes to a {@link ContractGraph}, which answers from the merged base and
+ * from a directory of library jars. When that directory is empty — which is what a fresh
+ * {@code tools/dev.py prepare} leaves, because {@code MojangDownloader} downloads only the version JSON and the
+ * game jar and leaves {@code libraries/} to a launcher — the graph cannot read Guava, and every proof that
+ * needed Guava fails.
+ *
+ * <p>That is how the merge came to abort the whole build with {@code Incompatible initializer dependency on
+ * ChunkGenerator#featuresPerStep} while patched-mc-forge and patched-mc-neoforge had both built fine: the
+ * prover returned {@code false} for "the class that would settle this is not on disk" with the same shape it
+ * returns for "this value can genuinely be null", and the caller only knew how to report the second. Putting
+ * two jars in place made the merge complete, which is the proof that the missing library was the cause.
+ *
+ * <p>So a failure now carries the classes it could not read. {@link #missingClasses} is how a caller asks,
+ * and it is a SEPARATE call rather than a return value so that the boolean path stays exactly as it was.
+ */
 final class NonNullReturnProof {
-    static boolean method(ContractGraph graph,String owner,MethodNode method){return method(graph,owner,method,new HashSet<>());}
-    private static boolean method(ContractGraph graph,String owner,MethodNode method,Set<String> visiting){
+    static boolean method(ContractGraph graph,String owner,MethodNode method){return method(graph,owner,method,new HashSet<>(),new HashSet<>());}
+
+    /**
+     * The internal names this proof needed and the graph could not supply, sorted.
+     *
+     * <p>Empty means the proof failed on the CODE. Non-empty means it may have failed only because those
+     * classes are not on disk — on a machine with an unpopulated {@code libraries/} that is the first thing to
+     * check, and it names them so it can be checked rather than guessed.
+     */
+    static Set<String> missingClasses(ContractGraph graph,String owner,MethodNode method){
+        Set<String> missing=new TreeSet<>();
+        method(graph,owner,method,new HashSet<>(),missing);
+        return missing;
+    }
+
+    private static boolean method(ContractGraph graph,String owner,MethodNode method,Set<String> visiting,Set<String> missing){
         if(method==null||!visiting.add(owner+"#"+method.name+method.desc))return false;List<AbstractInsnNode> code=ContractGraph.code(method);boolean returns=false;
-        for(int i=0;i<code.size();i++)if(code.get(i).getOpcode()==Opcodes.ARETURN){returns=true;if(!value(graph,owner,method,code,i-1,new HashSet<>(visiting)))return false;}
+        for(int i=0;i<code.size();i++)if(code.get(i).getOpcode()==Opcodes.ARETURN){returns=true;if(!value(graph,owner,method,code,i-1,new HashSet<>(visiting),missing))return false;}
         return returns;
     }
-    private static boolean value(ContractGraph graph,String owner,MethodNode method,List<AbstractInsnNode> code,int index,Set<String> visiting){
+    private static boolean value(ContractGraph graph,String owner,MethodNode method,List<AbstractInsnNode> code,int index,Set<String> visiting,Set<String> missing){
         if(index<0)return false;AbstractInsnNode i=code.get(index);
         if(i instanceof MethodInsnNode call){
             if(call.name.equals("<init>")&&call.getOpcode()==Opcodes.INVOKESPECIAL)return allocated(code,index,call.owner);
-            if(call.getOpcode()!=Opcodes.INVOKESTATIC&&!exactReceiver(graph,method,code,index,call.owner,visiting))return false;
-            return method(graph,call.owner,graph.method(call.owner,call.name,call.desc),visiting);
+            if(call.getOpcode()!=Opcodes.INVOKESTATIC&&!exactReceiver(graph,method,code,index,call.owner,visiting,missing))return false;
+            MethodNode body=graph.method(call.owner,call.name,call.desc);
+            // The class being unreadable is recorded separately from the method not proving: the first is usually
+            // a missing library, the second is a real property of the code, and only one of them is actionable by
+            // downloading something.
+            if(body==null&&graph.node(call.owner)==null)missing.add(call.owner);
+            return method(graph,call.owner,body,visiting,missing);
         }
         if(i instanceof FieldInsnNode field&&field.getOpcode()==Opcodes.GETSTATIC){
             FieldNode f=graph.field(field.owner,field.name,field.desc);ClassNode klass=graph.node(field.owner);
+            if(klass==null)missing.add(field.owner);
             if(f==null||(f.access&Opcodes.ACC_FINAL)==0||klass==null)return false;MethodNode init=ContractGraph.ownMethod(klass,"<clinit>","()V");if(init==null)return false;
             List<AbstractInsnNode> body=ContractGraph.code(init);
             if(!init.tryCatchBlocks.isEmpty()||body.stream().anyMatch(instruction->instruction instanceof JumpInsnNode||instruction instanceof TableSwitchInsnNode||instruction instanceof LookupSwitchInsnNode))return false;
             boolean wrote=false;
             for(int j=0;j<body.size();j++)if(body.get(j) instanceof FieldInsnNode write&&write.getOpcode()==Opcodes.PUTSTATIC&&write.owner.equals(field.owner)&&write.name.equals(field.name)&&write.desc.equals(field.desc)){
-                wrote=true;if(!value(graph,field.owner,init,body,j-1,new HashSet<>(visiting)))return false;
+                wrote=true;if(!value(graph,field.owner,init,body,j-1,new HashSet<>(visiting),missing))return false;
             }return wrote;
         }
         if(i instanceof VarInsnNode load&&load.getOpcode()==Opcodes.ALOAD){
-            Set<Integer> writers=reachingStores(method,code,index,load.var);if(writers==null||writers.isEmpty())return false;for(int j:writers)if(!value(graph,owner,method,code,j-1,new HashSet<>(visiting)))return false;return true;
+            Set<Integer> writers=reachingStores(method,code,index,load.var);if(writers==null||writers.isEmpty())return false;for(int j:writers)if(!value(graph,owner,method,code,j-1,new HashSet<>(visiting),missing))return false;return true;
         }
         return i.getOpcode()==Opcodes.NEW||i.getOpcode()==Opcodes.ANEWARRAY||i.getOpcode()==Opcodes.NEWARRAY||i.getOpcode()==Opcodes.MULTIANEWARRAY;
     }
-    private static boolean exactReceiver(ContractGraph graph,MethodNode method,List<AbstractInsnNode> code,int call,String owner,Set<String> visiting){
+    private static boolean exactReceiver(ContractGraph graph,MethodNode method,List<AbstractInsnNode> code,int call,String owner,Set<String> visiting,Set<String> missing){
         if(Type.getArgumentTypes(((MethodInsnNode)code.get(call)).desc).length!=0||call==0||!(code.get(call-1) instanceof VarInsnNode load)||load.getOpcode()!=Opcodes.ALOAD)return false;
         Set<Integer> writers=reachingStores(method,code,call-1,load.var);if(writers==null||writers.isEmpty())return false;
         for(int i:writers){if(i==0||!(code.get(i-1) instanceof MethodInsnNode factory)||factory.getOpcode()!=Opcodes.INVOKESTATIC)return false;
-            MethodNode producer=graph.method(factory.owner,factory.name,factory.desc);if(producer==null)return false;List<AbstractInsnNode> p=ContractGraph.code(producer);
+            MethodNode producer=graph.method(factory.owner,factory.name,factory.desc);
+            // This is the check that actually stopped the merge: ImmutableList.Builder.build() is an INVOKEVIRTUAL
+            // whose receiver must be proven allocated by a static factory, so ImmutableList.builder() has to be
+            // readable — and it lives in Guava.
+            if(producer==null){if(graph.node(factory.owner)==null)missing.add(factory.owner);return false;}
+            List<AbstractInsnNode> p=ContractGraph.code(producer);
             boolean produced=false;for(int j=0;j<p.size();j++)if(p.get(j).getOpcode()==Opcodes.ARETURN){produced=true;if(j==0||!(p.get(j-1) instanceof MethodInsnNode constructor)||!constructor.name.equals("<init>")||!constructor.owner.equals(owner)||!allocated(p,j-1,owner))return false;}
             if(!produced)return false;
         }
