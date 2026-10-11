@@ -423,10 +423,25 @@ class AdapterPointSpellingTest {
 
 	private static final Map<String, byte[]> MERGED = new HashMap<>();
 
-	/** The merged class with code and local variable tables, a fresh node each time, with the kernel's own pre-mixin relays. */
+	/**
+	 * The merged class with code and local variable tables, a fresh node each time, with the kernel's own pre-mixin
+	 * relays.
+	 *
+	 * <p>A missing JAR and a missing CLASS are answered differently on purpose. A class the merged base does not
+	 * declare is a legitimate null — an adapter is allowed to find nothing to move, and the callers check that.
+	 * The JAR being absent is not an answer about this class at all, and folding the two into one {@code catch} is
+	 * what made a misconfigured run report on code: without {@code -Pforbric.stagedRoot} pointing at the staged
+	 * tree, {@code stagedRoot()} is {@code <kernel>/run}, no merged base is there, every adapter moved zero points,
+	 * and 60 cases failed with "expected 3 but was: 0" — a wrong-behaviour message for a missing fixture. It skips
+	 * now, and names the path and the flag, because a test that cannot see its input must not report on it.
+	 */
 	static ClassNode merged(String name) {
+		Path jar = TestFixtures.stagedRoot().resolve("merged-base/patched-mc-merged-26.2.jar");
+		TestFixtures.require(TestFixtures.Fixture.STAGED, Files.isRegularFile(jar),
+				"the merged base this test reads adapter points OUT of is absent: " + jar
+						+ " (stagedRoot() is " + TestFixtures.stagedRoot() + "). tools/dev.py stages it under"
+						+ " .dev/staged/run, so run with -Pforbric.stagedRoot=<kernel>/.dev/staged/run");
 		byte[] bytes = MERGED.computeIfAbsent(name, n -> {
-			Path jar = TestFixtures.stagedRoot().resolve("merged-base/patched-mc-merged-26.2.jar");
 			try (ZipFile zip = new ZipFile(jar.toFile())) {
 				ZipEntry entry = zip.getEntry(n + ".class");
 				if (entry == null) return null;
@@ -435,7 +450,9 @@ class AdapterPointSpellingTest {
 				if (n.equals(CLIENT)) read = new ForbricMergedBaseCompatTransformer().transform(n.replace('/', '.'), read, null);
 				return read;
 			} catch (Exception unreadable) {
-				return null;
+				// The jar is present — checked above — so this is a real read failure and not an absent input, and
+				// answering null would turn it into "the adapter found nothing", which is a different claim.
+				throw new AssertionError("could not read " + n + ".class out of " + jar, unreadable);
 			}
 		});
 		if (bytes == null) return null;

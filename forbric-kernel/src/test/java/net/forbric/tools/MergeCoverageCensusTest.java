@@ -47,14 +47,22 @@ class MergeCoverageCensusTest {
             "net/minecraft/client/data/",
             "net/minecraft/data/");
 
-    // Pinned figures from the tracked report, taken from the parser this test uses rather than from a shell count:
-    // the first draft of these came from a grep with looser row-matching and was wrong by 5 on the total and by 5
-    // on the datagen split. Changing any of them is a deliberate statement about coverage.
-    private static final int TOTAL_HOOK_LOSSES = 1006;
-    private static final int DATAGEN_HOOK_LOSSES = 314;
-    private static final int RUNTIME_HOOK_LOSSES = 692;
-    /** Distinct runtime owners. The loss is spread thin: the largest single owner holds far less than half. */
-    private static final int RUNTIME_OWNERS = 400;
+    // Pinned figures, read through the parser this test uses rather than from a grep: a shell count with looser
+    // row-matching was wrong by 5 on the total and by 5 on the datagen split, and the same mistake recurred when
+    // these were refreshed. Changing any of them is a deliberate statement about coverage.
+    //
+    // REFRESHED once the merge could actually run. They were 1006 / 314 / 692 / 400 / 1001 Forge: the committed
+    // report they came from was a snapshot of an older tree, and the numbers below are what the current code
+    // produces. The snapshot beside them was replaced at the same time, so the test and its input agree — before
+    // that, the test whose whole purpose is stopping this figure from drifting was pinning a figure that had.
+    private static final int TOTAL_HOOK_LOSSES = 1143;
+    private static final int DATAGEN_HOOK_LOSSES = 325;
+    private static final int RUNTIME_HOOK_LOSSES = 818;
+    /** Distinct runtime owners. The loss is spread thin: 818 rows over 441 classes, so the largest holds little. */
+    private static final int RUNTIME_OWNERS = 441;
+    /** Of the 1143: 1134 MinecraftForge, 9 NeoForge. The other side of the same precedence decision. */
+    private static final int FORGE_HOOK_LOSSES = 1134;
+    private static final int NEO_HOOK_LOSSES = 9;
 
     @Test
     void theUntouchedByTheMergeWorkIsCountedAndSplitByWhetherAPlayerReachesIt() throws Exception {
@@ -89,8 +97,8 @@ class MergeCoverageCensusTest {
         List<LostHookAttribution.Conflict> rows = LostHookAttribution.conflicts(REPORT);
         long forge = rows.stream().filter(row -> "forge".equals(row.lostFamily())).count();
         long neo = rows.stream().filter(row -> "neo".equals(row.lostFamily())).count();
-        assertEquals(1001, forge, "MinecraftForge hooks lost by the merge");
-        assertEquals(5, neo, "NeoForge hooks lost — the other side of the same precedence decision");
+        assertEquals(FORGE_HOOK_LOSSES, forge, "MinecraftForge hooks lost by the merge");
+        assertEquals(NEO_HOOK_LOSSES, neo, "NeoForge hooks lost — the other side of the same precedence decision");
         assertEquals(rows.size(), forge + neo, "every row names one of the two families");
         assertTrue(forge > rows.size() * 0.99,
                 "the whole difficulty of this merge is one family's hooks: Forge=" + forge + " of " + rows.size());
