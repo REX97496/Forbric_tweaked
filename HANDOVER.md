@@ -136,15 +136,64 @@ Neither of these is difficulty. Both are missing input, and both were asked for 
 without an answer.
 
 ### A. Real event-loss verification, merge-grammar widening, bridge implementation
-All three need the **merged base jar** — vanilla plus the Forge and NeoForge patches composed. It is absent
-on this machine and is produced by `tools/dev.py prepare`, a **multi-gigabyte download**. That was never
-started, because it was never authorised.
+All three need the **merged base jar** — vanilla plus the Forge and NeoForge patches composed. It is produced
+by `tools/dev.py prepare`.
 
-With it:
-* the real "still dead" event list, ranked by impact, and bridges written against real bytecode;
-* a decision on the three failures in `FabricRegistryLoaderMixinAdapterWeaveTest` (real-Mixin weave through
-  a child JVM) — whether they are Windows-specific or a real defect;
-* **proof** for any merge-grammar widening.
+**Authorised and RUN on this machine. The merge itself fails, and that is the finding.** Recorded here in
+full because it changes what the remaining work is.
+
+What `prepare --no-assets` completed (592 MB, 114 files under `forbric-kernel/.dev/`):
+
+| Artifact | Result |
+|---|---|
+| vanilla `26.2.jar` (client) | built, 39.2 MB |
+| vanilla `server.jar` | built, 60.9 MB |
+| `patched-mc-forge-26.2.jar` | **built, 33 MB** |
+| `patched-mc-neoforge-26.2.jar` | **built, 35.3 MB** |
+| `forge-runtime.jar` / `neoforge-runtime.jar` | built (3 MB / 7 MB) |
+| `merged-base/patched-mc-merged-26.2.jar` | **NOT PRODUCED — the merge aborts** |
+
+The failure, reproduced twice, is deterministic:
+
+```
+[merge] reading jars
+[merge]   vanilla=10952  forge-patched=10963  neo-patched=10964 classes
+Exception in thread "main" java.lang.IllegalStateException: Incompatible initializer dependency on
+  net/minecraft/world/level/chunk/ChunkGenerator#featuresPerStep:
+  (Lnet/minecraft/world/level/biome/BiomeSource;Ljava/util/function/Function;)V
+```
+
+`FieldContractReconciler.java:14` throws it, and **the call site — `MergedBaseBuilder.java:1057` — has no
+try/catch**, so the exception ends the merge. Without this jar, nothing downstream can be verified: no real
+event-loss list, no decision on the three weave tests, no proof for any grammar widening. **So this is the
+first thing to fix, and it is a merge defect, not a missing input.**
+
+Two things about it worth knowing before digging in:
+
+* The class is **not** unknown. `MergedBaseBuilder.java:1326` documents that `ChunkGenerator.featuresPerStep`
+  is retyped per ecosystem, `ForgeClearableLazyInjector` exists specifically to recover Forge's
+  `ClearableLazy` semantics on the merged game, `KernelBoot.java:923` serialises a read of it, and
+  `AccessCensusTest` / `RestoredAccessTransformerTest` / `AccessCensusGateM9ContractTest` all touch it. The
+  design plainly intends this to reconcile, so the failure reads as a regression or an environment
+  difference rather than an impossible case.
+* **`FieldContractReconciler` has no test of its own** — a grep for it across `src/test` returns nothing. It
+  is load-bearing (it can abort the build) and unexercised, which is the same shape as the other defects
+  found this session.
+
+The next step is to instrument `sameConstruction` — it returns `false` through six different early returns
+and the message says only "Incompatible", so which check failed is currently unknown. That is the same
+"a refusal that does not say why" pattern as the rest of this session.
+
+### Environment notes needed to get this far
+`prepare` requires **JDK 25+** (`jdk-25.0.2` here), not the JDK 21 the kernel compiles with. The JVM's
+`HttpClient` **does not read proxy environment variables** — `maven.neoforged.net` resolved and was reachable
+from PowerShell (HTTP 200, both directly and through the proxy) while every JVM attempt timed out after 20 s.
+The proxy has to be given as system properties, and `dev.py`'s `--jvm` flag does **not** reach the nested
+DevPrepare JVM measured here; `JAVA_TOOL_OPTIONS='-Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7897 …'`
+does. With that, the same request returned HTTP 200 in 831 ms.
+
+My earlier note calling this "a multi-gigabyte download" was wrong: `--no-assets` skips the ~1 GB of assets
+(`dev.py:552`) and the whole run came to 592 MB.
 
 **Why widening was not attempted blind.** `AdditiveMethodMerger.Site` computes `start = index -
 arguments.length`, i.e. it assumes **one argument is one instruction**. Supporting arguments computed by a
