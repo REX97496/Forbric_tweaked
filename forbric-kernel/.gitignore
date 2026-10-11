@@ -1,5 +1,9 @@
 # Local game instances. Keep probe source in canary/ (outside run/), and tools in run/compat/.
 /.dev/
+# The isolated compatibility-test instance (mc-dir + staged + client/server), built by tools/dev.py into
+# .dev-test/ by design so it does not touch .dev/. 490 MB of copied artifacts and the fetched mods;
+# never tracked. It was tracked once by accident -- see the commit that added this line.
+/.dev-test/
 # Ignore whole instance trees so new game/mod output does not require another per-gate rule.
 /run/client-*/
 /run/server-*/
