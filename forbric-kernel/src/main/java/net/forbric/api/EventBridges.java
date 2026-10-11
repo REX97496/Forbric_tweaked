@@ -63,8 +63,16 @@ public final class EventBridges {
 		return EnumSet.copyOf(INSTALLED);
 	}
 
-	/** Forgets everything. For tests, which install different sets in one JVM. */
-	static synchronized void reset() {
+	/**
+	 * Forgets everything. For tests, which install different sets in one JVM.
+	 *
+	 * <p>Public because the tests that need it are not all in this package: a coverage test asserting that the
+	 * all-pass sweep reports a missing bridge has to start from a state where the bridges are not installed, and
+	 * {@code EventBridges} being in {@code api} while the boot tests live in {@code kernel.boot} made that
+	 * impossible. Widening it is preferable to the alternative, which was a test that asserted nothing about the
+	 * empty case because it could not reach one.
+	 */
+	public static synchronized void reset() {
 		INSTALLED.clear();
 	}
 
@@ -98,5 +106,46 @@ public final class EventBridges {
 			ForbricLog.error("[Forbric/EventMux]   %s (%s) — %s", bridge, bridge.event(), bridge.cost());
 		}
 		return false;
+	}
+
+	/**
+	 * Verifies EVERY pass, so no pass can be declared without anything ever comparing its achieved set to its
+	 * declared set.
+	 *
+	 * <h2>Why the per-pass form was not enough</h2>
+	 *
+	 * <p>{@link #verify} only ever sees the pass it is handed, and five of the seven passes had a call site. The
+	 * other two — {@code CLIENT_HUD} and {@code ON_DEMAND} — had none, so the two bridges declared in them were
+	 * never compared against anything:
+	 *
+	 * <ul>
+	 *   <li>{@code GUI_OVERLAY_LAYERS} — a MinecraftForge mod's HUD overlay layers never draw, because the merged
+	 *       base carries no reference to {@code ForgeLayeredDraw} at all.
+	 *   <li>{@code ITEM_TOOLTIP} — a NeoForge mod that adds a line to an item's tooltip adds it to nothing.
+	 * </ul>
+	 *
+	 * <p>Both were declared, both describe a feature a player would notice missing, and neither is installed
+	 * anywhere — so both were absolutely silent. That is the failure shape this class exists to prevent, and it
+	 * survived inside the class itself: the mechanism was right and its coverage was not, which is worse than no
+	 * mechanism because it looks done.
+	 *
+	 * <p>This reports rather than throws, for the reason {@link #verify} gives. It is called once, late, from the
+	 * client setup hook — after the last pass has had its chance to install, and where a missing bridge can still be
+	 * named before a player meets the symptom.
+	 *
+	 * @return true when every bridge in every pass is installed
+	 */
+	public static boolean verifyAll() {
+		boolean all = true;
+		for (GameEventBridge.Pass pass : GameEventBridge.Pass.values()) {
+			// verify() is the reporter, so calling it per pass keeps ONE message format rather than two.
+			if (!verify(pass)) all = false;
+		}
+		return all;
+	}
+
+	/** The passes nothing verifies, so a test can assert this is empty rather than trusting a reader to notice. */
+	public static Set<GameEventBridge.Pass> declaredPasses() {
+		return EnumSet.allOf(GameEventBridge.Pass.class);
 	}
 }

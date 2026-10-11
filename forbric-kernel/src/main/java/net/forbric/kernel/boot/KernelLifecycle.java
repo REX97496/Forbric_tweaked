@@ -2721,6 +2721,11 @@ public final class KernelLifecycle {
 		// before this point, so this is the first moment their absence can be named with its cost rather than
 		// noticed later as an empty Controls screen.
 		EventBridges.verify(GameEventBridge.Pass.CLIENT_INIT);
+		// Then everything else, because CLIENT_HUD and ON_DEMAND had no call site anywhere: their bridges were
+		// declared, describe a feature a player notices missing, and were never installed — a silent absence inside
+		// the very class that exists to name silent absences. This is the last point at which a bridge can still be
+		// named before a player meets the symptom, so the sweep happens here.
+		EventBridges.verifyAll();
 		preloadClientResources(cl);
 		// Step 3a's last chance: client setup posts RegisterDataMapTypesEvent, which reads the declared list, so the
 		// declaration must have happened by now even if the Fabric hook above never landed. Normally a no-op.
