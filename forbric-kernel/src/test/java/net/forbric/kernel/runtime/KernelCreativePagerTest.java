@@ -137,6 +137,15 @@ class KernelCreativePagerTest {
 		Path pager = runtime.resolve("net/forbric/kernel/runtime/KernelCreativePager.class");
 		TestFixtures.require(TestFixtures.Fixture.GAME_SIDE, Files.isRegularFile(pager),
 				"compile the staged runtime source set before this test: " + pager);
+		// The Fabric API class this fixture hands to the pager is class-file 69, so a JVM that cannot read 69 fails
+		// with UnsupportedClassVersionError INSIDE the code under test — the link error names
+		// FabricCreativeModeInventoryScreen, which reads as a defect in the pager rather than as a test that ran on
+		// the wrong runtime. Measured: three cases failed exactly that way once the test instance existed to supply
+		// the jar, on a suite running JDK 21 while the game is 69. Same guard shape as
+		// MixinAbsorbedCallbackTransportWeaveTest, which skips for the same reason.
+		TestFixtures.require(TestFixtures.Fixture.JAVA_25, Runtime.version().feature() >= 25,
+				"this fixture loads class-file 69 (the 26.2 game's format) and this JVM is "
+						+ Runtime.version().feature() + "; run the suite on JDK 25 or newer");
 		Map<String, byte[]> defined = new HashMap<>();
 		defined.put("net.forbric.kernel.runtime.KernelCreativePager", Files.readAllBytes(pager));
 		defined.put("net.forbric.kernel.runtime.KernelCreativePagerScreen",
