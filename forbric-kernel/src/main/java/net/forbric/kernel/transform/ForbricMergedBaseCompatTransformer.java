@@ -369,16 +369,22 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	/**
 	 * Rewrites calls the merged base makes to the kernel's reflective interop hooks under their OLD owner names.
 	 *
-	 * <p>The merged base is built by the previous-generation loader's {@code MergedBaseBuilder}, which splices an
-	 * {@code INVOKESTATIC net/forbric/loader/impl/compat/ForbricCustomPayloadInterop.findCodec} into the merged
-	 * {@code CustomPacketPayload} codec provider. Those three helper classes now live in the kernel
-	 * ({@code net.forbric.kernel.interop}) and the old loader jars are no longer on the boot classpath, so the
-	 * baked-in owner names no longer resolve — the symptom is a {@code NoClassDefFoundError} inside the netty
-	 * encoder the moment anything sends a custom payload, i.e. every world join.
+	 * <p>Older merged bases carry an
+	 * {@code INVOKESTATIC net/forbric/loader/impl/compat/ForbricCustomPayloadInterop.findCodec} spliced into the
+	 * merged {@code CustomPacketPayload} codec provider. Those three helper classes live in the kernel
+	 * ({@code net.forbric.kernel.interop}) and the old loader jars are not on the boot classpath, so the baked-in
+	 * owner names do not resolve — the symptom is a {@code NoClassDefFoundError} inside the netty encoder the
+	 * moment anything sends a custom payload, i.e. every world join.
 	 *
-	 * <p>This is a permanent adaptation, not a one-off migration step: the base-building pipeline belongs to the
-	 * other repository and keeps emitting the names it knows. The kernel owns what its own base links against, so
-	 * it retargets them here rather than requiring a 35 MB artifact to be rebuilt in lockstep.
+	 * <p><b>This no longer has to be permanent.</b> It used to be, on the grounds that the base-building pipeline
+	 * belongs to another repository and keeps emitting the names it knows — but that pipeline is
+	 * {@code forbric-kernel/src/tools} in THIS repository, and it now emits
+	 * {@code net/forbric/kernel/interop/PayloadInterop} directly. A file built by the current tool needs nothing
+	 * from this method; one built by an earlier tool still does.
+	 *
+	 * <p>So the pass stays, and what it is for changes: not an adaptation between two generations kept alive by
+	 * mutual agreement, but a repair for artifacts already on disk that cannot be rebuilt. It should shrink as
+	 * those age out and disappear once none of them are left, which is a different thing from it being normal.
 	 *
 	 * <p>The only shape the builder emits is a method owner. Anything else carrying the legacy prefix — a field
 	 * owner, a {@code new}, a class constant — would survive this pass and fail at link time far away from here,

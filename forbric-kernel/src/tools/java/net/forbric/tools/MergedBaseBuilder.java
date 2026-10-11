@@ -150,8 +150,27 @@ public final class MergedBaseBuilder {
 	private static final String NEO_PKG = "net/neoforged/";
 	private static final String CUSTOM_PAYLOAD_NEO_CODEC =
 			"net/minecraft/network/protocol/common/custom/CustomPacketPayload$1$forbricneo";
+	/**
+	 * The owner of {@code findCodec}, baked into the merged {@code CustomPacketPayload$1$forbricneo} as an
+	 * {@code INVOKESTATIC}.
+	 *
+	 * <p><b>This used to name the FIRST generation's class</b>, {@code
+	 * net/forbric/loader/impl/compat/ForbricCustomPayloadInterop}. That class is not on the boot classpath — the
+	 * kernel replaced it with {@code net.forbric.kernel.interop.PayloadInterop} — so every merged base carried a
+	 * call to a class that no longer existed, and
+	 * {@link net.forbric.kernel.transform.ForbricMergedBaseCompatTransformer} had to rewrite the owner in the
+	 * constant pool at EVERY startup to keep it from failing with {@code NoClassDefFoundError} inside netty.
+	 *
+	 * <p>A build tool that emits a name it knows is wrong, and a runtime that repairs it on every launch, is a
+	 * dependency between the two generations kept alive by mutual agreement. Writing the second generation's name
+	 * here removes it: the merge emits a call that resolves on its own, the rewriter finds nothing to rewrite, and
+	 * the two no longer have to agree about a name neither of them owns.
+	 *
+	 * <p>The rewriter is NOT deleted with this. Merged bases built by an earlier version of this tool are already
+	 * on disk and in the wild with the old owner baked in, and they still need it.
+	 */
 	private static final String CUSTOM_PAYLOAD_INTEROP =
-			"net/forbric/loader/impl/compat/ForbricCustomPayloadInterop";
+			"net/forbric/kernel/interop/PayloadInterop";
 
 	/** Actual ancestor equivalence proofs and declarations, derived anew for each supplied artifact set. */
 	private ContractGraph declarationGraph, vanillaGraph, forgeGraph, neoGraph;
