@@ -1,0 +1,49 @@
+# Line endings are load-bearing in this repository, and this file is what keeps them that way.
+#
+# Why it exists: the checkout that produced this file had `core.autocrlf=true` and NO .gitattributes. Under
+# that combination Git rewrites line endings on the way in and out, and a shell script that comes back with
+# CRLF does not merely look wrong -- bash parses it wrong. The kernel's gate/contract suites run real bash
+# (`bash -n gate-*.sh`, and `bash -c ". run/lib.sh ..."`), so a CRLF script turns into "line 1: <log text>:
+# No such file or directory" and exit 127, which reads as a broken gate rather than as a packaging accident.
+# Everything in run/ was still LF-only on the machine this was written on, so nothing was broken yet; the
+# hazard is that nothing was stopping the next checkout from breaking it.
+#
+# The rules below are deliberately narrow: shell scripts, Gradle scripts, and Java/JSON/properties where a
+# stray CR is invisible until something compares bytes. Everything else keeps the platform default, so text
+# files that are only ever read by a human or an editor are left alone.
+
+# Shell scripts are executed by bash on Linux and by Git Bash on Windows; both want LF.
+*.sh            text eol=lf
+*.bash          text eol=lf
+*.command       text eol=lf
+
+# The Gradle build itself, which shells out to Python and reads path literals.
+*.gradle        text eol=lf
+*.gradle.kts    text eol=lf
+gradlew         text eol=lf
+gradle.properties text eol=lf
+
+# Config and data whose bytes are compared by tests or hashed into build stamps.
+*.properties    text eol=lf
+*.toml          text eol=lf
+*.json          text eol=lf
+*.tsv           text eol=lf
+*.patch         text eol=lf
+
+# Java sources: javac is indifferent, but byte-for-byte fixtures are not.
+*.java          text eol=lf
+
+# Windows launchers must keep CRLF, or cmd.exe mis-parses multi-line batch files.
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+
+# Never touch these: they are consumed as opaque bytes.
+*.jar           binary
+*.zip           binary
+*.png           binary
+*.gif           binary
+*.ico           binary
+*.so            binary
+*.dll           binary
+*.dylib         binary
+*.class         binary
