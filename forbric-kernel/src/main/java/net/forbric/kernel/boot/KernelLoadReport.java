@@ -134,9 +134,16 @@ public final class KernelLoadReport {
 			if (clean && loadingFinished && reported.compareAndSet(false, true)) {
 				ForbricLog.info("[Forbric/Load] every mod finished loading");
 			}
-			// Mods the player switched off did not fail, so they leave the success line alone. They do keep the
-			// file: a jar sitting in mods/ that never loads is exactly what a player forgets they asked for.
-			List<String> disabled = DisabledMods.switchedOff();
+		// Mods the player switched off did not fail, so they leave the success line alone. They do keep the
+		// file: a jar sitting in mods/ that never loads is exactly what a player forgets they asked for.
+		//
+		// The kernel's OWN redundant-mod list is appended here for the same reason and by the same argument: a jar
+		// that was switched off automatically is the one a player is least likely to know about, so the notice has
+		// to reach the file and not only the log. It also keeps the file alive when nothing else would have — the
+		// report is deleted on a clean boot, and a clean boot with a redundant mod suppressed is exactly when the
+		// player should be reading it.
+		List<String> disabled = new ArrayList<>(DisabledMods.switchedOff());
+		disabled.addAll(RedundantMods.suppressedThisBoot());
 			// Suspicions alone are a clean boot and keep no file. Its presence is the signal -- push-and-run counts
 			// every load-report.txt as a named failure, the gate controls read "no file" as clean -- and fabric-api
 			// on its own brings two dozen preflight suspicions to every boot. They are in the machine report always,
