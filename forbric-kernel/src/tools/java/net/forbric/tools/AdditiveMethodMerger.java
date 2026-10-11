@@ -239,7 +239,20 @@ final class AdditiveMethodMerger {
 		Result paired = pairedHooks(base, other, basePackage, otherPackage, context);
 		if (paired != null) return paired;
 		Result leading = leadingHookBlock(owner, vanilla, base, other, basePackage, otherPackage, context);
-		return leading != null ? leading : refused(notEntry);
+		if (leading != null) return leading;
+		// All three grammars declined, and this refuses with the ENTRY grammar's reason only.
+		//
+		// That reason is not why the hook was lost. It is why the first of three shapes did not fit, and a reader
+		// of the report — the committed merge-conflicts.txt records these by category, and a video critiquing this
+		// project read it as "the merge cannot splice, so it discards Forge's version" — takes it for the cause.
+		// The largest bucket, 477 of 1139 refusals, was recorded as "both sides must add an entry prefix" while the
+		// paired and leading grammars had also been tried and had also declined, for reasons nothing captured.
+		//
+		// The text after the colon is what makes that visible. It is deliberately placed AFTER a colon: the census
+		// counts a refusal by "its reason up to the first colon", so the category stays exactly as it was and the
+		// pinned counts do not move — the report gains the qualification without the numbers losing their meaning.
+		return refused(notEntry + ": and the paired-hook and leading-hook grammars also declined, whose own reasons"
+				+ " are not recorded, so the reason before this colon is the first grammar's and not the whole cause");
 	}
 
 	/** Why the two bodies are not both vanilla behind a void-hook prefix, or null when they are. */
