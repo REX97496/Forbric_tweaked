@@ -1,0 +1,24 @@
+--------------------------------------------------------------------------------
+
+Command-Line:
+ - C:\Program Files\Java\jdk-25.0.2\bin\java.exe
+ - --sun-misc-unsafe-memory-access=allow
+ - -jar
+ - E:\Programs\Minecraft-Forbric-mod-loader-main\Minecraft-Forbric-mod-loader-main\forbric-kernel\.dev\minecraft\.forbric-build\nfrt\artifacts\net\neoforged\installertools\binarypatcher\4.0.17\binarypatcher-4.0.17-fatjar.jar
+ - --patch
+ - --base
+ - E:\Programs\Minecraft-Forbric-mod-loader-main\Minecraft-Forbric-mod-loader-main\forbric-kernel\.dev\minecraft\.forbric-build\nfrt\intermediate_results\preProcessJar_dad447fdce426e4e05a84a2eff47da4c9f24f251_output.jar
+ - --base-type
+ - JOINED
+ - --output
+ - ./output.jar
+ - --patches
+ - ./patches.lzma
+--------------------------------------------------------------------------------
+
+Picked up JAVA_TOOL_OPTIONS: -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7897 -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=7897
+Applying: 
+  Base:      E:\Programs\Minecraft-Forbric-mod-loader-main\Minecraft-Forbric-mod-loader-main\forbric-kernel\.dev\minecraft\.forbric-build\nfrt\intermediate_results\preProcessJar_dad447fdce426e4e05a84a2eff47da4c9f24f251_output.jar
+  Base Type: JOINED
+  Output:    E:\Programs\Minecraft-Forbric-mod-loader-main\Minecraft-Forbric-mod-loader-main\forbric-kernel\.dev\minecraft\.forbric-build\nfrt-work\20261011-095802_binaryPatch\.\output.jar
+  Patches:   [.\patches.lzma]

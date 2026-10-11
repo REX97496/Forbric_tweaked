@@ -1,0 +1,27 @@
+--------------------------------------------------------------------------------
+
+Command-Line:
+ - C:\Program Files\Java\jdk-25.0.2\bin\java.exe
+ - --sun-misc-unsafe-memory-access=allow
+ - -jar
+ - E:\Programs\Minecraft-Forbric-mod-loader-main\Minecraft-Forbric-mod-loader-main\forbric-kernel\.dev\minecraft\.forbric-build\nfrt\artifacts\net\neoforged\installertools\installertools\4.0.12\installertools-4.0.12-fatjar.jar
+ - --task
+ - PROCESS_MINECRAFT_JAR
+ - --input
+ - E:\Programs\Minecraft-Forbric-mod-loader-main\Minecraft-Forbric-mod-loader-main\forbric-kernel\.dev\minecraft\.forbric-build\nfrt\intermediate_results\copyUnpatchedClasses_4a88900d2859e51f7c99e969702d7042bbac0660_output.jar
+ - --output
+ - ./output.jar
+ - --no-mod-manifest
+ - --access-transformer
+ - ats\accesstransformer.cfg
+ - --access-transformer
+ - ats\accesstransformergenerated.cfg
+--------------------------------------------------------------------------------
+
+Picked up JAVA_TOOL_OPTIONS: -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7897 -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=7897
+Task: PROCESS_MINECRAFT_JAR
+load access transformers [36ms]
+load input zip [449ms]
+apply dev transforms [107ms]
+write output file [1469ms]
+overall work [2075ms]

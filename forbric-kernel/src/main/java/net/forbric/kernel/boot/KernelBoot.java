@@ -346,8 +346,27 @@ public final class KernelBoot {
 		//
 		// Everything is reported after the catalog is published either way, so the rows still reach
 		// load-report.txt.
+		// The audit asks "does this class exist in THIS instance", so the universe must be everything the instance
+		// actually carries. It was runtimeJars + gameJar alone — no mod jar, no nested module — so every class a
+		// mod provided was reported missing.
+		//
+		// Measured on the 26.2 test instance (34 mainstream mods including fabric-api): Fabric API ships its 44
+		// modules as META-INF/jars/*.jar inside one jar, none of them was in this list, so all 36 fabric-* modules
+		// and every mod built on them were reported as "built against Fabric API, which is NOT installed" while
+		// Fabric API WAS installed and loading. 37 of the 73 catalog entries were marked DEGRADED for it, and the
+		// sentence shown to the player named an install they had already done — the worst kind of report, because
+		// acting on it changes nothing.
+		//
+		// The comment above already said the check is for a class that exists "in no carrier, not the merged base
+		// and no installed jar", which is what this list has to contain for that sentence to be true.
+		//
+		// `owned` is deliberately not added: it is a List<URL> for the class loader, and the kernel's own runtime
+		// jars it was built from are already in runtimeJars.
 		List<Path> abiUniverse = new ArrayList<>(runtimeJars);
 		if (gameJar != null) abiUniverse.add(gameJar);
+		abiUniverse.addAll(modJars);
+		abiUniverse.addAll(fabricJars);
+		abiUniverse.addAll(nested);
 		BootScanFusion.scan(shadowCandidates, AbiLinkAudit.classesOf(abiUniverse));
 
 		ForbricLog.info("[Forbric/Boot] sovereign kernel — %s %s, %d owned jar(s), %d Forge-family mod(s), "
