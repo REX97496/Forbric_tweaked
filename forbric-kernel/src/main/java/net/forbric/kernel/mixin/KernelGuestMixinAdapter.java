@@ -102,6 +102,22 @@ public final class KernelGuestMixinAdapter {
 	private static final java.util.Set<String> REJECTING =
 			java.util.Collections.synchronizedSet(new java.util.LinkedHashSet<>());
 
+	/**
+	 * {@code config:mixin} to the anchors that did not resolve, so the loss can be NAMED later.
+	 *
+	 * <p>{@link MixinFit.Result#unresolved()} is described in its own javadoc as "human-readable anchors that did not
+	 * resolve, for the log", and that is exactly what it was used for: the adapter printed them and threw them away,
+	 * keeping only the key. The final audit then reported "A required injector has no attachment in the actual
+	 * defined class" — true, and useless. It cannot say which anchor, so for the six CONFIRMED losses on the 26.2
+	 * test instance (carpet-extra's {@code SculkCatalystMixin}, five in carpet-tis-addition) the report named a count
+	 * and a handler while the ONE fact a mod author needs — the {@code @At} that stopped binding — existed earlier in
+	 * the log and nowhere else.
+	 *
+	 * <p>Kept as the full list rather than a formatted string so a caller can decide how much of it to show.
+	 */
+	private static final java.util.Map<String, java.util.List<String>> UNRESOLVED_ANCHORS =
+			java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>());
+
 	/** Records one, keyed so the same mixin evaluated twice counts once. */
 	static void notePartial(String configName, String mixin) {
 		if (configName == null || mixin == null) return;
@@ -111,7 +127,53 @@ public final class KernelGuestMixinAdapter {
 	/** Records one that keeps an injector Mixin rejects outright. */
 	private static void notePartial(String configName, String mixin, MixinFit.Result kept) {
 		notePartial(configName, mixin);
-		if (configName != null && mixin != null && !kept.rejected().isEmpty()) REJECTING.add(configName + ":" + mixin);
+		if (configName == null || mixin == null) return;
+		String key = configName + ":" + mixin;
+		if (!kept.rejected().isEmpty()) REJECTING.add(key);
+		// The anchors, kept rather than only printed. An empty list is not stored: "some anchors failed" with none
+		// named is the state this exists to end, and a stored empty list would read as an answer.
+		if (!kept.unresolved().isEmpty()) UNRESOLVED_ANCHORS.put(key, java.util.List.copyOf(kept.unresolved()));
+	}
+
+	/**
+	 * The anchors that did not resolve for {@code configName:mixin}, or an empty list when none were recorded.
+	 *
+	 * <p>Empty means "not known here", not "all resolved": a mixin that never reached the partial path has no entry.
+	 * Callers that need the difference must ask {@link #partiallyApplied()} first.
+	 *
+	 * <h2>Why the lookup is not a plain get</h2>
+	 *
+	 * <p>The two callers key the same mixin differently, and a plain get therefore never matched. The adapter records
+	 * under the SHORT name it iterates with ({@code SculkCatalystMixin}); the final audit asks with the FULL binary
+	 * name it read from the plan ({@code carpetextra.mixins.SculkCatalystMixin}). The first version of this method
+	 * did a plain get, and the verification run showed exactly that — every CONFIRMED loss reported "the anchor was
+	 * not recorded for this mixin" while the adapter had recorded it seconds earlier. A lookup that silently misses
+	 * is worse than no lookup, because the report then states the detail is unavailable.
+	 *
+	 * <p>So: exact key first, then any entry for the same config whose mixin part is the simple name of the one asked
+	 * for. The exact match wins so a future full-name writer cannot be shadowed by a same-simple-name sibling.
+	 */
+	public static java.util.List<String> unresolvedAnchors(String configName, String mixin) {
+		if (configName == null || mixin == null) return java.util.List.of();
+		java.util.List<String> exact = UNRESOLVED_ANCHORS.get(configName + ":" + mixin);
+		if (exact != null) return exact;
+
+		int lastDot = mixin.lastIndexOf('.');
+		String simple = lastDot < 0 ? mixin : mixin.substring(lastDot + 1);
+		String prefix = configName + ":";
+		synchronized (UNRESOLVED_ANCHORS) {
+			for (java.util.Map.Entry<String, java.util.List<String>> entry : UNRESOLVED_ANCHORS.entrySet()) {
+				if (!entry.getKey().startsWith(prefix)) continue;
+				String recorded = entry.getKey().substring(prefix.length());
+				if (recorded.equals(simple) || recorded.endsWith("." + simple)) return entry.getValue();
+			}
+		}
+		return java.util.List.of();
+	}
+
+	/** Forgets the anchor record. For tests, which evaluate different mixins in one JVM. */
+	static void forgetUnresolvedAnchors() {
+		UNRESOLVED_ANCHORS.clear();
 	}
 
 	/** Every guest mixin that applied only partially so far, sorted. */

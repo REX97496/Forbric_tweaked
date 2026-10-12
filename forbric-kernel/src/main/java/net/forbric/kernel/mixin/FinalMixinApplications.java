@@ -207,9 +207,8 @@ public final class FinalMixinApplications {
         "config required="+plan.config().required(),"MixinExtras injector: replacements unaudited")));
     else if(state==Outcome.MISSING)CompatibilityFindings.record(new CompatibilityFinding(id,mod,
       "Mixin injection "+injector.name(),"mixin-application:"+plan.config().name(),CompatibilityFinding.Confidence.CONFIRMED,
-      required,"A required injector has no attachment in the actual defined class",
-      List.of("target="+binary,"mixin="+mixin,"handler="+injector.symbol(),"original minimum="+injector.minimum(),"final handler references=0",
-        "config required="+plan.config().required())));
+      required,missingDetail(plan.config().name(),mixin),
+      missingEvidence(plan.config().name(),binary,mixin,injector,plan.config().required())));
     else if(state==Outcome.EQUIVALENT)CompatibilityFindings.record(new CompatibilityFinding(id,mod,
       "Mixin injection "+injector.name(),"mixin-application:"+plan.config().name(),CompatibilityFinding.Confidence.RESOLVED,
       required,"The missing injector is replaced by a verified implementation",List.of("target="+binary,replacement)));
@@ -318,4 +317,33 @@ public final class FinalMixinApplications {
  private static List<AnnotationNode> annotations(MethodNode method) {List<AnnotationNode> out=new ArrayList<>();if(method.visibleAnnotations!=null)out.addAll(method.visibleAnnotations);if(method.invisibleAnnotations!=null)out.addAll(method.invisibleAnnotations);return out;}
  private static boolean hasSugar(List<AnnotationNode>[] parameters) {if(parameters!=null)for(var parameter:parameters)if(parameter!=null)for(var a:parameter)if(a.desc.startsWith("Lcom/llamalad7/mixinextras/"))return true;return false;}
  private static Object value(AnnotationNode annotation,String key) {if(annotation.values!=null)for(int i=0;i<annotation.values.size();i+=2)if(key.equals(annotation.values.get(i)))return annotation.values.get(i+1);return null;}
+
+ /**
+  * The detail for a CONFIRMED lost injector, naming the anchors that did not bind when the adapter recorded them.
+  *
+  * <p>It used to say only "A required injector has no attachment in the actual defined class" — true, and useless to
+  * whoever has to act on it. On the 26.2 test instance that sentence covered six losses across carpet-extra and
+  * carpet-tis-addition, and the one fact an author needs (which {@code @At} stopped binding) was computed by the
+  * adapter, printed once at INFO, and discarded. This audit cannot derive it: it works from the final defined class
+  * and knows the handler, not the anchor list.
+  *
+  * <p>When the adapter did not evaluate this mixin in this run there is nothing to name, and the text says so rather
+  * than implying the anchors all resolved. An empty list here means "not recorded", not "none failed".
+  */
+ private static String missingDetail(String config,String mixin) {
+  List<String> anchors=KernelGuestMixinAdapter.unresolvedAnchors(config,mixin);
+  if(anchors.isEmpty())return "A required injector has no attachment in the actual defined class; the anchor that"
+    +" stopped binding was not recorded for this mixin, so it is not named here — the adapter logs it when it"
+    +" evaluates the mixin";
+  return "A required injector has no attachment in the actual defined class — anchor(s) that did not bind: "
+    +String.join(", ",anchors);
+ }
+
+ /** The same evidence as before, plus every anchor that did not bind, so the report can be acted on. */
+ private static List<String> missingEvidence(String config,String binary,String mixin,Injector injector,boolean configRequired) {
+  List<String> evidence=new ArrayList<>(List.of("target="+binary,"mixin="+mixin,"handler="+injector.symbol(),
+    "original minimum="+injector.minimum(),"final handler references=0","config required="+configRequired));
+  for(String anchor:KernelGuestMixinAdapter.unresolvedAnchors(config,mixin))evidence.add("unresolved anchor: "+anchor);
+  return evidence;
+ }
 }
