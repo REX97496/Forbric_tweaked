@@ -64,13 +64,23 @@ class VanillaCallReplacedByPatchesTest {
 	}
 
 	private static final List<Anchor> ANCHORS = List.of(
-			// Unambiguous, and the two the conclusion rests on: a method call on a named owner, looked for by name
-			// among the real INVOKE instructions.
+			// Unambiguous, and the ones the conclusion rests on: a method call on a named owner, looked for by name
+			// among the real INVOKE instructions of the class the anchor names as the CALLER.
 			new Anchor("carpet-extra", "SculkCatalystMixin", "SculkCatalystBlock.tryDropExperience",
 					"net/minecraft/world/level/block/SculkCatalystBlock", "tryDropExperience",
 					true, false, false, false),
 			new Anchor("carpet-tis-addition", "ExperienceOrbEntityMixin", "Level.getNearestPlayer",
 					"net/minecraft/world/entity/ExperienceOrb", "getNearestPlayer",
+					true, true, false, false),
+			// The same shape from the "partially applied" group: NeoForge replaced the call, Forge kept it, and the
+			// merge takes the NeoForge body. Measurable only after anchor naming made the CALLER visible — the first
+			// attempt probed the class the call was TO (Enchantment, DifficultyInstance) and reported the anchor
+			// absent even from vanilla, because a call is not inside the class it invokes.
+			new Anchor("carpet-tis-addition", "EnchantCommandMixin", "Enchantment.canEnchant",
+					"net/minecraft/server/commands/EnchantCommand", "canEnchant",
+					true, true, false, false),
+			new Anchor("carpet-tis-addition", "PhantomSpawnerMixin", "DifficultyInstance.getDifficulty",
+					"net/minecraft/world/level/levelgen/PhantomSpawner", "getDifficulty",
 					true, true, false, false));
 
 	/**
@@ -176,7 +186,11 @@ class VanillaCallReplacedByPatchesTest {
 				+ presentInBoth + " in both patches (which would make the loss the merge's to answer for)");
 
 		assertEquals(1, absentFromBoth, "tryDropExperience is gone from both patched sources");
-		assertEquals(1, removedByTheWinnerOnly, "getNearestPlayer is kept by Forge and removed by NeoForge");
+		assertEquals(3, removedByTheWinnerOnly,
+				"getNearestPlayer, EnchantCommand.canEnchant and PhantomSpawner.getDifficulty are kept by Forge and"
+						+ " removed by NeoForge, and the merge follows NeoForge. Three of the four anchors being this"
+						+ " shape is the finding: what looks like a mixin failing on a merged base is mostly the"
+						+ " arbitration doing what it is designed to do");
 		assertEquals(0, presentInBoth,
 				"an anchor present in BOTH patched sources but missing from the merged base would be a merge defect,"
 						+ " not a patched-source fact, and the conclusion in this class's javadoc would be wrong");
