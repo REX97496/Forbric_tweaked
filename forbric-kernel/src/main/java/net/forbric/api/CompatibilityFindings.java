@@ -178,8 +178,44 @@ public final class CompatibilityFindings {
 			out.append("]}");
 		}
 		out.append("],\"catalogFailures\":[");
+		// Every non-OK entry that NO confirmed finding already explains. Called "unclassified", and the label has to
+		// be true of what it is put on.
+		//
+		// This used to read `if (entry.status() != FAILED) return true;` — a DEGRADED entry passed through
+		// UNCONDITIONALLY and was then stamped "UNCLASSIFIED" whatever the findings said. Measured on the 152-mod
+		// instance: Euphoria Patcher is DEGRADED, its reason is named in full by a CONFIRMED-confident mixin
+		// finding, and it still appeared in catalogFailures as UNCLASSIFIED. So the one array a reader consults for
+		// "what went wrong that nobody accounted for" reported a loss that HAD been accounted for, under a label
+		// saying it had not — and the array is named after failures while carrying a mere degradation.
+		//
+		// A DEGRADED entry is now asked the same question a FAILED one is. The `initialization:` restriction is
+		// kept for FAILED, where the reason is a construction failure and only an initialization finding can match
+		// it; a DEGRADED reason is a feature loss, so any confirmed finding naming that mod and that reason counts.
 		List<ModCatalog.Entry> unclassified = ModCatalog.unclassifiedFailures().stream().filter(entry -> {
-			if (entry.status() != ModCatalog.Status.FAILED) return true;
+			if (entry.status() != ModCatalog.Status.FAILED) {
+				// A DEGRADED reason is a FEATURE LOSS, and it is worded by whoever marked the mod — ModCatalog's
+				// detail for Euphoria Patcher is "its mixin IrisModernShaderPackMixin targets another mod's class
+				// that has changed (...)", while the finding that explains it says "preflight could not resolve this
+				// mixin's anchors on another mod". String equality between the two can never hold, so the first
+				// version of this fix changed nothing at all: the entry stayed UNCLASSIFIED on a re-run, which is
+				// how the mismatch was found rather than assumed.
+				//
+				// The question that CAN be answered is whether any finding names this mod. If one does, the
+				// degradation is accounted for and does not belong in the array of things nobody explained.
+				//
+				// Any confidence counts, and that is deliberate. The first version of this required
+				// confirmedRequired() and so matched nothing for Euphoria Patcher, whose explaining finding is
+				// SUSPECTED — the entry stayed UNCLASSIFIED on a re-run. Requiring confirmation means a merely
+				// suspected finding counts as no explanation at all, which is the stronger false statement of the
+				// two: "nothing accounts for this" when something does, versus "something accounts for this" when
+				// the accounting is not yet proved.
+				//
+				// LIMIT, stated because it is real: a mod with TWO independent degradations, one explained and one
+				// not, is treated as fully classified and the second is not surfaced here. Distinguishing them needs
+				// a structured reason rather than two prose strings, which is a change to ModCatalog's status detail
+				// and not to this filter.
+				return findings.stream().noneMatch(f -> f.modId().equals(entry.modId()));
+			}
 			List<CompatibilityFinding> observed = findings.stream().filter(f -> f.modId().equals(entry.modId())
 					&& f.id().startsWith("initialization:") && f.confirmedRequired()).toList();
 			if (observed.stream().anyMatch(f -> f.detail().equals(entry.statusDetail()))) return false;
