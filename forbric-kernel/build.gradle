@@ -527,14 +527,33 @@ jar {
 	// it: PCL CE put only the six net.forbric entries on the classpath and left the fourteen here off it —
 	// they were in the profile, present on disk, and still absent from the generated launch script — so the
 	// game died on "NoClassDefFoundError: org/objectweb/asm/ClassVisitor" at KernelClientLaunch before it
-	// could start. dev.py compensates for exactly this ("sponge-mixin and ASM as the kernel resolves them,
-	// which a vanilla Minecraft tree does not have"); the install path cannot compensate, because it does not
-	// own the classpath. Shading removes the question from both paths at once.
+	// could start. dev.py compensates for exactly this; the install path cannot, because it does not own the
+	// classpath.
 	//
-	// runtimeClasspath is precisely the boot-side set, and MixinExtras is NOT in it — it lives in nestedMods
-	// and is nested above for the game loader, which is the one place it must stay. Filtering to .jar files
-	// keeps the kernel's own build/classes and build/resources out; those are already in via sourceSets.
-	from { configurations.runtimeClasspath.files.findAll { it.isFile() && it.name.endsWith('.jar') }.collect { zipTree(it) } }
+	// SPONGE-MIXIN IS EXCLUDED, and that exclusion is the point of this comment. The first version of this
+	// shade took the whole runtimeClasspath, sponge-mixin included, and a real launch showed what that costs:
+	//
+	//   6 kernel class(es) could not be defined up front and will be read on first use:
+	//     [org.spongepowered.asm.launch.MixinTweaker (java.lang.NoClassDefFoundError: net/minecraft/launch...)]
+	//   MixinInitialisationError: ... JAVA_25 could not be set.
+	//     Level is not supported by the active JRE or ASM version (Java 25.0, ASM 9.0 (ASM10_EXPERIMENTAL))
+	//
+	// MixinTweaker references GAME classes, so it cannot be defined by the parent loader at all — the same law
+	// the MixinExtras note above records, applied to the other mixin artifact. Shading it put a class in the
+	// boot jar that the boot loader is structurally unable to load, and left the mixin runtime reading a
+	// compatibility level off the copy it found there instead of the one the game loader supplies.
+	//
+	// ASM is a plain library — javac does not resolve a single game type through it — so it stays. So do
+	// mapping-io, tiny-remapper, class-tweaker, sat4j and night-config. What is left out is the artifact that
+	// has to live with the game's loader, not the artifact that reads class files.
+	//
+	// Filtering to .jar files keeps the kernel's own build/classes and build/resources out; those are already
+	// in via sourceSets.
+	from {
+		configurations.runtimeClasspath.files
+				.findAll { it.isFile() && it.name.endsWith('.jar') && !it.name.startsWith('sponge-mixin-') }
+				.collect { zipTree(it) }
+	}
 	// A shaded dependency's own jar metadata is meaningless once repacked and fatal if kept: signatures make
 	// the JVM reject a changed jar, and one library's module-info would describe only that library. Same
 	// excludes mergeToolsJar uses, for the same reasons.
