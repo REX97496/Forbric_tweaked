@@ -385,11 +385,33 @@ public final class Installer {
 		return written;
 	}
 
+	/**
+	 * One entry for the version profile's {@code libraries}: the coordinate, and WHERE the file is — and nothing
+	 * that invites a launcher to fetch or re-verify it.
+	 *
+	 * <h2>Why there is no sha1, no size and no url</h2>
+	 *
+	 * <p>These jars are staged locally and hosted nowhere. Writing the hash and the length anyway made PCL CE
+	 * treat them as downloadable: it checked them against {@code libraries.minecraft.net} and the BMCLAPI mirror,
+	 * got 404 from every source, and — worse than the failed launch — <b>deleted the local files first</b>, so a
+	 * run that could have worked left the instance missing two jars. Measured on a real launch: after a failure,
+	 * {@code forbric-loader} and {@code forbricruntime} were gone while the fourteen third-party libraries beside
+	 * them were untouched.
+	 *
+	 * <p>The hash matched. That is the part worth keeping: the deletion was not a mismatch being detected, it was
+	 * the presence of a hash at all putting the entry on a download path with no source behind it.
+	 *
+	 * <p>{@code downloads.artifact.path} stays, because a launcher needs it to find the file. Removing the other
+	 * two is what PCL's own reader selects for: with an artifact whose hash and length are absent it builds its
+	 * token from size 0 and a null sha1 — nothing to compare, so nothing to fail, and no url, so nothing to try.
+	 * The file it looks for is the one this method names, which is where {@link #stageBundledJars} put it.
+	 *
+	 * <p>This costs the ability to detect a corrupted local jar. That check was never available here anyway: the
+	 * alternative to "trust the staged file" is "fail the launch", which is what actually happened.
+	 */
 	private static Map<String, Object> libraryEntry(String coordinate, String path, Path file) throws IOException {
 		Map<String, Object> artifact = new LinkedHashMap<>();
 		artifact.put("path", path);
-		artifact.put("sha1", Util.sha1(file));
-		artifact.put("size", Files.size(file));
 		Map<String, Object> downloads = new LinkedHashMap<>();
 		downloads.put("artifact", artifact);
 		Map<String, Object> entry = new LinkedHashMap<>();

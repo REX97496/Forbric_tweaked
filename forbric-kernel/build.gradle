@@ -521,6 +521,26 @@ jar {
 		from configurations.nestedMods
 		rename '.*\\.jar', 'mixinextras-fabric.jar'
 	}
+	// The boot-side dependencies are SHADED IN, so the kernel jar needs nothing from the launcher's classpath.
+	//
+	// Declaring them `api` and staging them into the install profile is not enough, and a real launch proved
+	// it: PCL CE put only the six net.forbric entries on the classpath and left the fourteen here off it —
+	// they were in the profile, present on disk, and still absent from the generated launch script — so the
+	// game died on "NoClassDefFoundError: org/objectweb/asm/ClassVisitor" at KernelClientLaunch before it
+	// could start. dev.py compensates for exactly this ("sponge-mixin and ASM as the kernel resolves them,
+	// which a vanilla Minecraft tree does not have"); the install path cannot compensate, because it does not
+	// own the classpath. Shading removes the question from both paths at once.
+	//
+	// runtimeClasspath is precisely the boot-side set, and MixinExtras is NOT in it — it lives in nestedMods
+	// and is nested above for the game loader, which is the one place it must stay. Filtering to .jar files
+	// keeps the kernel's own build/classes and build/resources out; those are already in via sourceSets.
+	from { configurations.runtimeClasspath.files.findAll { it.isFile() && it.name.endsWith('.jar') }.collect { zipTree(it) } }
+	// A shaded dependency's own jar metadata is meaningless once repacked and fatal if kept: signatures make
+	// the JVM reject a changed jar, and one library's module-info would describe only that library. Same
+	// excludes mergeToolsJar uses, for the same reasons.
+	exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/INDEX.LIST'
+	exclude 'META-INF/MANIFEST.MF', 'META-INF/versions/**/module-info.class', 'module-info.class'
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 // GAME jar: forbric-kernel-runtime — the half ForbricClassLoader defines, compiled against the staged jars.

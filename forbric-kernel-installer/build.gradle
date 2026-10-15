@@ -51,7 +51,10 @@ tasks.register('buildForbricJars', Exec) {
 	commandLine(isWindows ? ['cmd', '/c', 'gradlew.bat', 'jar'] : ['./gradlew', 'jar'])
 	inputs.dir("${kernelDir}/src/main")
 	inputs.file("${kernelDir}/build.gradle")
-	outputs.dir("${kernelDir}/build/libs")
+	// The one file this task makes, not the shared build/libs it lands in. Declaring the directory claimed the
+	// merge-tools jar as this task's output too, so bundleTools read an output of this task without depending on
+	// it and Gradle failed the build. The same over-broad declaration was already removed from buildMergeTools.
+	outputs.file("${kernelDir}/build/libs/forbric-kernel-${moduleVersion(kernelDir)}.jar")
 }
 
 // The loader's two jars, which the installer ALSO bundles and which nothing here used to build. Without this
@@ -187,9 +190,24 @@ tasks.register('bundleForbric') {
 		cpOut.readLines().findAll { it.contains(File.pathSeparator) }.last()
 				.split(File.pathSeparator).each { String entry ->
 			def jar = new File(entry)
-			if (!jar.isFile() || !entry.contains(cacheRoot)) return   // Forbric's own jars are added above
+			// Normalised before every comparison, because on Windows the Gradle cache path is written with
+			// BACKSLASHES — "...\.gradle-home\caches\modules-2\files-2.1\org.ow2.asm\asm-4.1.jar" — and this loop
+			// used to test for the forward-slash spelling "modules-2/files-2.1/". That test was false for every
+			// entry on Windows, so the loop returned on all of them and staged ZERO third-party jars: the installed
+			// profile carried the three net.forbric jars and no ASM, and the game died on
+			// "NoClassDefFoundError: org/objectweb/asm/ClassVisitor" in KernelClientLaunch before it could start.
+			// The kernel does not shade ASM (measured: 0 ASM entries in 1258), it declares it `api`, and dev.py
+			// compensates explicitly for exactly this — "sponge-mixin and ASM as the kernel resolves them, which a
+			// vanilla Minecraft tree does not have". The install path had no such compensation, and this comparison
+			// is why. Nothing about the design was missing; one separator was.
+			//
+			// Worth keeping in mind: a silent filter that rejects everything is indistinguishable from a cache
+			// that holds nothing, which is why this looked like "the classpath had no third-party jars" rather
+			// than "the check never matched".
+			String normalised = entry.replace('\\', '/')
+			if (!jar.isFile() || !normalised.contains(cacheRoot)) return   // Forbric's own jars are added above
 			// <cache>/files-2.1/<group>/<name>/<version>/<sha>/<file>.jar
-			def rest = entry.substring(entry.indexOf(cacheRoot) + cacheRoot.length()).split('/')
+			def rest = normalised.substring(normalised.indexOf(cacheRoot) + cacheRoot.length()).split('/')
 			if (rest.length < 5) return
 			add("${rest[0]}:${rest[1]}:${rest[2]}".toString(), jar)
 		}
