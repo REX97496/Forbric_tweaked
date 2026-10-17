@@ -54,6 +54,29 @@ public final class KernelMixinBootstrap {
 	}
 
 	/**
+	 * The Java major version this build of Minecraft needs. Below it the game does not run at all, so the guardrail
+	 * below has something real to say; at or above it, telling the player to install another Java is advice that
+	 * cannot help.
+	 */
+	private static final int REQUIRED_JAVA_FEATURE = 25;
+
+	/**
+	 * The running JVM's feature version — 25 for Java 25 — or 0 when it cannot be read.
+	 *
+	 * <p>Reflection rather than {@code Runtime.version()} so this compiles and answers on any JVM this kernel might
+	 * be started on. A JVM old enough to lack {@code Runtime.version()} returns 0, which reads as "older than
+	 * required" — the correct answer, reached without a version parser to get wrong.
+	 */
+	private static int javaFeatureVersion() {
+		try {
+			Object version = Runtime.class.getMethod("version").invoke(Runtime.getRuntime());
+			return (int) version.getClass().getMethod("feature").invoke(version);
+		} catch (ReflectiveOperationException | RuntimeException unreadable) {
+			return 0;
+		}
+	}
+
+	/**
 	 * Initializes Mixin with {@code configs} and installs the weaver on {@code loader}.
 	 *
 	 * @param declared mixin config resource names, already filtered to the running side; de-duplicated here
@@ -98,8 +121,106 @@ public final class KernelMixinBootstrap {
 		// it those configs fail to even parse their injection points.
 		initMixinExtras(loader);
 
+		// THE LEVEL FIELD, measured before it is touched.
+		//
+		// A config asking for JAVA_25 was refused — MixinInitialisationError on
+		// fabric-advancement-api-v1.mixins.json, from MixinConfig.initCompatibilityLevel ->
+		// MixinEnvironment.setCompatibilityLevel, whose complaint is "not supported by the active JRE or ASM
+		// version (Java 25.0, ASM 9.0 (ASM10_EXPERIMENTAL))". Everything that message points at is innocent: the
+		// ASM shipped is 9.10.1, the JRE is 25, and CompatibilityLevel.isSupported() is a constant `return true`
+		// in this build. Calling setCompatibilityLevel(JAVA_25) here was tried and threw — the same refusal, now
+		// with this file as its cause, which is worse.
+		//
+		// So it was measured. One launch printed:
+		//
+		//   [Forbric/Mixin] compatibility: requested JAVA_25; Mixin's MAX_SUPPORTED=JAVA_13,
+		//                   service=net.forbric.kernel.mixin.ForbricMixinService, service max=JAVA_25
+		//
+		// The service is this kernel's and it already answers JAVA_25; the field the check consults never got
+		// there. Mixin asks IMixinService.getMaxCompatibilityLevel() during its own initialisation and leaves
+		// MAX_SUPPORTED at CompatibilityLevel's default of JAVA_13 all the same.
+		//
+		// MAX_SUPPORTED is `public static` (verified with javap — no reflection, no setAccessible), so raising it
+		// to what the service already declares is a plain assignment. It grants nothing new: the kernel states
+		// JAVA_25 through getMaxCompatibilityLevel() two hundred lines up, sponge-mixin 0.17.3 with asm 9.10.1
+		// reports canSupport(JAVA_25) == true, and MC 26.2 ships Java 25 class files — a lower level would be a
+		// worse lie than this assignment is a liberty.
+		MixinEnvironment.CompatibilityLevel wanted = MixinEnvironment.CompatibilityLevel.JAVA_25;
+		// Raise only, never lower: a field already at or above the target is Mixin having got there itself, and
+		// overwriting that with our value would be this file claiming authority it has not measured.
+		if (!MixinEnvironment.CompatibilityLevel.MAX_SUPPORTED.isAtLeast(wanted)) {
+			MixinEnvironment.CompatibilityLevel.MAX_SUPPORTED = wanted;
+		}
+		ForbricLog.info("[Forbric/Mixin] compatibility: requested %s; Mixin's MAX_SUPPORTED=%s,"
+						+ " service=%s, service max=%s",
+				wanted,
+				MixinEnvironment.CompatibilityLevel.MAX_SUPPORTED,
+				org.spongepowered.asm.service.MixinService.getService().getClass().getName(),
+				org.spongepowered.asm.service.MixinService.getService().getMaxCompatibilityLevel());
+
 		for (String config : configs) {
-			Mixins.addConfiguration(config);
+			try {
+				Mixins.addConfiguration(config);
+			// Catching Error as well as RuntimeException, and that is not belt-and-braces: Mixin throws
+			// MixinInitialisationError here, which extends Error rather than RuntimeException. The first version of
+			// this guardrail caught RuntimeException only and therefore never ran — verified by a real launch whose
+			// stack still read
+			//
+			//   at MixinConfig.create ... at Mixins.addConfiguration ... at
+			//   net.forbric.kernel.mixin.KernelMixinBootstrap.init(KernelMixinBootstrap.java:163)
+			//
+			// with this catch sitting immediately around line 163 and doing nothing. A guardrail that cannot see
+			// the exception it exists for is indistinguishable from no guardrail, so the type is now what Mixin
+			// actually throws.
+			} catch (Error | RuntimeException refused) {
+				// THE GUARDRAIL. A mixin config asking for a level this runtime will not grant used to end the
+				// launch with Mixin's own words — "The requested compatibility level JAVA_25 could not be set. Level
+				// is not supported by the active JRE or ASM version (Java 25.0, ASM 9.0 (ASM10_EXPERIMENTAL))" —
+				// and a stack pointing into MixinConfig.onLoad. Read cold, that sentence says the player's Java is
+				// wrong. On the launch that produced it, the runtime WAS Java 25 and the kernel's own ASM was
+				// 9.10.1, so the one action the message suggests is the one action that cannot help.
+				//
+				// Four rounds were spent guessing at the cause from outside this block, and two of those guesses
+				// were wrong in the same way: each rested on a measurement that did not cover the thing it was
+				// used to conclude. What is left is a refusal whose mechanism is not yet established, so the
+				// honest thing to put in front of a player is the measurement, not a diagnosis.
+				//
+				// Java guidance is given ONLY when the Java is actually below what this build needs. Emitting
+				// "install Java 25" to someone already running Java 25 is worse than emitting nothing: it costs
+				// them a download and teaches them the message is noise.
+				boolean javaTooOld = javaFeatureVersion() < REQUIRED_JAVA_FEATURE;
+				StringBuilder detail = new StringBuilder();
+				detail.append("Mixin refused the compatibility level ").append(wanted)
+						.append(" that a mixin config asks for, so the launch stops here rather than part-way"
+								+ " through class transformation.").append(System.lineSeparator())
+						.append("  config           : ").append(config).append(System.lineSeparator())
+						.append("  refused level    : ").append(wanted).append(System.lineSeparator())
+						.append("  Mixin MAX_SUPPORTED: ").append(MixinEnvironment.CompatibilityLevel.MAX_SUPPORTED)
+						.append(System.lineSeparator())
+						.append("  service max      : ")
+						.append(org.spongepowered.asm.service.MixinService.getService().getMaxCompatibilityLevel())
+						.append(System.lineSeparator())
+						.append("  runtime Java     : ").append(System.getProperty("java.version"))
+						.append(" (feature ").append(javaFeatureVersion()).append(')').append(System.lineSeparator());
+				if (javaTooOld) {
+					detail.append(System.lineSeparator())
+							.append("This Minecraft version needs Java ").append(REQUIRED_JAVA_FEATURE)
+							.append(" or newer and this launcher started it on Java ").append(javaFeatureVersion())
+							.append(". In your launcher's Java settings, choose a Java ")
+							.append(REQUIRED_JAVA_FEATURE).append(" runtime (Adoptium Temurin, Microsoft"
+									+ " OpenJDK, or any other build of the same major version), then start again.");
+				} else {
+					detail.append(System.lineSeparator())
+							.append("Your Java is already ").append(javaFeatureVersion())
+							.append(", which is what this Minecraft version needs, so installing another one will"
+									+ " not help — the level was refused although the Java and the ASM this kernel"
+									+ " ships both support it. Please report the block above as-is; it is the"
+									+ " measurement the cause still has to be found from.");
+				}
+				ForbricLog.error("[Forbric/Mixin] %s", detail);
+				throw new IllegalStateException("mixin compatibility level " + wanted
+						+ " was refused; see the [Forbric/Mixin] block above", refused);
+			}
 		}
 		nameTheModsBehindTheConfigs();
 		// A mixin that fails to prepare or apply names its mod on the Mods screen and in load-report.txt. Mixin
