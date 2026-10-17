@@ -588,6 +588,35 @@ public final class ForbricMixinService
 				boolean droppedRequirement = !withoutRequired.equals(json);
 				json = withoutRequired;
 
+				// A fourth lever: compatibilityLevel, clamped to the level Mixin is ALREADY on.
+				//
+				// MixinEnvironment.setCompatibilityLevel disassembles to exactly one path to its throw —
+				// `if_acmpeq` on (requested, current) skips it, `ifne` on CompatibilityLevel.isSupported() skips it,
+				// and everything else reaches `athrow`. The second of those cannot be reasoned about: this jar's
+				// isSupported() disassembles to a constant `return true`, yet the level is refused, so whatever the
+				// runtime dispatches to is not that. The FIRST condition is solid and needs no theory: when a config
+				// asks for the level Mixin already holds, the comparison matches and the check is never reached.
+				//
+				// That is why this rewrites to MixinEnvironment.getCompatibilityLevel() rather than to a constant
+				// like JAVA_21. A constant would be a guess about what the runtime accepts; the current level is
+				// what it already holds, which is the one value the branch is measured to tolerate.
+				//
+				// Stated plainly, this is a WORKAROUND that lets the launch proceed, not a repair: fabric-api 0.161
+				// ships this config asking for JAVA_25, and something below it cannot establish that level. The
+				// underlying refusal is still unfixed and is still reported by the guardrail in KernelMixinBootstrap
+				// if it ever fires again.
+				java.util.regex.Matcher declaredLevel =
+						java.util.regex.Pattern.compile("(\"compatibilityLevel\"\\s*:\\s*)\"([^\"]*)\"").matcher(json);
+				boolean clampedLevel = false;
+				if (declaredLevel.find()) {
+					String asked = declaredLevel.group(2);
+					String current = MixinEnvironment.getCompatibilityLevel().name();
+					if (!asked.equals(current)) {
+						json = declaredLevel.replaceFirst("$1\"" + java.util.regex.Matcher.quoteReplacement(current) + "\"");
+						clampedLevel = true;
+					}
+				}
+
 				// Told at INFO, once per config, and naming WHICH lever moved — never at debug.
 				//
 				// This used to be a single debug line saying only "relaxed <config>", which meant a player running
@@ -598,7 +627,7 @@ public final class ForbricMixinService
 				// relaxation itself stays, because a required mixin whose target the byte-merge changed would
 				// otherwise abort the launch on a base its author never saw; being able to SEE it is the part
 				// that was missing.
-				if (droppedRequirement || loosenedInjections) {
+				if (droppedRequirement || loosenedInjections || clampedLevel) {
 					StringBuilder what = new StringBuilder();
 					if (droppedRequirement) what.append("required:true -> false (this config no longer aborts the launch)");
 					if (loosenedInjections) {
@@ -606,6 +635,13 @@ public final class ForbricMixinService
 						what.append("injection requirements -> 0 (a point whose anchor the merge moved may skip"
 								+ " without a word; -Dforbric.mixinDiagnostics keeps them strict so the final"
 								+ " class audit reports each one)");
+					}
+					if (clampedLevel) {
+						if (what.length() > 0) what.append("; ");
+						what.append("compatibilityLevel -> ").append(MixinEnvironment.getCompatibilityLevel().name())
+								.append(" (the level Mixin is already on, so this config's own request is not"
+										+ " checked against it — a workaround for a refusal whose cause is still"
+										+ " unknown, reported so it is never mistaken for a repair)");
 					}
 					ForbricLog.info("[Forbric/Mixin] relaxed %s for merged-base compatibility: %s [config %d -> %d bytes]",
 							name, what, beforeRelaxing.length(), json.length());
