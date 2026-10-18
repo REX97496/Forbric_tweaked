@@ -886,6 +886,13 @@ public final class KernelBoot {
 		chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.NeoConversionPostInjector());
 		// NeoForge's tooltip registration event goes to each mod on its own, not through ModLoader's aborting fan-out.
 		chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.NeoTooltipAppendersInjector());
+		// And the OTHER tooltip mechanism, which RegisterTooltipAppendersEvent does not cover: ItemTooltipEvent.
+		// The merged getTooltipLines ends with ForgeEventFactory.onItemTooltip and pops its result; this weaves
+		// KernelItemTooltip.afterForge into that tail so a NeoForge listener's appended lines reach the tooltip.
+		// It records GameEventBridge.ITEM_TOOLTIP as installed, which is what turns the standing
+		// "ITEM_TOOLTIP ... MISSING" report off — see KernelLifecycle's note that the two ON_DEMAND bridges were
+		// declared, describe a feature a player notices missing, and were never installed.
+		chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.ItemTooltipBridgeInjector());
 		// NeoForge's coremods never run on the merged base; NativeCoremodParity does their rewrites after Mixin. These
 		// are the parts that must come before it: the flower pot's constructor, lookup and addPlant; the biome modifier
 		// pass starting from the biome's current climate, and the biome's getters yielding to a later replacement.
