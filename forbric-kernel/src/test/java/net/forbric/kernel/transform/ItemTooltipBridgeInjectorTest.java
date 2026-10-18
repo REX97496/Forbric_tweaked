@@ -56,6 +56,7 @@ import org.objectweb.asm.tree.MethodNode;
  *
  * <p>Skips without the instance, because the class under test only exists there.
  */
+@ExecutesInjector(ItemTooltipBridgeInjector.class)
 class ItemTooltipBridgeInjectorTest {
 
 	private static final List<Path> INSTANCES = List.of(
@@ -117,6 +118,16 @@ class ItemTooltipBridgeInjectorTest {
 						+ " NeoForge listeners would append before MinecraftForge's own tooltip work and anything"
 						+ " Forge adds afterwards would still be missing");
 		System.out.println("[tooltip] inserted after Forge call: forge@" + forgeAt + " hook@" + hookAt);
+
+		// AND DEFINE IT. The census is right to insist: every assertion above reads instructions, and none
+// of them would notice a frame the verifier rejects. Loading the transformed class runs the verifier,
+// which is the only thing that can prove the four ALOADs leave a stack the JVM accepts — and a stack
+// it rejects would fail at class load in the real game, not in any test that only disassembles.
+ClassLoader defined = InjectorExecution.load(java.util.Map.of(
+        "net/minecraft/world/item/ItemStack", after));
+assertNotNull(defined, "the transformed ItemStack could not be defined; the injected call site is not"
+        + " verifiable bytecode");
+System.out.println("[tooltip] transformed ItemStack defined and verified by the JVM");
 
 		// The four ALOADs that precede the call must name the merged tail's own locals: list 5, stack 0, player 2,
 		// flag 3. Reading the wrong local would pass the verifier and deliver the wrong object — a tooltip that

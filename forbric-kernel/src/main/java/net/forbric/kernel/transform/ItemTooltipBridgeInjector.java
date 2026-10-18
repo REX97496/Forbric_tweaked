@@ -85,6 +85,27 @@ public final class ItemTooltipBridgeInjector implements ClassTransformer {
 		return "ItemTooltipBridgeInjector";
 	}
 
+	/**
+	 * What this transformer claims, declared rather than left to be inferred.
+	 *
+	 * <p>The first version of this class implemented neither this nor {@code claims()}, and the census caught it:
+	 * {@code InjectorExecutionCensusTest} reported {@code undeclared: ItemTooltipBridgeInjector} and
+	 * {@code TransformerAnchorCensusTest} reported that {@code anchors()} returning undeclared "says nothing
+	 * either". Both are right. A transformer that does not say what it hangs on cannot be listed as missing when
+	 * its anchor moves — which is precisely how {@code ITEM_TOOLTIP} became a standing ERROR in the first place:
+	 * declared in the enum, wired nowhere, reported forever.
+	 *
+	 * <p>{@code REQUIRED}, not optional: the merged tail always has the Forge call this hangs on, and if it ever
+	 * stops having it the tooltip bridge is gone. Saying so keeps that loss visible.
+	 */
+	@Override
+	public AnchorSet anchors() {
+		return AnchorSet.of(new AnchorSet.Anchor(TARGET, AnchorSet.Severity.REQUIRED,
+				"NeoForge mods cannot add lines to item tooltips — ItemTooltipEvent is never posted, so a mod that"
+						+ " appends one adds it to nothing. The bridge exists because this was declared in"
+						+ " GameEventBridge and wired nowhere"));
+	}
+
 	@Override
 	public byte[] transform(String className, byte[] classBytes, TransformContext context) {
 		String normalised = className.replace('.', '/');
