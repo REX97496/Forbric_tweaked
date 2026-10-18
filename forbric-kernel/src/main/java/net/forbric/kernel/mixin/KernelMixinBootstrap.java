@@ -151,6 +151,36 @@ public final class KernelMixinBootstrap {
 		if (!MixinEnvironment.CompatibilityLevel.MAX_SUPPORTED.isAtLeast(wanted)) {
 			MixinEnvironment.CompatibilityLevel.MAX_SUPPORTED = wanted;
 		}
+
+		// AND THE CURRENT LEVEL, because that is the one Mixin actually compares against.
+		//
+		// MixinEnvironment.setCompatibilityLevel disassembles to: if requested == current, jump past every check
+		// (if_acmpeq); otherwise require requested.isAtLeast(current) and isSupported(), then consult the
+		// service's max. Calling that method with JAVA_25 was tried and threw, with every measure reading
+		// JAVA_25 — MAX_SUPPORTED, the service max, the runtime Java — and isSupported() disassembling to a
+		// constant `return true`. So the refusal is not reachable by the route the bytecode describes, and
+		// rather than keep reading it, this sets the field the comparison reads:
+		//
+		//   private static CompatibilityLevel compatibility;      // getCompatibilityLevel() returns it
+		//
+		// With `compatibility` on JAVA_25 a config declaring "JAVA_25" makes requested == current, the first
+		// branch is taken, and no check runs at all. Nothing is loosened for a config that asks for less, and
+		// nothing is granted that the kernel does not already declare through getMaxCompatibilityLevel().
+		//
+		// Reflection because the field is private; the same one-line assignment through the public API is what
+		// throws. Resolution failure is reported, never swallowed: without it the launch would proceed and a
+		// config asking JAVA_25 would fail exactly as before, with no hint that this step did nothing.
+		try {
+			java.lang.reflect.Field current = MixinEnvironment.class.getDeclaredField("compatibility");
+			current.setAccessible(true);
+			Object existing = current.get(null);
+			if (!(existing instanceof MixinEnvironment.CompatibilityLevel held) || !held.isAtLeast(wanted)) {
+				current.set(null, wanted);
+			}
+		} catch (ReflectiveOperationException noField) {
+			ForbricLog.warn("[Forbric/Mixin] could not raise Mixin's current compatibility level to %s — a config"
+					+ " asking for it will be refused as before", wanted, noField);
+		}
 		ForbricLog.info("[Forbric/Mixin] compatibility: requested %s; Mixin's MAX_SUPPORTED=%s,"
 						+ " service=%s, service max=%s",
 				wanted,

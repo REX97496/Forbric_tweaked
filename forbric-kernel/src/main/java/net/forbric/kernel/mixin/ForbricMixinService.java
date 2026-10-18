@@ -610,9 +610,38 @@ public final class ForbricMixinService
 				boolean clampedLevel = false;
 				if (declaredLevel.find()) {
 					String asked = declaredLevel.group(2);
-					String current = MixinEnvironment.getCompatibilityLevel().name();
-					if (!asked.equals(current)) {
-						json = declaredLevel.replaceFirst("$1\"" + java.util.regex.Matcher.quoteReplacement(current) + "\"");
+					// LOWERED ONLY TO MAX_SUPPORTED, NEVER TO WHATEVER Mixin happens to be on.
+					//
+					// This read getCompatibilityLevel() first and that was a bug with a long tail. That call
+					// returns the level Mixin currently holds, which at this point is its JAVA_8 default, so all
+					// sixty fabric configs had their "compatibilityLevel": "JAVA_25" rewritten to "JAVA_8". Mixin
+					// then refused fourteen mixin classes at MixinInfo$State.validateClassFeatures — "Unsupported
+					// mixin, ... requires ..." — because a class compiled for Java 25 cannot be declared as a
+					// JAVA_8 mixin. One of those was fabric-registry-sync-v0's MappedRegistryMixin, the mixin that
+					// makes MappedRegistry implement ListenableRegistry; without it
+					// ListenableRegistry.get(BuiltInRegistries.BLOCK) threw "Unsupported registry: minecraft:block"
+					// out of Blocks.<clinit>, and that crash read as a completely different problem for eight
+					// rounds of investigation.
+					//
+					// The ceiling is the honest bound: a config may not ask for more than the runtime supports, and
+					// MAX_SUPPORTED is exactly that — raised by the kernel to JAVA_25 to match what it declares
+					// through getMaxCompatibilityLevel(). Clamping to it leaves an in-range request untouched and
+					// never turns a Java 25 config into a Java 8 one.
+					String ceiling = MixinEnvironment.CompatibilityLevel.MAX_SUPPORTED.name();
+					// A name Mixin does not recognise is not this code's business: valueOf throws, and an
+					// uncaught throw here would take out the whole relaxation pass — one malformed
+					// "compatibilityLevel" in one mod turning into a failed launch with no explanation. Mixin
+					// itself will reject the config with its own message, which names the config; that is a
+					// better report than this stack, and it is not this file's to pre-empt.
+					MixinEnvironment.CompatibilityLevel askedLevel = null;
+					try {
+						askedLevel = MixinEnvironment.CompatibilityLevel.valueOf(asked);
+					} catch (IllegalArgumentException notALevel) {
+						ForbricLog.warn("[Forbric/Mixin] %s declares compatibilityLevel \"%s\", which Mixin does not"
+								+ " define — left untouched for Mixin to judge", name, asked);
+					}
+					if (askedLevel != null && askedLevel.ordinal() > MixinEnvironment.CompatibilityLevel.MAX_SUPPORTED.ordinal()) {
+						json = declaredLevel.replaceFirst("$1\"" + java.util.regex.Matcher.quoteReplacement(ceiling) + "\"");
 						clampedLevel = true;
 					}
 				}
