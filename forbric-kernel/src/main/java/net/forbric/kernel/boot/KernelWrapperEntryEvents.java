@@ -67,7 +67,33 @@ public final class KernelWrapperEntryEvents {
 		ClassLoader loader = wrapper.getClassLoader();
 		try {
 			Class<?> listenable = Class.forName(LISTENABLE, false, loader);
-			if (!listenable.isAssignableFrom(wrapper)) return Optional.empty();
+			if (!listenable.isAssignableFrom(wrapper)) {
+				// SAID OUT LOUD, because this branch used to be silent and that cost a whole diagnosis.
+				//
+				// A Fabric mod asks fabric-registry-sync for a registry's event by an instanceof test —
+				// ListenableRegistry.get() throws "Unsupported registry: <id>" when the registry is not one.
+				// MappedRegistryMixin is what makes a MappedRegistry into a ListenableRegistry, and on this
+				// merged base at least one registry reaches this method without that having happened:
+				//
+				//   IllegalArgumentException: Unsupported registry: minecraft:block
+				//     at ListenableRegistry.get(ListenableRegistry.java:31)
+				//     at RegistryEntryAddedCallback.event(RegistryEntryAddedCallback.java:51)
+				//     at Blocks.handler$...$fabric-registry-sync-v0$initShapeCache(Blocks.java:6088)
+				//
+				// Every static check said the mixin should apply — the target class is MappedRegistry, the
+				// registry IS a MappedRegistry subclass, all five shadowed fields and all six shadowed methods
+				// exist, and the load report lists no finding for the mixin — so the reason is runtime state
+				// that no amount of jar inspection reaches. Returning empty here quietly makes this class
+				// register "without firing" the callback, which is indistinguishable from correct behaviour
+				// and is exactly the shape this project keeps getting criticised for.
+				ForbricLog.warn("[Forbric/Registries] %s is NOT a %s, so fabric-registry-sync's"
+						+ " RegistryEntryAddedCallback cannot fire for it — a Fabric listener misses what this"
+						+ " registry registers, and ListenableRegistry.get(%s) will throw \"Unsupported registry\"."
+						+ " MappedRegistryMixin is what supplies that interface; every static check says it should"
+						+ " have applied, so this is what a failed application looks like from the outside.",
+						wrapper.getName(), LISTENABLE, wrapper.getName());
+				return Optional.empty();
+			}
 			Method identifier = Class.forName("net.minecraft.resources.ResourceKey", false, loader).getMethod("identifier");
 			return Optional.of(new Hooks(listenable.getMethod("fabric_getAddObjectEvent"),
 					Class.forName(EVENT, false, loader).getMethod("invoker"),
