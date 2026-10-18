@@ -72,6 +72,13 @@ public final class KernelMixinBootstrap {
 			Object version = Runtime.class.getMethod("version").invoke(Runtime.getRuntime());
 			return (int) version.getClass().getMethod("feature").invoke(version);
 		} catch (ReflectiveOperationException | RuntimeException unreadable) {
+			// Said out loud. SilentFailureCensusTest caught the first version of this returning 0 without a word,
+			// and it was right: the census's own rule is "a new silent catch is a decision, not a detail — say in
+			// the log what failed, or say in a comment why it must stay quiet". The answer 0 is still correct (a
+			// JVM without Runtime.version() is older than this build needs), but a reader of the log needs to know
+			// that "Java too old" was reached by omission rather than by a version it could not parse.
+			ForbricLog.warn("[Forbric/Mixin] could not read the JVM's feature version (%s) — the compatibility report"
+					+ " will treat this runtime as older than required", unreadable);
 			return 0;
 		}
 	}

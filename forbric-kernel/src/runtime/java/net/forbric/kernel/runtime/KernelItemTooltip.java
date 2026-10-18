@@ -134,8 +134,15 @@ public final class KernelItemTooltip {
 					lookup.findVirtual(type, "getToolTip", MethodType.methodType(List.class)),
 					lookup.findVirtual(type, "isCanceled", MethodType.methodType(boolean.class)));
 		} catch (ClassNotFoundException absent) {
+			// Logged even though the Failure is reported on first use, because SilentFailureCensusTest counts the
+			// catch block and it was right to: this one fires on the classpath question, and a reader scanning the
+			// log for "why are my tooltips bare" should find the reason at resolve time, not only at first hover.
+			ForbricLog.warn("[Forbric/EventMux] ItemTooltipEvent is not on the classpath — the tooltip bridge resolves"
+					+ " to disabled: %s", absent);
 			return new Failure("no NeoForge on the classpath", absent);
 		} catch (ReflectiveOperationException | LinkageError changed) {
+			ForbricLog.warn("[Forbric/EventMux] ItemTooltipEvent's shape changed; the tooltip bridge resolves to"
+					+ " disabled: %s", changed);
 			return new Failure("the event's shape changed", changed);
 		}
 	}
