@@ -75,7 +75,7 @@ public final class KernelItemTooltip {
 	}
 
 	/** One resolved shape: build an event, read its list, and ask whether it was cancelled. */
-	private record Resolution(MethodHandle constructor, MethodHandle tooltip, MethodHandle cancelled) {
+	private record Resolution(MethodHandle constructor, MethodHandle tooltip) {
 	}
 
 	/** A resolution that failed, with the reason, so the failure is reported once and not retried per frame. */
@@ -90,7 +90,7 @@ public final class KernelItemTooltip {
 	 * @param player  the viewing player, or null while one is not in scope
 	 * @param flag    the tooltip flag the game passed down
 	 */
-	public static void afterForge(List<Object> tooltip, Object stack, Object player, Object flag) {
+	public static void afterForge(List<Object> tooltip, Object stack, Object player, Object flag, Object context, Object display) {
 		if (tooltip == null || stack == null) return;
 		Object resolved = resolution;
 		if (resolved == null) resolution = resolved = resolve();
@@ -104,12 +104,8 @@ public final class KernelItemTooltip {
 		}
 		Resolution shape = (Resolution) resolved;
 		try {
-			Object event = shape.constructor().invoke(stack, player, tooltip, flag);
+			Object event = shape.constructor().invoke(stack, player, tooltip, flag, context, display);
 			KernelLifecycle.postModBusEvent(event);
-			// NeoForge's contract: a cancelled ItemTooltipEvent leaves the tooltip EMPTY rather than merely
-			// un-extended. Honouring only "listeners may append" would let a mod that means to hide a tooltip
-			// leave the whole thing on screen.
-			if ((boolean) shape.cancelled().invoke(event)) tooltip.clear();
 		} catch (Throwable delivery) {
 			// Not swallowed: the first failure names itself, then the resolve is retired so a broken event does
 			// not cost a stack trace per hovered item.
@@ -119,7 +115,19 @@ public final class KernelItemTooltip {
 		}
 	}
 
-	/** Resolves the event shape against whatever NeoForge this instance carries. */
+	/**
+	 * Resolves the event shape against whatever NeoForge this instance carries.
+	 *
+	 * <p>SIX constructor parameters, measured from neoforge-runtime-26.2.jar rather than assumed:
+	 * {@code (ItemStack, Player, List<Component>, TooltipFlag, Item$TooltipContext, TooltipDisplay)}. The first
+	 * version of this passed four and failed at runtime with "the event's shape changed" — the class was present,
+	 * the shape was not. The last two come from the merged tail's own locals: the {@code TooltipContext} it was
+	 * handed, and the {@code TooltipDisplay} it resolved from the stack's components.
+	 *
+	 * <p>And NO {@code isCanceled}: {@code ItemTooltipEvent} in this version carries no cancel methods and does not
+	 * implement {@code ICancellableEvent}, so a listener extends the list and cannot suppress it. Resolving a
+	 * method that is not there was the other half of that failure.
+	 */
 	private static Object resolve() {
 		try {
 			ClassLoader loader = KernelItemTooltip.class.getClassLoader();
@@ -129,10 +137,11 @@ public final class KernelItemTooltip {
 					Class.forName("net.minecraft.world.item.ItemStack", false, loader),
 					Class.forName("net.minecraft.world.entity.player.Player", false, loader),
 					List.class,
-					Class.forName("net.minecraft.world.item.TooltipFlag", false, loader)));
+					Class.forName("net.minecraft.world.item.TooltipFlag", false, loader),
+					Class.forName("net.minecraft.world.item.Item$TooltipContext", false, loader),
+					Class.forName("net.minecraft.world.item.component.TooltipDisplay", false, loader)));
 			return new Resolution(constructor,
-					lookup.findVirtual(type, "getToolTip", MethodType.methodType(List.class)),
-					lookup.findVirtual(type, "isCanceled", MethodType.methodType(boolean.class)));
+					lookup.findVirtual(type, "getToolTip", MethodType.methodType(List.class)));
 		} catch (ClassNotFoundException absent) {
 			// Logged even though the Failure is reported on first use, because SilentFailureCensusTest counts the
 			// catch block and it was right to: this one fires on the classpath question, and a reader scanning the

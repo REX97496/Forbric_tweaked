@@ -70,13 +70,15 @@ public final class ItemTooltipBridgeInjector implements ClassTransformer {
 	static final String FORGE_CALL = "onItemTooltip";
 	static final String RUNTIME = "net/forbric/kernel/runtime/KernelItemTooltip";
 	static final String HOOK = "afterForge";
-	static final String HOOK_DESC = "(Ljava/util/List;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V";
+	static final String HOOK_DESC = "(Ljava/util/List;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V";
 
 	/** Indices of the locals the merged base's own tail uses, read from its bytecode rather than assumed. */
 	private static final int LIST_LOCAL = 5;
 	private static final int STACK_LOCAL = 0;
 	private static final int PLAYER_LOCAL = 2;
 	private static final int FLAG_LOCAL = 3;
+	private static final int CONTEXT_LOCAL = 1;
+	private static final int DISPLAY_LOCAL = 4;
 
 	private static volatile boolean reported;
 
@@ -171,6 +173,8 @@ public final class ItemTooltipBridgeInjector implements ClassTransformer {
 		code.add(new VarInsnNode(Opcodes.ALOAD, STACK_LOCAL));
 		code.add(new VarInsnNode(Opcodes.ALOAD, PLAYER_LOCAL));
 		code.add(new VarInsnNode(Opcodes.ALOAD, FLAG_LOCAL));
+		code.add(new VarInsnNode(Opcodes.ALOAD, CONTEXT_LOCAL));
+		code.add(new VarInsnNode(Opcodes.ALOAD, DISPLAY_LOCAL));
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, HOOK, HOOK_DESC, false));
 		return code;
 	}

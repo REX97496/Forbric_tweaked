@@ -134,12 +134,12 @@ System.out.println("[tooltip] transformed ItemStack defined and verified by the 
 		// silently lists nothing, which is the failure this bridge exists to end.
 		AbstractInsnNode cursor = instructionAt(tooltip.instructions.getFirst(), hookAt);
 		List<Integer> loaded = new ArrayList<>();
-		for (AbstractInsnNode back = cursor.getPrevious(); back != null && loaded.size() < 4; back = back.getPrevious()) {
+		for (AbstractInsnNode back = cursor.getPrevious(); back != null && loaded.size() < 6; back = back.getPrevious()) {
 			if (back.getOpcode() == Opcodes.ALOAD) loaded.add(0, ((org.objectweb.asm.tree.VarInsnNode) back).var);
 		}
-		assertEquals(List.of(5, 0, 2, 3), loaded,
+		assertEquals(List.of(5, 0, 2, 3, 1, 4), loaded,
 				"the injected call reads locals " + loaded + ", but the merged tail keeps the list in 5, the stack"
-						+ " in 0, the player in 2 and the flag in 3");
+						+ " in 0, the player in 2, the flag in 3, the TooltipContext in 1 and the TooltipDisplay in 4");
 	}
 
 	@Test
