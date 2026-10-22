@@ -416,6 +416,138 @@ if (mcLine != mcLineDefault) {
 		}
 	}
 	logger.lifecycle("[forbric] Minecraft line ${mcLine}: fabric-api modules are remapped to Mojmap before compiling")
+
+	// -----------------------------------------------------------------------------------------------
+	// The RUNTIME mapping table, produced by the same descriptor-keyed join and verified through the resolver
+	// -----------------------------------------------------------------------------------------------
+	//
+	// net.forbric.kernel.fabric.KernelMappingResolver reads a pre-joined table from -Dforbric.mappings=<file>.
+	// That table used to be written by tools/namespace/emit-table.ps1, which keys members by
+	// (obfOwner, kind, obfName) -- a lossy key, because one obfuscated class reuses a short obf name across
+	// descriptors. Against the merged base the table it wrote names something that is not at the stated
+	// owner+signature 22,861 times, and maps 3,830 distinct intermediary members onto a single Mojmap member.
+	// tools/namespace/join-keyed.py adds the descriptor AND the obf member name to the key: 78,922 of 78,922
+	// members join with nothing ambiguous, and the table it writes resolves completely.
+	//
+	// THREE STEPS, EACH ITS OWN FAILURE MODE, and none of them is a file comparison:
+	//   emitRuntimeMappings   runs the join. Its inputs are Mojang's own mapping files, which is why this cannot
+	//                         be part of `check`: they are not in this repository and a fresh clone has none.
+	//   auditRuntimeMappings  replays every record through the REAL resolver and fails if any answer differs from
+	//                         the file. This is the step that catches a format the writer and the reader disagree
+	//                         about -- measured: the two tables in this tree spell class names differently and the
+	//                         same lookup answered slashed names from one and dotted names from the other, with no
+	//                         error anywhere.
+	//   verifyRuntimeMappings asks the game jars whether those answers name members that exist at the owner and
+	//                         signature the intermediary declaration has. Anything absent from BOTH the merged base
+	//                         and the unpatched Mojmap jar it was built from is a join defect and fails.
+	//
+	// The table is generated into build/, never committed: it is a derived view of Mojang mappings.
+	def nsPython = project.findProperty('forbric.python')
+			?: (System.getProperty('os.name').toLowerCase().contains('windows') ? 'python' : 'python3')
+	def namespaceProbe = file(project.findProperty('forbric.namespaceProbe')
+			?: (System.getenv('FORBRIC_NAMESPACE_PROBE') ?: 'E:\\project\\namespace-probe'))
+	// The unpatched Mojmap jar the merged base is derived from. Its name carries no version and the staging
+	// directory is shared with 26.2, so the verifier refuses it if its class-file major is not the base's.
+	def namespaceOrigin = file(project.findProperty('forbric.namespaceOrigin')
+			?: '.dev/minecraft/.forbric-build/clean-mojmap.jar')
+	// This line's own merged base, by name. The shared `stagedMergedBase` above is the 26.2 filename, and in a
+	// staging directory prepared for another line that file can hold EITHER line's bytes -- measured: under
+	// .dev/staged-1211/run the 1.21.1 and 26.2 names are byte-identical, both carrying mc=1.21.1 pins. The
+	// sidecar .pins file is the artifact's own statement of which line it is, so it is read rather than guessed.
+	def lineMergedBase = file("${stagedRoot}/merged-base/patched-mc-merged-${mcLine}.jar")
+	def namespaceBase = lineMergedBase.isFile() ? lineMergedBase : stagedMergedBase
+	def runtimeMappings = layout.buildDirectory.file("namespace/mappings-${mcLine}.tsv")
+	def runtimeMappingsAnswers = layout.buildDirectory.file("namespace/mappings-${mcLine}-resolver-answers.tsv")
+	def runtimeMappingsRejects = layout.buildDirectory.file("namespace/mappings-${mcLine}-unresolved.tsv")
+	def joinScript = file('../tools/namespace/join-keyed.py')
+	def verifyScript = file('../tools/namespace/verify-runtime-table.py')
+
+	def emitRuntimeMappings = tasks.register('emitRuntimeMappings', Exec) {
+		group = 'verification'
+		description = "Joins Fabric intermediary to Mojmap for ${mcLine} into the table -Dforbric.mappings reads."
+		inputs.file(joinScript).withPropertyName('joinScript')
+		inputs.files(file(new File(namespaceProbe, 'tiny-extract/mappings.tiny')),
+				file(new File(namespaceProbe, 'client-1.21.1.txt')))
+				.withPropertyName('mojangMappings').optional()
+		outputs.file(runtimeMappings)
+		doFirst {
+			def tiny = new File(namespaceProbe, 'tiny-extract/mappings.tiny')
+			def client = new File(namespaceProbe, 'client-1.21.1.txt')
+			if (!tiny.isFile() || !client.isFile()) {
+				throw new GradleException("The runtime mapping table for ${mcLine} is a join of Fabric's intermediary " +
+						"tiny and Mojang's client mappings, which are not in this repository (Mojang's cannot be " +
+						"redistributed). Expected ${tiny} and ${client}; pass -Pforbric.namespaceProbe=<dir> or set " +
+						"FORBRIC_NAMESPACE_PROBE. See the header of tools/namespace/join-keyed.py.")
+			}
+			runtimeMappings.get().asFile.parentFile.mkdirs()
+			commandLine([nsPython, joinScript.absolutePath, runtimeMappings.get().asFile.absolutePath, '--full']
+					.collect { it.toString() })
+			if (project.hasProperty('forbric.namespaceProbe')) {
+				environment 'FORBRIC_NAMESPACE_PROBE', namespaceProbe.absolutePath
+			}
+		}
+	}
+
+	def auditRuntimeMappings = tasks.register('auditRuntimeMappings', JavaExec) {
+		group = 'verification'
+		description = "Replays every table record through KernelMappingResolver and fails if an answer differs."
+		dependsOn tasks.named('classes'), emitRuntimeMappings
+		classpath = sourceSets.main.runtimeClasspath
+		mainClass = 'net.forbric.kernel.fabric.MappingTableAudit'
+		// Declared as inputs so a regenerated table re-runs the audit instead of leaving it up to date against
+		// the previous answer set -- the same trap the `test` task documents for the game-side classes.
+		inputs.file(runtimeMappings).withPropertyName('runtimeMappings')
+		outputs.file(runtimeMappingsAnswers)
+		doFirst {
+			def table = runtimeMappings.get().asFile
+			systemProperty 'forbric.mappings', table.absolutePath
+			args = ['--table', table.absolutePath,
+					'--answers', runtimeMappingsAnswers.get().asFile.absolutePath]
+		}
+	}
+
+	tasks.register('verifyRuntimeMappings', Exec) {
+		group = 'verification'
+		description = "Adjudicates the resolver's answers for ${mcLine} against the merged base and its unpatched origin."
+		dependsOn auditRuntimeMappings
+		inputs.file(runtimeMappingsAnswers).withPropertyName('resolverAnswers')
+		inputs.files(namespaceBase).withPropertyName('mergedBase').optional()
+		inputs.files(namespaceOrigin).withPropertyName('unpatchedOrigin').optional()
+		outputs.file(runtimeMappingsRejects)
+		doFirst {
+			if (!namespaceBase.isFile()) {
+				throw new GradleException("Verifying the ${mcLine} mapping table needs that line's merged base " +
+						"(${namespaceBase}) to check the answers against. Run prepare for that line first.")
+			}
+			// The .pins sidecar is how an artifact says which line it is; the staging directory is shared and its
+			// filenames are not. A base from the other line would adjudicate every answer against the wrong game
+			// and the output would look like a mapping defect.
+			def pins = file("${namespaceBase}.pins")
+			if (pins.isFile()) {
+				def claim = pins.getText('UTF-8')
+				if (!claim.contains("mc=${mcLine}")) {
+					throw new GradleException("${namespaceBase} says it is not ${mcLine}: ${claim}. The staging " +
+							"directory is shared between lines and an unversioned filename can hold either line's " +
+							"bytes; refusing to verify a mapping table against the wrong game.")
+				}
+			}
+			if (!namespaceOrigin.isFile()) {
+				throw new GradleException("Verifying the ${mcLine} mapping table needs the UNPATCHED Mojmap jar " +
+						"the merged base was built from, to tell a patching difference apart from a wrong mapping: " +
+						"${namespaceOrigin} does not exist. Pass -Pforbric.namespaceOrigin=<jar>.")
+			}
+			commandLine([nsPython, verifyScript.absolutePath,
+					'--table', runtimeMappings.get().asFile.absolutePath,
+					'--answers', runtimeMappingsAnswers.get().asFile.absolutePath,
+					'--base', namespaceBase.absolutePath,
+					'--origin', namespaceOrigin.absolutePath,
+					'--label', mcLine,
+					'--rejects', runtimeMappingsRejects.get().asFile.absolutePath].collect { it.toString() })
+			if (project.hasProperty('forbric.namespaceProbe')) {
+				environment 'FORBRIC_NAMESPACE_PROBE', namespaceProbe.absolutePath
+			}
+		}
+	}
 }
 
 repositories {

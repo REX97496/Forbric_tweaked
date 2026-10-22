@@ -1,10 +1,11 @@
-# Emits the table KernelMappingResolver reads. THE MEMBER JOIN BELOW IS LOSSY -- see the note in
-# join-members.ps1 and tools/namespace/join-keyed.py, which produces the same C/M/F format with the
-# descriptor-keyed join (78,922/78,922 members, 0 ambiguous). Measured against the merged base, the table this
-# script writes maps 4,025 pairs of distinct intermediary members onto a single Mojmap member; the
-# descriptor-keyed table maps none. This script is left as it is so the numbers already recorded against its
-# output stay reproducible; switching the runtime table to the corrected join is its own change.
-# Emit the pre-joined mapping table that KernelMappingResolver reads via -Dforbric.mappings=<file>.
+# RETIRED AS THE RUNTIME PRODUCER. The table KernelMappingResolver reads is now written by the descriptor-keyed
+# join: `python tools/namespace/join-keyed.py <out> --full`, wired as the emitRuntimeMappings task in
+# forbric-kernel/build.gradle and verified there through the resolver and against the merged base. This script is
+# kept ONLY so the numbers already recorded against its output stay reproducible: measured against the merged
+# base its table names something that is not at the stated owner+signature 22,861 times and maps 3,830 distinct
+# intermediary members onto a single Mojmap member (join-keyed.py: 0 and 0). Do not emit a runtime table with it.
+#
+# Emit the pre-joined mapping table KernelMappingResolver reads via -Dforbric.mappings=<file>.
 #
 # The resolver deliberately does not parse tiny or client.txt itself: that would put build tooling on the startup
 # path and give it a second implementation to drift from the one the join scripts assert against. This emits the
