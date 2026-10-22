@@ -29,11 +29,22 @@ final class Pins {
 	private Pins() {
 	}
 
-	/** The only Minecraft version this generation supports. */
-	static final String MINECRAFT = "26.2";
+	/**
+	 * The Minecraft version this generation is built for.
+	 *
+	 * <p>Overridable with {@code -Dforbric.pin.minecraft}, defaulting to 26.2 so every existing invocation is
+	 * unchanged. The override exists because a second Minecraft line is a second set of pins, and none of them can
+	 * be guessed: {@link #FORGE} and {@link #NEOFORGE} are the exact builds whose bytes were validated, and a wrong
+	 * pair produces artifacts that build cleanly and then fail somewhere else.
+	 *
+	 * <p>Setting only this one is not enough -- the other pins have to name builds that exist for that version --
+	 * but a half-changed set is harmless rather than silently wrong, because {@code Pins.stamp()} keys the artifact
+	 * cache on the whole set: the stamps stop matching and everything rebuilds.
+	 */
+	static final String MINECRAFT = System.getProperty("forbric.pin.minecraft", "26.2");
 
 	/** MinecraftForge, in its own {@code <mc>-<fml>} coordinate form. */
-	static final String FORGE = "26.2-65.0.1";
+	static final String FORGE = System.getProperty("forbric.pin.forge", "26.2-65.0.1");
 
 	/**
 	 * NeoForge, on the first release line rather than a beta.
@@ -52,7 +63,7 @@ final class Pins {
 	 * mods-button redirect names, and which would have failed silently. {@code ForeignTypeCarrierTest} now checks
 	 * every such name against the carrier.
 	 */
-	static final String NEOFORGE = "26.2.0.88";
+	static final String NEOFORGE = System.getProperty("forbric.pin.neoforge", "26.2.0.88");
 
 	/**
 	 * NeoFormRuntime, pinned to the build actually validated rather than the newest published one.
