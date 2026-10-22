@@ -1,3 +1,9 @@
+# Emits the table KernelMappingResolver reads. THE MEMBER JOIN BELOW IS LOSSY -- see the note in
+# join-members.ps1 and tools/namespace/join-keyed.py, which produces the same C/M/F format with the
+# descriptor-keyed join (78,922/78,922 members, 0 ambiguous). Measured against the merged base, the table this
+# script writes maps 4,025 pairs of distinct intermediary members onto a single Mojmap member; the
+# descriptor-keyed table maps none. This script is left as it is so the numbers already recorded against its
+# output stay reproducible; switching the runtime table to the corrected join is its own change.
 # Emit the pre-joined mapping table that KernelMappingResolver reads via -Dforbric.mappings=<file>.
 #
 # The resolver deliberately does not parse tiny or client.txt itself: that would put build tooling on the startup

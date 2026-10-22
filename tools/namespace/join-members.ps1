@@ -1,3 +1,14 @@
+# MEMBER-LEVEL JOIN. Superseded for correctness by tools/namespace/join-keyed.py, and kept because the
+# assertions below (owners are real classes in the merged base) still hold and still run.
+#
+# KNOWN LIMITATION, MEASURED: this joins on (obfOwner, kind, obfName). One obfuscated class reuses a short obf
+# name for many methods that differ only in descriptor -- bsr.a alone covers 81 of them -- so 8,744 of 70,511
+# obf keys in client-1.21.1.txt carry more than one Mojmap name and the LAST one seen wins. Adding the
+# descriptor and the obf member name to the key joins 78,922 of 78,922 (100.0%) with 0 ambiguity; this script
+# reports 77,152 (97.7%) and, for 4,025 members, maps two intermediary names onto one Mojmap member, which a
+# correct mapping cannot do. join-keyed.py also fixes two silent traps this file still has: client.txt writes
+# a DOTTED class name in the obf column for the 34 classes Minecraft does not obfuscate (454 members), and the
+# `10:10:` line-range prefix on method lines must be stripped before the return type is parsed.
 # Member-level join, with the tiny v2 field order MEASURED rather than assumed.
 #
 # The previous attempt read tiny member lines as [marker, obf, intermediary] and got 1,738 unique "member names"

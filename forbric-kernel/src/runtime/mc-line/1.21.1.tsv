@@ -130,6 +130,28 @@ net.minecraftforge.event.entity.player.CriticalHitEvent.BUS	net.minecraftforge.c
 net.minecraftforge.event.CommandEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.event.AnvilUpdateEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 
+# --- AXIS 3: the one genuine fabric-api rename --------------------------------------------------------
+# ContainerStorage (fabric-transfer-api-v1 8.0.11, the 26.2 line) -> InventoryStorage (0.116.17, 1.21.1).
+# Same package net.fabricmc.fabric.api.transfer.v1.item, same shape: both SlottedStorage<ItemVariant>, both
+# of(Container, Direction) + getSlots() + getSlotCount() + getSlot(int). MUTUALLY EXCLUSIVE, checked by
+# listing both jars rather than by reading a changelog: 26.2's module contains ContainerStorage.class and no
+# InventoryStorage.class; 1.21.1's contains InventoryStorage.class and no ContainerStorage.class.
+#
+# THIS ENTRY WAS DELIBERATELY ABSENT FOR TWO ROUNDS, and it is a rule only now that its precondition holds.
+# While the 1.21.1 fabric-api modules were still intermediary-remapped, InventoryStorage.of took
+# (net.minecraft.class_1263, net.minecraft.class_2350), so substituting the name moved three "cannot find
+# symbol ContainerStorage" into three "incompatible types: Container cannot be converted to class_1263" --
+# same total, different bucket, with the real gap hidden behind a rename that looks like a fix.
+# remapTransferApis now rewrites those modules out of intermediary, and javap on the REMAPPED 1.21.1 module
+# shows what the call sites actually need:
+#
+#     public static net.fabricmc.fabric.api.transfer.v1.item.InventoryStorage
+#         of(net.minecraft.world.Container, net.minecraft.core.Direction);
+#
+# Both KernelFabricHopperStorage call sites pass a Mojmap Container (HopperBlockEntity / Hopper) and a Mojmap
+# Direction, so they satisfy that signature. Measured effect of this one line: 3 errors, see the axis-3 note.
+ContainerStorage	InventoryStorage
+
 # SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
 #
 #   SpawnPlacementRegisterEvent.BUS          implements net.minecraftforge.fml.event.IModBusEvent
@@ -234,19 +256,19 @@ net.minecraftforge.event.AnvilUpdateEvent.BUS	net.minecraftforge.common.Minecraf
 # splitter calls "axis 3" is NeoForge-transfer errors plus Team Reborn Energy errors; the fabric transfer API
 # itself contributes three ContainerStorage errors and a staging problem.
 #
-# WHY ContainerStorage -> InventoryStorage IS DELIBERATELY NOT A RULE. Applying it is measurably a lateral
-# move. 1.21.1's
+# ContainerStorage -> InventoryStorage WAS DELIBERATELY NOT A RULE, AND NOW IT IS ONE (above). Applying it
+# first was measurably a lateral move. At the time, 1.21.1's
 #
 #     public static net.fabricmc.fabric.api.transfer.v1.item.InventoryStorage
-#         of(net.minecraft.class_1263, net.minecraft.class_2350);        (javap)
+#         of(net.minecraft.class_1263, net.minecraft.class_2350);        (javap, INTERMEDIARY names)
 #
-# takes INTERMEDIARY names. The kernel calls `ContainerStorage.of(container, Direction.UP)` with Mojmap types,
-# so after the substitution the three "cannot find symbol ContainerStorage" become three "incompatible types:
-# Container cannot be converted to class_1263" -- same total, different bucket -- and the real gap stays
-# hidden behind a rename that looks like a fix. The gap is that the 1.21.1 fabric-api modules are
-# intermediary-remapped: the same cause produces the 20 `class_1937 / class_2248 / class_2338 / class_2350 /
-# class_1792 / class_1935 / class_3611 / class_9326` errors. The fix is to remap those three modules to
-# Mojmap (tools/namespace/ already builds the table), not to rename a type.
+# took intermediary types, so the three "cannot find symbol ContainerStorage" would have become three
+# "incompatible types: Container cannot be converted to class_1263" -- same total, different bucket -- with
+# the real gap hidden. The gap was that the 1.21.1 fabric-api modules are intermediary-remapped, which is also
+# what produced the 8 `class_1937 / class_2248 / class_2338 / class_2350 / class_1792 / class_1935 /
+# class_3611 / class_9326` "cannot access" errors. `remapTransferApis` (build.gradle, gated on mcLine) rewrites
+# those three modules to Mojmap before the runtime set compiles against them, from the declared table
+# src/runtime/mc-line/1.21.1-fabric-ns.tsv; after that the substitution is a rename and not a swap.
 #
 # TEAM REBORN ENERGY IS A STAGING DEFECT, NOT AN API DIFFERENCE. All 12 classes of
 # .dev/api/energy-5.0.0.jar are class-file 69 (Java 25), and a JDK-21 `--release 21` javac cannot read the jar

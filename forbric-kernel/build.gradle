@@ -78,6 +78,28 @@ def extractTransferApis = tasks.register('extractTransferApis', Sync) {
 	}
 }
 def transferModuleFiles = files(fileTree(transferModulesDir) { include '*.jar' }).builtBy(extractTransferApis)
+
+// -------------------------------------------------------------------------------------------------------
+// Which transfer modules the game side compiles against
+// -------------------------------------------------------------------------------------------------------
+// On 26.2 these are the modules exactly as fabric-api publishes them. On a line whose fabric-api modules are
+// still INTERMEDIARY-remapped they are those same modules with their class contents AND their jar entry names
+// rewritten to Mojmap by remapTransferApis -- without that, every fabric signature that mentions a Minecraft
+// type names net/minecraft/class_1799, which does not exist in the line's Mojmap jar, and no Mojmap source set
+// can read it. The line is read HERE, above the source set below, so the 26.2 branch is the same file
+// collection it always was and its build graph does not gain a task.
+//
+// The line itself (and why it is a declared property rather than an inference) is explained under
+// "The Minecraft line: one source tree, two sets of class names" further down.
+def mcLineDefault = '26.2'
+def mcLine = (project.findProperty('forbric.mcLine')
+		?: System.getenv('FORBRIC_MC_VERSION')
+		?: mcLineDefault).toString()
+def fabricNsTable = file("src/runtime/mc-line/${mcLine}-fabric-ns.tsv")
+def remappedTransferDir = layout.buildDirectory.dir("transfer-api-mc/${mcLine}")
+def transferJarsForLine = mcLine == mcLineDefault
+		? transferModuleFiles
+		: files(fileTree(remappedTransferDir) { include '*.jar' }).builtBy('remapTransferApis')
 // Team Reborn Energy 5.0.0 (mod id team_reborn_energy, MIT), the energy API Fabric mods use: Fabric API has none.
 // The energy half of the transfer component compiles against it and, like the transfer modules, it is never bundled:
 // a pack that wants Fabric energy installs it as an ordinary mod. Same rule as above: a machine that builds the game
@@ -184,8 +206,8 @@ sourceSets {
 	// the build script to run, and `compileRuntimeJava` / `test` skip it so M0 (boot-side only) still builds.
 	runtime {
 		java { srcDir 'src/runtime/java' }
-		compileClasspath += sourceSets.main.output + files(stagedGameJars) + files(stagedMcLibraries) + transferModuleFiles + files(stagedRebornEnergy)
-		runtimeClasspath += sourceSets.main.output + files(stagedGameJars) + files(stagedMcLibraries) + transferModuleFiles + files(stagedRebornEnergy)
+		compileClasspath += sourceSets.main.output + files(stagedGameJars) + files(stagedMcLibraries) + transferJarsForLine + files(stagedRebornEnergy)
+		runtimeClasspath += sourceSets.main.output + files(stagedGameJars) + files(stagedMcLibraries) + transferJarsForLine + files(stagedRebornEnergy)
 	}
 	transferTest {
 		java { srcDir 'src/transferTest/java' }
@@ -245,10 +267,7 @@ sourceSets {
 //
 // The line comes from -Pforbric.mcLine, then FORBRIC_MC_VERSION (the variable tools/dev.py already reads), then
 // 26.2. A line with no table is a hard failure naming the file, never a silent identity build.
-def mcLineDefault = '26.2'
-def mcLine = (project.findProperty('forbric.mcLine')
-		?: System.getenv('FORBRIC_MC_VERSION')
-		?: mcLineDefault).toString()
+// mcLine and mcLineDefault are declared above the transfer-module wiring, which needs them first.
 def mcLineRenames = file("src/runtime/mc-line/${mcLine}.tsv")
 def mcLineJava = layout.buildDirectory.dir("generated/mc-line/${mcLine}/java")
 def normalizeRuntimeJava = null
@@ -328,6 +347,75 @@ if (mcLine != mcLineDefault) {
 	sourceSets.runtime.java.srcDir(mcLineJava)
 	tasks.named('compileRuntimeJava') { dependsOn normalizeRuntimeJava }
 	logger.lifecycle("[forbric] Minecraft line ${mcLine}: runtime sources are normalised through ${mcLineRenames.name}")
+
+	// ---------------------------------------------------------------------------------------------------
+	// The line's fabric-api modules, remapped out of intermediary
+	// ---------------------------------------------------------------------------------------------------
+	//
+	// fabric-api publishes its modules INTERMEDIARY-remapped: `ItemVariant.of(class_1799)`, `Storage`,
+	// `ItemStorage.SIDED.find(Level, class_2338, class_2350)`. None of those Minecraft classes exists in this
+	// line's jar, so no Mojmap source can read a fabric signature that mentions one -- measured as 8 "cannot
+	// access class_XXXX / class file for ... not found" errors on the 1.21.1 kernel, plus the reason the one
+	// genuine fabric rename (ContainerStorage -> InventoryStorage) could not be applied: substituting the name
+	// would have turned three "cannot find symbol" errors into three "incompatible types" errors, same total
+	// and the real gap hidden behind it.
+	//
+	// So the modules are rewritten before they are compiled against: class names, entry names, and the member
+	// names that the table in src/runtime/mc-line/<line>-fabric-ns.tsv declares. The table is generated, not
+	// guessed -- tools/namespace/join-keyed.py joins Fabric's intermediary tiny against Mojang's client
+	// mappings on (owner, kind, obf name, obf descriptor) and covers the closure the modules need; a name it
+	// does not have is reported by the task and fails the build rather than being left interstitial.
+	//
+	// STILL INTERMEDIARY, DELIBERATELY: the string-valued mixin selectors (@Inject(method = "..."), @At
+	// target, @Shadow field names). fabric-api writes those in yarn names and translates them through a refmap
+	// at runtime; they are inert for javac, and these jars are compile-time only -- the game side still links
+	// against the fabric modules the pack installs, and nothing in build/transfer-api-mc is ever loaded.
+	sourceSets.create('nsremap') {
+		java { srcDir 'src/nsremap/java' }
+	}
+	dependencies {
+		add('nsremapImplementation', "org.ow2.asm:asm:${project.asm_version}")
+		add('nsremapImplementation', "org.ow2.asm:asm-commons:${project.asm_version}")
+		add('nsremapImplementation', "org.ow2.asm:asm-tree:${project.asm_version}")
+	}
+	def nsremapReport = layout.buildDirectory.file("transfer-api-mc/${mcLine}-report.txt")
+	def remapTransferApis = tasks.register('remapTransferApis', JavaExec) {
+		group = 'build'
+		description = "Rewrites the extracted fabric-api modules from Fabric intermediary to ${mcLine}'s own class names."
+		dependsOn extractTransferApis
+		classpath = sourceSets.nsremap.runtimeClasspath
+		mainClass = 'net.forbric.nsremap.NamespaceRemapper'
+		inputs.file(fabricNsTable).withPropertyName('fabricNamespaceTable')
+		inputs.files(transferModuleFiles).withPropertyName('intermediaryModules')
+		// The Mojmap jar the result is verified against, and the source of the class hierarchy the remapper
+		// walks. Optional as an INPUT because a machine with no staged jars must still configure and fail
+		// with a message rather than at snapshot time.
+		inputs.files(file(stagedMergedBase)).withPropertyName('mojmapBase').optional()
+		outputs.dir(remappedTransferDir)
+		outputs.file(nsremapReport)
+		doFirst {
+			if (!fabricNsTable.isFile()) {
+				throw new GradleException("Minecraft ${mcLine}'s fabric-api modules are intermediary-remapped and " +
+						"need ${fabricNsTable} to be remapped to Mojmap, but it is absent. Generate it with " +
+						"tools/namespace/join-keyed.py (see the header for its inputs), or pass " +
+						"-Pforbric.mcLine=" + mcLineDefault + ".")
+			}
+			if (!stagedMergedBase.isFile()) {
+				throw new GradleException("Remapping the fabric-api modules for ${mcLine} needs that line's " +
+						"Mojmap jar to verify against and to read the class hierarchy from: ${stagedMergedBase} " +
+						"does not exist. Run prepare for that line first.")
+			}
+			// The directory is entirely this task's output; a module that disappears upstream must not leave
+			// its remapped jar behind for the classpath to pick up.
+			remappedTransferDir.get().asFile.deleteDir()
+			args = ['--table', fabricNsTable.absolutePath,
+					'--base', stagedMergedBase.absolutePath,
+					'--in', transferModulesDir.get().asFile.absolutePath,
+					'--out', remappedTransferDir.get().asFile.absolutePath,
+					'--report', nsremapReport.get().asFile.absolutePath]
+		}
+	}
+	logger.lifecycle("[forbric] Minecraft line ${mcLine}: fabric-api modules are remapped to Mojmap before compiling")
 }
 
 repositories {
