@@ -74,6 +74,199 @@ net.minecraft.client.particle.ParticleResources	net.minecraft.client.particle.Pa
 ParticleResources	ParticleEngine
 
 # =====================================================================================================
+# AXIS 2 -- Forge/NeoForge 26.x API, measured against 1.21.1
+# =====================================================================================================
+#
+# EventBus 7 gives every event class its own static typed bus (`X.BUS`). EventBus 6.2.33 has no such field
+# anywhere; the same event is posted on the one game bus, whose declaration was read out of the staged 1.21.1
+# forge-runtime.jar:
+#
+#     public static final net.minecraftforge.eventbus.api.IEventBus EVENT_BUS;
+#                                         (net.minecraftforge.common.MinecraftForge)
+#
+# Each rule below is therefore a claim that THIS event belongs on the game bus on 1.21.1 -- not "BUS lives
+# somewhere else". The claim was measured per event, two ways, before the rule was written:
+#
+#   (a) the event does not implement `net.minecraftforge.fml.event.IModBusEvent` on 1.21.1 (javap), and
+#   (b) where the Forge hook is reachable, its bytecode posts it with
+#       `getstatic net/minecraftforge/common/MinecraftForge.EVENT_BUS` (javap -c, method-level):
+#         ForgeEventFactory        LivingHealEvent, PermissionsChangedEvent, BlockEvent$EntityPlaceEvent,
+#                                  EntityEvent$EnteringSection, MobSpawnEvent$FinalizeSpawn
+#         ForgeHooks               CriticalHitEvent, AnvilUpdateEvent, BlockEvent$BreakEvent,
+#                                  LivingEvent$LivingVisibilityEvent
+#         ServerLifecycleHooks     ServerAboutToStartEvent
+#         ClientCommandHandler     RegisterClientCommandsEvent
+#         ForgeHooksClient         ScreenEvent$Render$Pre/Post, ViewportEvent$RenderFog,
+#                                  ViewportEvent$ComputeFogColor
+#         ForgeEventFactoryClient  ScreenEvent$MouseButtonPressed$Pre, MouseButtonReleased$Pre
+#
+# Both spellings appear where the sources use both, because the substitution is textual: a rule written for
+# the short form would otherwise fire inside the fully qualified one. Longest-first ordering is what keeps
+# that honest, and a rule that matches nothing fails the build.
+MobSpawnEvent.FinalizeSpawn.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.event.level.BlockEvent.EntityPlaceEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickItem.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickBlock.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.event.entity.player.PlayerInteractEvent.LeftClickBlock.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.event.entity.player.PlayerInteractEvent.EntityInteractSpecific.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+BlockEvent.BreakEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.client.event.ScreenEvent.Init.Pre.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.client.event.ScreenEvent.Init.Post.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.client.event.ScreenEvent.Render.Pre.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.client.event.ScreenEvent.Render.Post.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+ScreenEvent.MouseButtonPressed.Pre.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+ScreenEvent.MouseButtonReleased.Pre.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.client.event.InputEvent.InteractionKeyMappingTriggered.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.client.event.ViewportEvent.RenderFog.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.client.event.ViewportEvent.ComputeFogColor.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.client.event.ComputeFovModifierEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.client.event.RegisterClientCommandsEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.event.server.ServerAboutToStartEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.event.entity.living.LivingExperienceDropEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.event.entity.living.LivingHealEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.event.entity.living.MobEffectEvent.Applicable.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.event.entity.player.PermissionsChangedEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.event.entity.player.CriticalHitEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.event.CommandEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+net.minecraftforge.event.AnvilUpdateEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+
+# SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
+#
+#   SpawnPlacementRegisterEvent.BUS          implements net.minecraftforge.fml.event.IModBusEvent
+#   RegisterClientReloadListenersEvent.BUS   implements net.minecraftforge.fml.event.IModBusEvent   (javap)
+#       Both fire on the MOD event bus. In 6.2.33 that bus has NO name: it is reached through
+#       FMLJavaModLoadingContext.get().getModEventBus(), an expression, and this file maps names. Pointing
+#       them at EVENT_BUS would compile and silently deliver the event to nobody -- the exact failure mode
+#       this tail exists to prevent.
+#   EntityEvent.EnteringSection.BUS          called as `.BUS.hasListeners()`.
+#   LivingEvent.LivingVisibilityEvent.BUS    Same. net.minecraftforge.eventbus.api.IEventBus in 6.2.33 has no
+#       hasListeners() at all (javap: register, addListener x4, addGenericListener x4, unregister, post x2,
+#       fire x2, shutdown, start). Rewriting the receiver would trade "cannot find symbol BUS" for "cannot
+#       find symbol hasListeners" -- one error for another, which is not a fix and would move the error out of
+#       this axis's count for no reason.
+#   AttachCapabilitiesEvent.{Levels,Entities,BlockEntities}.BUS
+#       Those three inner classes do not exist on 1.21.1. This is the 26.x capability-provider split already
+#       recorded in docs/1.21.1-port.md stage 3 (1.21.1 CapabilityProvider has 2 inner classes, 26.2 has 7).
+
+# --- measured absent, with no same-simple-name counterpart anywhere in 1.21.1 -----------------------
+# Every class in the staged 1.21.1 jars was indexed (12,505) and searched by simple name for each of these
+# (build/x11/find-counterparts.py). At most four candidates came back per name and each was a different
+# concept. These are a whole API generation, not a spelling.
+#
+#   net.minecraftforge.eventbus.api.bus.BusGroup    EventBus 7 only. `BusGroup.create(...)` + `.startup()`
+#                                                   (KernelForgeContainers, KernelForgeSetup,
+#                                                   KernelForgeRegistries) is 7's group lifecycle; 1.21.1 has
+#                                                   IEventBus and no BusGroup.
+#   net.neoforged.neoforgespi.transformation.*      absent. 1.21.1 transforms through modlauncher:
+#   net.neoforged.fml.classloading.transformation.* cpw.mods.modlauncher.TransformingClassLoader and
+#                                                   cpw.mods.modlauncher.ClassTransformer are its classes, and
+#                                                   that is a different platform, not a rename.
+#   net.neoforged.fml.loading.mixin.FMLMixinClassProcessor        26.x only.
+#   net.neoforged.fml.jarcontents.JarContents       26.x only; no jarcontents package on 1.21.1.
+#   net.neoforged.neoforge.common.tooltip.*         26.x tooltip rework (ItemTooltipHandler, TooltipAppender,
+#   net.neoforged.neoforge.event.RegisterTooltipAppendersEvent   TooltipLocation). 1.21.1 appends tooltips
+#                                                   through its item-extension/RenderTooltip path; there is no
+#                                                   equivalent package.
+#   net.neoforged.neoforge.resource.NeoForgeReloadListeners, .resource.ListenerKey,
+#   net.neoforged.neoforge.resource.VanillaServerListeners,
+#   net.neoforged.neoforge.client.resources.VanillaClientListeners
+#       The KEYED listener registry is 26.x. See the ordered-listener note below.
+#   net.neoforged.neoforge.event.AddServerReloadListenersEvent,
+#   net.neoforged.neoforge.client.event.AddClientReloadListenersEvent
+#       26.x sorted-listener events: the kernel calls `SortedReloadListenerEvent.addListener(key, listener,
+#       order)`. 1.21.1 HAS the older pair -- net.neoforged.neoforge.client.event.
+#       RegisterClientReloadListenersEvent (registerReloadListener, no ordering) and
+#       net.neoforged.neoforge.event.AddReloadListenerEvent -- so the event exists and the ORDERED API does
+#       not. That is a design difference (the kernel depends on listener order), not a rename.
+#   net.minecraftforge.common.util.Result            absent: 1.21.1's common.util has 90 classes and neither
+#                                                   Result nor TriState. The kernel's use is the
+#                                                   TriState<->Result bridge, and 26.2's
+#                                                   net.minecraft.util.TriState is itself absent on 1.21.1, so
+#                                                   the cluster is blocked on axis 1, not on this name.
+#   net.neoforged.neoforge.event.entity.player.AnvilCraftEvent   26.x added Pre/Post craft events; 1.21.1's
+#                                                   AnvilUpdateEvent is a different event, not a new name.
+#   net.neoforged.neoforge.event.level.block.BreakBlockEvent     THE ONE REAL RENAME IN THIS LIST, and still
+#       not a rule. 26.x un-nested the class; 1.21.1's is
+#       net.neoforged.neoforge.event.level.BlockEvent$BreakEvent, and javap shows the SAME constructor
+#       (Level, BlockPos, BlockState, Player), the SAME getPlayer()/setCanceled(boolean) and the same
+#       superclass, so the three call sites would compile. It is left out because a name rule cannot express
+#       the target cleanly: it is a NESTED class, and the file using it already imports a DIFFERENT
+#       `BlockEvent` (net.minecraftforge.event.level.BlockEvent) and writes `BlockEvent.BreakEvent` for the
+#       MinecraftForge event a few lines later. The only spelling that works is the `$` form,
+#       net.neoforged.neoforge.event.level.BlockEvent$BreakEvent, which does compile but puts a `$`-nested
+#       type into source that never otherwise uses one -- for three errors. Written down instead of ruled,
+#       so the next agent does not have to re-derive that the rename exists.
+#   net.neoforged.neoforge.fluids.InFluidPredicate   26.x only.
+#   net.neoforged.neoforge.network.payload.RecipeContentPayload  26.x payload protocol; no 1.21.1 equivalent.
+#   net.neoforged.neoforge.client.model.UnbakedModelParser       26.x only.
+#   net.minecraftforge.client.gui.overlay.ForgeLayer no overlay-layer API before 26.x; the same axis-1
+#                                                   Hud/Gui split as the entry in the tail above.
+#   net.minecraftforge.client.event.RegisterPictureInPictureRendererEvent
+#   net.neoforged.neoforge.client.gui.PictureInPictureRendererRegistration
+#       Both belong to 26.x's picture-in-picture pipeline, and 1.21.1 has no
+#       net.minecraft.client.gui.render.pip package at all (axis 1 tail above).
+#   net.neoforged.neoforge.transfer.{ResourceHandler, item.ItemResource, item.VanillaContainerWrapper,
+#       fluid.FluidResource, energy.EnergyHandler, transaction.TransactionContext,
+#       transaction.SnapshotJournal, resource.Resource}
+#       NeoForge's OWN transfer API, added after 1.21.1: there is no net.neoforged.neoforge.transfer package in
+#       the 1.21.1 jars at all. This is the largest error group in both axes and it is a whole API generation.
+#       It is NOT the fabric transfer axis -- see AXIS 3 below, where that claim is measured.
+
+# =====================================================================================================
+# AXIS 3 -- fabric-api transfer 0.116.17 vs 8.0.11, and Team Reborn Energy
+# =====================================================================================================
+#
+# THE PREMISE DOES NOT HOLD, MEASURED RATHER THAN ARGUED. The 26.2 and 1.21.1 transfer modules were extracted
+# separately (build/x11/transfer-26.2/, build/x11/transfer-1.21.1/) and their class lists diffed:
+#
+#     fabric-transfer-api-v1      26.2: 131 classes      1.21.1: 115 classes
+#     present on BOTH: ItemVariant, FluidVariant, Storage, StorageView, Transaction, TransactionContext,
+#                      ContainerItemContext, FluidStorage, ItemStorage, PlayerInventoryStorage,
+#                      SingleVariantStorage, SnapshotParticipant, ResourceAmount, ...
+#     renamed:         ContainerStorage (26.2) -> InventoryStorage (1.21.1), same package
+#                      net.fabricmc.fabric.api.transfer.v1.item, same shape -- both extend
+#                      SlottedStorage<ItemVariant> and both have of(Container, Direction) + getSlots() +
+#                      getSlotCount() + getSlot(int) (javap on both jars).
+#
+# So `ItemVariant`/`FluidVariant`/`Storage` are NOT 26.2-only names, and `ItemResource`/`FluidResource`/
+# `ResourceHandler`/`EnergyHandler`/`TransactionContext` are NOT fabric names at all -- they come from
+# net.neoforged.neoforge.transfer.*, which is why they appear in the axis-2 list above. What the error
+# splitter calls "axis 3" is NeoForge-transfer errors plus Team Reborn Energy errors; the fabric transfer API
+# itself contributes three ContainerStorage errors and a staging problem.
+#
+# WHY ContainerStorage -> InventoryStorage IS DELIBERATELY NOT A RULE. Applying it is measurably a lateral
+# move. 1.21.1's
+#
+#     public static net.fabricmc.fabric.api.transfer.v1.item.InventoryStorage
+#         of(net.minecraft.class_1263, net.minecraft.class_2350);        (javap)
+#
+# takes INTERMEDIARY names. The kernel calls `ContainerStorage.of(container, Direction.UP)` with Mojmap types,
+# so after the substitution the three "cannot find symbol ContainerStorage" become three "incompatible types:
+# Container cannot be converted to class_1263" -- same total, different bucket -- and the real gap stays
+# hidden behind a rename that looks like a fix. The gap is that the 1.21.1 fabric-api modules are
+# intermediary-remapped: the same cause produces the 20 `class_1937 / class_2248 / class_2338 / class_2350 /
+# class_1792 / class_1935 / class_3611 / class_9326` errors. The fix is to remap those three modules to
+# Mojmap (tools/namespace/ already builds the table), not to rename a type.
+#
+# TEAM REBORN ENERGY IS A STAGING DEFECT, NOT AN API DIFFERENCE. All 12 classes of
+# .dev/api/energy-5.0.0.jar are class-file 69 (Java 25), and a JDK-21 `--release 21` javac cannot read the jar
+# at all:
+#
+#     error: bad class file: .../energy-5.0.0.jar(team/reborn/energy/api/EnergyStorage.class)
+#         class file has wrong version 69.0, should be 65.0
+#
+# Every `team.reborn.energy.*` reference then fails as `cannot find symbol`, which is 24 of the errors the
+# splitter calls axis 3. Handled OUTSIDE this table, because it is not a name: the jar's class-file version is
+# retargeted to 65 with every other byte identical (build/x11/retarget-jar.py: 12 classes, bytes 0-5 and
+# 8-end compared equal), and the ABI is then proven unchanged by the repository's own check --
+#
+#     gradlew verifyRebornEnergy -Pforbric.rebornEnergy=build/x11/energy-5.0.0-j21.jar
+#     -> API binary contract verified
+#
+# Measured effect of that alone: 608 -> 587 total, axis3 166 -> 142. The 1.21.1 line still needs a real
+# Java-21 build of that jar; the retarget is a local staging repair, not a substitute for one.
+
+# =====================================================================================================
 # DELIBERATELY ABSENT -- measured as absent from 1.21.1 and NOT a rename. These need the code restructured,
 # which changes 26.2 too, so they are not table entries. Adding one of them here makes the build compile and
 # the behaviour wrong.
