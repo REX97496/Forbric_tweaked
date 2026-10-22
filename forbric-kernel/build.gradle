@@ -219,6 +219,117 @@ sourceSets {
 	}
 }
 
+// -------------------------------------------------------------------------------------------------------
+// The Minecraft line: one source tree, two sets of class names
+// -------------------------------------------------------------------------------------------------------
+//
+// The runtime sources are written in the 26.2 namespace. A second line cannot share them and cannot be served
+// by renaming them either, because the names are MUTUALLY EXCLUSIVE rather than merely different:
+//
+//     net.minecraft.resources.Identifier       26.2=PRESENT  1.21.1=absent
+//     net.minecraft.resources.ResourceLocation 26.2=absent   1.21.1=PRESENT
+//
+// Whichever spelling is written into the sources, the other line stops compiling. That was measured against
+// both staged merged bases (10,973 vs 10,978 classes), not inferred from a changelog; the same probe covers
+// every entry in the table below.
+//
+// So the second line gets an explicit, reviewable rename table applied to a COPY of the sources at build time:
+// src/runtime/mc-line/<line>.tsv. This is the compile-time twin of what ForbricMappings already does to
+// bytecode at runtime -- a declared table, not behaviour hidden in a task -- and it is the only mechanism that
+// carries type positions (118 of the 136 `Identifier` occurrences are declarations, generics or `.class`
+// literals; no wrapper can absorb those without rewriting every vanilla call that takes or returns one).
+//
+// NOTHING HAPPENS ON 26.2. The task and the srcDir swap are inside `if (mcLine != mcLineDefault)`, so the
+// default build's source dir is still src/runtime/java and no extra task joins its graph: a 26.2 build is the
+// same build it was before this block existed.
+//
+// The line comes from -Pforbric.mcLine, then FORBRIC_MC_VERSION (the variable tools/dev.py already reads), then
+// 26.2. A line with no table is a hard failure naming the file, never a silent identity build.
+def mcLineDefault = '26.2'
+def mcLine = (project.findProperty('forbric.mcLine')
+		?: System.getenv('FORBRIC_MC_VERSION')
+		?: mcLineDefault).toString()
+def mcLineRenames = file("src/runtime/mc-line/${mcLine}.tsv")
+def mcLineJava = layout.buildDirectory.dir("generated/mc-line/${mcLine}/java")
+def normalizeRuntimeJava = null
+
+if (mcLine != mcLineDefault) {
+	normalizeRuntimeJava = tasks.register('normalizeRuntimeJava', Sync) {
+		group = 'build'
+		description = "Rewrites the runtime sources into Minecraft ${mcLine}'s own class names (see ${mcLineRenames.name})."
+		from 'src/runtime/java'
+		into mcLineJava
+		// inputs.files, not inputs.file: @InputFile requires the file to exist and Gradle then fails at snapshot
+		// time with "an input file was expected to be present", which names the file but not the two ways out of
+		// it. @InputFiles does not require existence, so the doLast throw below can state both -- and an edit to
+		// the table still invalidates this task.
+		inputs.files(mcLineRenames).withPropertyName('mcLineRenames')
+		doLast {
+			if (!mcLineRenames.isFile()) {
+				throw new GradleException("Minecraft ${mcLine} has no rename table: ${mcLineRenames} is absent. " +
+						"Add one following the format documented inside it, or pass -Pforbric.mcLine=" + mcLineDefault + ".")
+			}
+			// [from, to] in file order; applied longest-name-first so a fully-qualified rule always beats its
+			// own simple name (`net.minecraft.resources.Identifier` before `Identifier`).
+			def rules = []
+			mcLineRenames.eachLine('UTF-8') { String raw ->
+				def line = raw.trim()
+				if (line.isEmpty() || line.startsWith('#')) return
+				def parts = raw.split('\t')
+				if (parts.length != 2 || parts[0].isEmpty() || parts[1].isEmpty()) {
+					throw new GradleException("${mcLineRenames}: not '<from>TAB<to>': ${raw}")
+				}
+				rules << [parts[0], parts[1]]
+			}
+			rules.sort { a, b -> b[0].length() <=> a[0].length() }
+			def hits = new LinkedHashMap<String, Integer>()
+			rules.each { hits[it[0]] = 0 }
+
+			def sourceRoot = file('src/runtime/java').toPath()
+			def outputRoot = mcLineJava.get().asFile
+			fileTree('src/runtime/java').files.sort { it.path }.each { File source ->
+				def text = source.getText('UTF-8')
+				rules.each { rule ->
+					// Whole-token only: `Identifier` must not reach inside `KernelIdentifier`, and `identifier()`
+					// must not become `location()` inside a longer name.
+					def pattern = java.util.regex.Pattern.compile(
+							'(?<![A-Za-z0-9_$])' + java.util.regex.Pattern.quote(rule[0]) + '(?![A-Za-z0-9_$])')
+					def matcher = pattern.matcher(text)
+					def buffer = new StringBuffer()
+					int count = 0
+					while (matcher.find()) {
+						matcher.appendReplacement(buffer, java.util.regex.Matcher.quoteReplacement(rule[1]))
+						count++
+					}
+					matcher.appendTail(buffer)
+					if (count > 0) {
+						text = buffer.toString()
+						hits[rule[0]] = hits[rule[0]] + count
+					}
+				}
+				File target = new File(outputRoot, sourceRoot.relativize(source.toPath()).toString())
+				target.parentFile.mkdirs()
+				target.setText(text, 'UTF-8')
+			}
+			// A rule that matched nothing is stale -- the source moved on, or the entry was always wrong. It is
+			// an error rather than a no-op because the failure it would otherwise cause is a compile error on
+			// the other line, which reads as an engine difference for a whole afternoon.
+			def unused = hits.findAll { entry -> entry.value == 0 }.collect { entry -> entry.key }
+			if (!unused.isEmpty()) {
+				throw new GradleException("${mcLineRenames}: ${unused.size()} rule(s) matched nothing in src/runtime/java: "
+						+ "${unused}. Either the symbol is gone from the sources or its 26.2 spelling changed.")
+			}
+			hits.each { name, count ->
+				logger.lifecycle("[forbric] mc-line ${mcLine}: ${count}x ${name}")
+			}
+		}
+	}
+	sourceSets.runtime.java.setSrcDirs([])
+	sourceSets.runtime.java.srcDir(mcLineJava)
+	tasks.named('compileRuntimeJava') { dependsOn normalizeRuntimeJava }
+	logger.lifecycle("[forbric] Minecraft line ${mcLine}: runtime sources are normalised through ${mcLineRenames.name}")
+}
+
 repositories {
 	maven {
 		name = 'Fabric'

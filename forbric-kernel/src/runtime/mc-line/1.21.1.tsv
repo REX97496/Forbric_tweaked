@@ -1,0 +1,112 @@
+# Forbric kernel -- Minecraft-line rename table for 1.21.1
+#
+# The runtime source set (src/runtime/java) is written in the 26.2 namespace. A second Minecraft line gets
+# the table below applied at build time, because every entry here is a MUTUALLY EXCLUSIVE name: it exists on
+# one line and does not exist on the other. Re-measure, do not trust this sentence:
+#
+#     python build/x11/probe.py net.minecraft.resources.ResourceLocation net.minecraft.resources.Identifier
+#
+#     net.minecraft.resources.ResourceLocation    1.21.1=PRESENT  26.2=absent
+#     net.minecraft.resources.Identifier          1.21.1=absent   26.2=PRESENT
+#
+# So no single spelling compiles on both lines, and a blanket rename in the sources is not available. Each
+# entry below was checked in BOTH directions against the staged merged bases
+# (forbric-kernel/.dev/staged-1211/run/merged-base/ for 1.21.1, forbric-kernel/run/merged-base/ for 26.2)
+# and, where a member is involved, against the method signature with `javap`.
+#
+# Format: <26.2 name> TAB <1.21.1 name>   ('#' starts a comment; blank lines ignored)
+# Rules are applied longest-first and whole-token only ((?<![A-Za-z0-9_$]) ... (?![A-Za-z0-9_$])), so
+# `Identifier` never reaches inside `KernelIdentifier` and a fully-qualified rule always wins over its own
+# simple name. The build FAILS if a rule matches nothing, so a table entry that has gone stale is an error
+# rather than a silent no-op.
+
+# --- ResourceLocation ---------------------------------------------------------------------------------
+# Mojang renamed ResourceLocation -> Identifier in 26.x. Same class, same members: parse, tryParse,
+# tryBuild, fromNamespaceAndPath, withDefaultNamespace, getNamespace, getPath all exist on both sides
+# (javap, 1.21.1 ResourceLocation / 26.2 Identifier).
+net.minecraft.resources.Identifier	net.minecraft.resources.ResourceLocation
+Identifier	ResourceLocation
+
+# --- ResourceKey#identifier() -------------------------------------------------------------------------
+# A member rename, not a class rename. 26.2 ResourceKey has `Identifier identifier()` and no `location()`;
+# 1.21.1 ResourceKey has `ResourceLocation location()` and no `identifier()` (javap both). 17 call sites,
+# all on a ResourceKey. TagKey#location() already has this name on BOTH lines, so it is left alone -- the
+# rule rewrites `identifier()`, which TagKey never had.
+identifier()	location()
+
+# --- EntitySpawnReason --------------------------------------------------------------------------------
+# Renamed to MobSpawnType. Verified through the method that consumes it: 1.21.1
+# Mob#finalizeSpawn(ServerLevelAccessor, DifficultyInstance, MobSpawnType, SpawnGroupData), and
+# MobSpawnType.SPAWNER / NATURAL / MOB_SUMMONED / TRIGGERED / TRIAL_SPAWNER all exist.
+net.minecraft.world.entity.EntitySpawnReason	net.minecraft.world.entity.MobSpawnType
+EntitySpawnReason	MobSpawnType
+
+# --- EntityTypes --------------------------------------------------------------------------------------
+# 26.2 split the entity constants (EntityTypes) from the registry type (EntityType); 1.21.1 has both on
+# EntityType, whose ZOMBIE / DROWNED / ZOMBIE_VILLAGER / SKELETON / SPIDER are public static finals. A
+# whole-token rule, so `EntityType` written already -- which the sources never do -- would be untouched.
+net.minecraft.world.entity.EntityTypes	net.minecraft.world.entity.EntityType
+EntityTypes	EntityType
+
+# --- BlockAndTintGetter -------------------------------------------------------------------------------
+# Package move only: net.minecraft.client.renderer.block (26.2) -> net.minecraft.world.level (1.21.1).
+net.minecraft.client.renderer.block.BlockAndTintGetter	net.minecraft.world.level.BlockAndTintGetter
+
+# --- AbstractBoat -------------------------------------------------------------------------------------
+# Class renamed AND repackaged: net.minecraft.world.entity.vehicle.boat.AbstractBoat (26.2) ->
+# net.minecraft.world.entity.vehicle.Boat (1.21.1). 1.21.1's `Boat` is what the type is for -- it carries
+# the paddle constants and is the common base of the boat family.
+net.minecraft.world.entity.vehicle.boat.AbstractBoat	net.minecraft.world.entity.vehicle.Boat
+AbstractBoat	Boat
+
+# --- entity subclass repackaging ----------------------------------------------------------------------
+# 26.2 moved three entity classes into their own subpackages; 1.21.1 keeps them flat. Simple names unchanged.
+net.minecraft.world.entity.monster.zombie.Zombie	net.minecraft.world.entity.monster.Zombie
+net.minecraft.world.entity.monster.spider.Spider	net.minecraft.world.entity.monster.Spider
+net.minecraft.world.entity.npc.villager.Villager	net.minecraft.world.entity.npc.Villager
+
+# --- ParticleResources --------------------------------------------------------------------------------
+# 26.2 split the particle registry/reload-listener (ParticleResources) away from the ticking engine
+# (ParticleEngine); 1.21.1 has the two roles on ParticleEngine, which is the class that implements
+# PreparableReloadListener and owns the `providers` map the kernel reads on both lines. Role-based mapping,
+# which is why it is written down: it is the one entry here that is not a literal rename.
+net.minecraft.client.particle.ParticleResources	net.minecraft.client.particle.ParticleEngine
+ParticleResources	ParticleEngine
+
+# =====================================================================================================
+# DELIBERATELY ABSENT -- measured as absent from 1.21.1 and NOT a rename. These need the code restructured,
+# which changes 26.2 too, so they are not table entries. Adding one of them here makes the build compile and
+# the behaviour wrong.
+#
+#   net.minecraft.world.item.component.TooltipDisplay     no tooltip-display component before 1.21.2
+#   net.minecraft.world.level.block.entity.FuelValues     fuel values are a furnce-block-entity concern
+#                                                         in 1.21.1 (AbstractFurnaceBlockEntity.isFuel)
+#   net.minecraft.server.packs.metadata.pack.PackFormat   pack format is an int before 1.21.9
+#   net.minecraft.util.TriState                           does not exist in 1.21.1
+#   net.minecraft.core.TypedInstance                      does not exist in 1.21.1
+#   net.minecraft.world.level.storage.ValueInput/Output   CompoundTag-based before 26.x
+#   net.minecraft.client.gui.Hud                          the HUD is Gui/GuiGraphics before 26.x
+#   net.minecraft.client.gui.GuiGraphicsExtractor         same render-pipeline split as Hud
+#   net.minecraft.client.gui.render.pip.*                 picture-in-picture renderers do not exist pre-26.x
+#   net.minecraft.util.random.WeightedList                API differs, not a name: 1.21.1 has no Builder
+#   net.minecraft.client.renderer.block.FluidModel        baked-model based on 1.21.1
+#
+# MEMBER-level counterparts checked with javap and NOT expressed as rules, because each one changes the shape
+# of the expression rather than a name. Kept here so the next agent does not have to re-derive them:
+#
+#   WorldVersion.packVersion(PackType):PackFormat (26.2)  ->  getPackVersion(PackType):int (1.21.1)
+#       1.21.1 has no PackFormat at all, and the consumer differs too: 26.2 builds
+#       PackMetadataSection(Component, InclusiveRange<PackFormat>) while 1.21.1 takes an int pack format.
+#       KernelClientPackSource needs a real branch, not a substitution.
+#   Minecraft.gui.setScreen(Screen)        (26.2, on net.minecraft.client.gui.Gui)
+#                                           ->  Minecraft.setScreen(Screen)  (1.21.1)
+#   Minecraft.gui.screen()                 (26.2, method)
+#                                           ->  Minecraft.screen             (1.21.1, public FIELD)
+#   Minecraft.disconnectWithSavingScreen() (26.2) -> Minecraft.disconnect() (1.21.1)
+#   Gui.overlay() / Gui.hud                (26.2) -> no counterpart: 1.21.1 has no Gui/Hud split
+#   ObjectSelectionList.Entry.getContentWidth() (26.2) -> no counterpart on 1.21.1 entries
+#   Minecraft.gui.setScreen/screen()/disconnectWithSavingScreen would be ten clean renames, but they are
+#   EXPRESSION fragments (`gui.` disappears), so they are deliberately not rules: this file maps names, and
+#   mixing in expression rewrites would make it mean two different things. Their containing files are blocked
+#   on Gui/Hud anyway.
+# =====================================================================================================
