@@ -132,6 +132,11 @@ public final class MergedBaseBuilder {
 	private Map<String, byte[]> vanillaClasses = Map.of(), forgeClasses = Map.of(), neoClasses = Map.of();
 	/** How many surviving methods kept the other side's wider access. See {@link #mostPermissive}. */
 	private int accessWidened;
+	/**
+	 * How many same-arguments/different-return pairs were kept as TWO descriptors instead of aborting. See
+	 * {@link #keepBothParallelRetypedContracts} — a deliberate divergence, not a resolved conflict.
+	 */
+	private int parallelRetypedContractsKept;
 	/** interface internal name -> the name+desc keys of its DEFAULT (non-abstract) methods. */
 	private final Map<String, Set<String>> interfaceDefaults = new LinkedHashMap<>();
 	/** interface internal name -> its OWN direct {@code extends} list — for walking the transitive closure. */
@@ -607,6 +612,126 @@ public final class MergedBaseBuilder {
 		return true;
 	}
 
+	/**
+	 * Reconciles the one retyped-return shape {@link #compatibleReturnContracts} cannot prove and no common
+	 * ancestor exists for: the SAME conceptual method retyped by each ecosystem's compiler to ITS OWN extension
+	 * type, where the two extension types are unrelated classes that merely share a simple name.
+	 *
+	 * <p><b>Parallel implementation, not unification</b> — the owner's decision. Forge's and NeoForge's
+	 * {@code FluidType} diverge too far to make one extend the other (even their {@code Lazy} field is a
+	 * different type: {@code net.minecraftforge.common.util.Lazy} versus
+	 * {@code net.neoforged.neoforge.common.util.Lazy}). So the merged {@code Entity} declares BOTH
+	 * {@code getMaxHeightFluidType()} descriptors — one per ecosystem — over BOTH sides' backing fields. A JVM
+	 * method is identified by its FULL descriptor, so two methods differing only in return type are two distinct
+	 * methods; only a Java SOURCE file refuses to declare them. Each ecosystem's mods then call their own
+	 * version and get their own ecosystem's fluid state.
+	 *
+	 * <p><b>The accepted cost:</b> the two contracts do not share fluid state. That is recorded as a
+	 * deliberately divergent contract, not swallowed as a lost hook.
+	 *
+	 * <p>Keyed on the DESCRIPTOR SHAPE — never on a class or member name — with four exclusions, each a
+	 * measured case rather than a guess:
+	 * <ul>
+	 *   <li><b>static</b> — {@code ItemBlockRenderTypes#getRenderLayers} has exactly this shape statically, but
+	 *       a class has ONE {@code <clinit>}: only one side's static cache can ever be initialized, so the other
+	 *       overload would read a never-written (null) field. Left to the abort.</li>
+	 *   <li><b>array return</b> — {@code EnderDragon#getParts} returns {@code PartEntity[]}, where the ELEMENT
+	 *       type is a class the merge UNIFIES ({@code EnderDragonPart} can extend only ONE of the two
+	 *       {@code PartEntity}), so one overload's declared element type could never be satisfied by the values
+	 *       the other's body returns. Left to the abort.</li>
+	 *   <li><b>both bodies a pure cached-field accessor</b> — {@code ReloadableServerResources#getConditionContext}
+	 *       on 26.2 is that shape: each side just returns its own {@code context} field. There the return value
+	 *       IS the field, so the pair is the "reconcile to whichever ancestor we ACTUALLY chose" case named in
+	 *       the comment above — duplicating it would mint two copies of ONE cached value that neither compiler
+	 *       produced, and 26.2's merged base must not change. Left to the abort, as a hand-reconciliation item,
+	 *       exactly as it is today.</li>
+	 *   <li><b>related return types</b> — when one type IS an ancestor of the other there is a real ancestor to
+	 *       reconcile to, which is {@link #compatibleReturnContracts}' job, not this one.</li>
+	 * </ul>
+	 *
+	 * <p>Plus one hard precondition: every owner FIELD either body READS must be declared on the merged class.
+	 * Both of {@code Entity}'s retyped bodies read their own side's state — {@code forgeFluidTypeHeight}
+	 * ({@code Object2DoubleMap}, erasure-identical on both sides, so it splices down to ONE field that both
+	 * bodies use) and {@code forgeFluidTypeOnEyes} (a same-NAME/different-DESC pair the field splice adds and
+	 * each side's {@code getEyeInFluidType} reads) — so both survive. A body reading a field the merged class
+	 * does not declare would be a {@code NoSuchFieldError} at runtime, so that case still aborts rather than
+	 * being silently swallowed. A field whose only WRITER was lost is not hidden here either: it is reported by
+	 * {@link #injectMissingExclusiveFieldInits}/{@link #auditBaseAddedFieldWriters} like any other
+	 * exclusive-added field, and by {@link #resolveDuplicateFieldNames} for the same-name pair.
+	 *
+	 * @return true when BOTH descriptors are now declared (the caller must not splice another copy);
+	 *         false when this shape is not the parallel one — the caller keeps the abort.
+	 */
+	private boolean keepBothParallelRetypedContracts(String className, MethodNode other, MethodNode base,
+			ClassNode merged, Map<String, MethodNode> mergedMethods, String otherPkg, String basePkg) {
+		// A static retype means two static caches and ONE <clinit> — see the exclusion list above.
+		if ((other.access & Opcodes.ACC_STATIC) != 0 || (base.access & Opcodes.ACC_STATIC) != 0) return false;
+		// Object returns only: an ARRAY return's element type is what a caller actually consumes, and see above.
+		Type otherReturn = Type.getReturnType(other.desc), baseReturn = Type.getReturnType(base.desc);
+		if (otherReturn.getSort() != Type.OBJECT || baseReturn.getSort() != Type.OBJECT) return false;
+		// Each side's return type must be its OWN ecosystem's type — that is what "retyped to its own extension
+		// type" means. A retype to a vanilla/common type is a different (and not-yet-seen) situation.
+		if (!otherReturn.getInternalName().startsWith(otherPkg)) return false;
+		if (!baseReturn.getInternalName().startsWith(basePkg)) return false;
+		// A real ancestor relationship is reconcilable by choosing the ancestor; not this path.
+		if (declarationGraph.assignable(otherReturn, baseReturn)
+				|| declarationGraph.assignable(baseReturn, otherReturn)) return false;
+		// Two pure accessors return the same field VALUE, not each side's own derived answer — see the
+		// measured-case list above (26.2 ReloadableServerResources#getConditionContext).
+		if (isPureCachedFieldAccessor(other) && isPureCachedFieldAccessor(base)) return false;
+
+		// Both bodies' field reads must resolve against the merged field set for the reason in the javadoc.
+		Set<String> mergedFields = new LinkedHashSet<>();
+		for (FieldNode f : merged.fields) mergedFields.add(f.name + " " + f.desc);
+		if (!mergedFields.containsAll(readOwnerFieldKeys(other, merged.name))) return false;
+		if (!mergedFields.containsAll(readOwnerFieldKeys(base, merged.name))) return false;
+
+		merged.methods.add(other);
+		mergedMethods.put(other.name + other.desc, other);
+		splicedMethods++;
+		parallelRetypedContractsKept++;
+		recordAnonymousOverrides(className, other, otherPkg);
+		conflicts.add(className + "#" + other.name + " (kept BOTH descriptors — " + base.desc + " AND " + other.desc
+				+ " — as parallel implementations over each side's OWN extension type, mutually unassignable;"
+				+ " deliberate divergence, the two contracts do NOT share state)");
+		return true;
+	}
+
+	/** The {@code name + " " + desc} keys of the fields of {@code owner} that {@code m}'s body READS. */
+	private static Set<String> readOwnerFieldKeys(MethodNode m, String owner) {
+		Set<String> out = new LinkedHashSet<>();
+		if (m.instructions == null) return out;
+		for (AbstractInsnNode insn = m.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (!(insn instanceof FieldInsnNode field) || !field.owner.equals(owner)) continue;
+			if (field.getOpcode() == Opcodes.GETFIELD || field.getOpcode() == Opcodes.GETSTATIC) {
+				out.add(field.name + " " + field.desc);
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * Whether {@code m}'s whole body is {@code return this.<field>;} — a cached-field accessor, the shape
+	 * {@link #compatibleReturnContracts} proves when it can and the one {@link #keepBothParallelRetypedContracts}
+	 * deliberately refuses to duplicate (a duplicate would return a second copy of ONE cached value, not each
+	 * side's own derived answer). Labels/line numbers/frames are not instructions and are skipped.
+	 */
+	private static boolean isPureCachedFieldAccessor(MethodNode m) {
+		if (m.instructions == null) return false;
+		AbstractInsnNode[] code = new AbstractInsnNode[4];
+		int n = 0;
+		for (AbstractInsnNode insn = m.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn.getOpcode() < 0) continue;
+			if (n == code.length) return false; // longer than the accessor shape
+			code[n++] = insn;
+		}
+		return n == 3
+				&& code[0] instanceof org.objectweb.asm.tree.VarInsnNode load && load.getOpcode() == Opcodes.ALOAD
+				&& load.var == 0
+				&& code[1] instanceof FieldInsnNode read && read.getOpcode() == Opcodes.GETFIELD
+				&& code[2].getOpcode() == Opcodes.ARETURN;
+	}
+
 	/** {@link #methodHasHook} PLUS an AT-style access-flag widening vs {@code vanillaM} (may be null). */
 	private static boolean methodPatched(MethodNode m, MethodNode vanillaM, String pkg) {
 		if (vanillaM != null && vanillaM.access != m.access) return true;
@@ -1012,7 +1137,10 @@ public final class MergedBaseBuilder {
 				// was structurally rebased by its proved ancestor bridge). Keeping BOTH as "overloads" leaves
 				// two methods whose bodies each expect a DIFFERENT, mutually exclusive ancestor for the same
 				// runtime value — only one can ever pass verification (caught empirically on
-				// EnderDragon.getParts()). Reconcile to whichever ancestor we ACTUALLY chose.
+				// EnderDragon.getParts()). Reconcile to whichever ancestor we ACTUALLY chose — and where there
+				// IS no common ancestor to choose (two unrelated extension types that merely share a simple
+				// name: Entity#getMaxHeightFluidType, Forge's FluidType vs NeoForge's), keep both, see
+				// keepBothParallelRetypedContracts.
 				MethodNode staleSameName = baseN.methods.stream()
 						.filter(x -> x.name.equals(om.name) && !x.desc.equals(om.desc))
 						.findFirst().orElse(null);
@@ -1021,8 +1149,12 @@ public final class MergedBaseBuilder {
 					if (java.util.Arrays.equals(Type.getArgumentTypes(om.desc),Type.getArgumentTypes(staleSameName.desc))
 							&& mentionsPkg(om.desc, otherPkg) && mentionsPkg(staleSameName.desc, basePkg)
 							&& !compatibleReturnContracts(om, staleSameName, baseN)) {
-						throw new IllegalStateException("Cannot preserve retyped return contracts on " + name + "#" + om.name
-								+ ": " + om.desc + " versus " + staleSameName.desc);
+						if (!keepBothParallelRetypedContracts(name, om, staleSameName, baseN, baseMethods,
+								otherPkg, basePkg)) {
+							throw new IllegalStateException("Cannot preserve retyped return contracts on " + name + "#" + om.name
+									+ ": " + om.desc + " versus " + staleSameName.desc);
+						}
+						handled = true; // both descriptors are now declared — do not splice a second copy
 					}
 
 				}
@@ -1923,6 +2055,7 @@ public final class MergedBaseBuilder {
 				+ " lambdas-realigned-to-their-capturer=" + lambdasRealigned
 				+ " divergent-anonymous-materialized=" + divergentAnonymousMaterialized
 				+ " (call sites repointed=" + divergentAnonymousCallSitesRewritten + ")"
+				+ " parallel-retyped-contracts-kept=" + parallelRetypedContractsKept
 				+ " custom-payload-interop=" + customPayloadInteropPatched);
 		ps.println("[merge] CONFLICTS: methods=" + conflictMethods + " fields=" + conflictFields
 				+ " STRUCTURAL(superclass/field)=" + structuralConflicts.size()
