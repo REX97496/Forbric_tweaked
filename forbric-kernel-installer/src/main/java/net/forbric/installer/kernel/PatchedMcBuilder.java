@@ -111,6 +111,12 @@ final class PatchedMcBuilder {
 				"--keep-data", "--keep-meta", "--ann", "API"),
 				"mergetool --merge --ann API");
 
+		// 4b) deobfuscate. Forge's binpatches are built against the Mojmap-named jar, so the rename has to happen
+		//     between the merge and binarypatcher. Skipped entirely for a version that publishes no obfuscation
+		//     mappings — 26.x ships Mojmap-native, so there the jar already is the jar the patches expect and this
+		//     step must not run at all (see MojmapMappings for why the version JSON is the gate).
+		clean = deobfuscate(clean, engineCp);
+
 		// 5) extract binpatches + ATs from the userdev jar
 		Zips.extractEntries(userdevJar, workDir, cfg.binpatchesEntry, cfg.ats.get(0));
 		Path joinedLzma = workDir.resolve(cfg.binpatchesEntry);
@@ -145,6 +151,107 @@ final class PatchedMcBuilder {
 	}
 
 	// ---- steps ----
+
+	/**
+	 * Rewrite {@code clean.jar} from obfuscated names to Mojang's, returning the jar the rest of the pipeline must
+	 * use. Returns the input unchanged — with no new file — in two cases, and both of them are what keeps 26.2 a
+	 * byte-identical no-op:
+	 *
+	 * <ol>
+	 *   <li><b>The version publishes no obfuscation mappings.</b> {@code downloads.client_mappings} is absent from
+	 *       an unobfuscated version's JSON ({@code 26.2.json} carries only {@code client} and {@code server}), and its
+	 *       presence is exactly the condition "this jar is obfuscated, so Forge's patches are against the other
+	 *       names". This is a data gate, not a version string comparison: bumping {@link Pins#MINECRAFT} to a
+	 *       different obfuscated version needs no code change, and 26.2 cannot enter the step by accident.</li>
+	 *   <li><b>The mapping renames nothing in this jar.</b> A guard against a stale or wrong-version mapping file:
+	 *       if no class entry name changes, the mapping does not apply and the original jar is kept, rather than
+	 *       being re-serialized for no reason (ASM rebuilds the constant pool, so an "identity" pass would still
+	 *       change bytes and could only ever make the binpatch checksums worse).</li>
+	 * </ol>
+	 */
+	private Path deobfuscate(Path clean, List<Path> asmClasspath) throws IOException {
+		Path mappingsFile = mappingsFile();
+		if (mappingsFile == null) {
+			log.accept("[patched] no obfuscation mappings published for " + fa.mcVersion
+					+ " — the vanilla jar is already Mojmap-named, skipping deobfuscation");
+			return clean;
+		}
+		MojmapMappings.Mappings mappings = MojmapMappings.parse(mappingsFile);
+		log.accept("[patched] deobfuscating " + clean.getFileName() + " with " + mappings.summary()
+				+ " from " + mappingsFile.getFileName());
+		if (mappings.unmappedTypes > 0) {
+			log.accept("[patched] " + mappings.unmappedTypes + " member descriptor type(s) are not declared by the"
+					+ " mapping (the JDK, Guava, fastutil): those names are identical in both namespaces and are kept");
+		}
+		Path renamed = workDir.resolve("clean-mojmap.jar");
+		MojmapRenamer.Result result = MojmapRenamer.rename(asmClasspath, clean, renamed, mappings, log);
+		if (result.renamedEntries == 0) {
+			log.accept("[patched] the mapping renames none of the " + result.classes + " class entries in "
+					+ clean.getFileName() + " — not a jar this mapping applies to, keeping it as-is");
+			Files.deleteIfExists(renamed);
+			return clean;
+		}
+		log.accept("[patched] renamed " + result.renamedEntries + " of " + result.classes + " class entries, rewrote "
+				+ result.changedBytes + ", set " + result.sourceFixed + " SourceFile attribute(s)");
+		return renamed;
+	}
+
+	/**
+	 * The {@code client.txt} to deobfuscate with, or {@code null} when this Minecraft version is not obfuscated.
+	 *
+	 * <p>{@code -Dforbric.mojang.mappings=<file>} overrides the download, which is what makes the step reproducible
+	 * on a machine with no network. Otherwise the file is fetched from the URL the version JSON itself carries and
+	 * checked against that JSON's sha1 — the same provenance rule the server jar already follows.
+	 */
+	private Path mappingsFile() throws IOException {
+		String override = System.getProperty("forbric.mojang.mappings");
+		if (override != null && !override.isBlank()) {
+			Path file = Path.of(override);
+			if (!Files.isRegularFile(file)) {
+				throw new IOException("-Dforbric.mojang.mappings points at a missing file: " + file);
+			}
+			return file;
+		}
+		Object mappings = downloads(versionJson(), "client_mappings");
+		if (mappings == null) return null; // unobfuscated version: nothing to rename
+		Map<String, Object> entry = asMap(mappings);
+		String url = (String) entry.get("url");
+		String sha1 = (String) entry.get("sha1");
+		if (url == null) return null;
+		Path dest = dlDir.resolve("client-mappings-" + fa.mcVersion + ".txt");
+		if (Files.isRegularFile(dest) && Files.size(dest) > 0
+				&& (sha1 == null || sha1.equalsIgnoreCase(Util.sha1(dest)))) {
+			return dest;
+		}
+		log.accept("[patched] downloading " + fa.mcVersion + " client mappings …");
+		http.downloadToFile(url, dest);
+		ForgeTool.verifySha1(dest, sha1, fa.mcVersion + " client mappings");
+		return dest;
+	}
+
+	@SuppressWarnings("unchecked")
+	private Map<String, Object> versionJson() throws IOException {
+		Path versionJson = mcDir.resolve("versions").resolve(fa.mcVersion).resolve(fa.mcVersion + ".json");
+		if (!Files.isRegularFile(versionJson)) {
+			throw new IOException("version json not found: " + versionJson + " — download vanilla " + fa.mcVersion + " first");
+		}
+		try {
+			return (Map<String, Object>) Json.parse(Files.readString(versionJson));
+		} catch (RuntimeException e) {
+			throw new IOException("malformed " + versionJson.getFileName() + ": " + e.getMessage(), e);
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private static Object downloads(Map<String, Object> root, String key) {
+		Object downloads = root.get("downloads");
+		return downloads instanceof Map ? ((Map<String, Object>) downloads).get(key) : null;
+	}
+
+	@SuppressWarnings("unchecked")
+	private static Map<String, Object> asMap(Object o) {
+		return o instanceof Map ? (Map<String, Object>) o : Map.of();
+	}
 
 	private List<String> binpatcherArgs(ForgeArtifacts.UserdevConfig cfg, Path clean, Path output, Path patch) {
 		List<String> out = new ArrayList<>();
