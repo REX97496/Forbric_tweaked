@@ -163,6 +163,20 @@ public final class KernelMappingResolver implements MappingResolver {
 		return mapped != null ? mapped : name;
 	}
 
+	/**
+	 * Forgets the loaded table so a test can install a different one.
+	 *
+	 * <p>Package-private and named for what it is: the table is loaded once per JVM on purpose, so anything that
+	 * wants to try a second table has to say so. Making this public would invite a caller to swap mappings under
+	 * running mods, which is not something this class should make easy.
+	 */
+	static void forgetTableForTest() {
+		synchronized (KernelMappingResolver.class) {
+			table = null;
+			loadAttempted = false;
+		}
+	}
+
 	/** The table, loaded on first request; null when none is configured or it failed to load. */
 	private static Table table() {
 		Table loaded = table;
