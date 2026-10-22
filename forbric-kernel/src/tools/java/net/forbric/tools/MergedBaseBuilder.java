@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -45,10 +46,15 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FrameNode;
+import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 
 /**
@@ -84,22 +90,37 @@ public final class MergedBaseBuilder {
 	/** Conflicts printed instead of thrown in -Dforbric.merge.collect=true mode. See the gate at the mergeBoth call. */
 	private static int collectedConflicts;
 	public static void main(String[] args) throws IOException {
-		if (args.length < 4) {
-			System.err.println("usage: MergedBaseBuilder <vanilla> <forge-patched> <neo-patched> <out.jar> [report.txt]");
+		// The libraries directory is a POSITIONAL ninth argument, so reaching it also forces both runtime jars
+		// to be named. Anyone running this tool WITHOUT them — a reduced harness, or build-merged-base.sh — then
+		// silently gets a proof engine that cannot read Guava, and aborts on ChunkGenerator#featuresPerStep for
+		// what looks like a real conflict. Measured on 1.21.1: with Guava reachable that class merges and the
+		// merged jar differs in exactly two entries; with it unreachable the merge stops. The flag makes the
+		// pipeline's own proof conditions expressible from the CLI the header documents.
+		Path librariesFlag = null;
+		List<String> positional = new ArrayList<>();
+		for (String arg : args) {
+			if (arg.startsWith("--libraries=")) librariesFlag = Path.of(arg.substring("--libraries=".length()));
+			else positional.add(arg);
+		}
+		String[] rest = positional.toArray(new String[0]);
+		if (rest.length < 4) {
+			System.err.println("usage: MergedBaseBuilder <vanilla> <forge-patched> <neo-patched> <out.jar> [report.txt]"
+					+ " [forge-runtime.jar] [neoforge-runtime.jar] [libraries-dir] [--libraries=<dir>]");
 			System.exit(2);
 		}
-		Path vanillaJar = Path.of(args[0]);
-		Path forgeJar = Path.of(args[1]);
-		Path neoJar = Path.of(args[2]);
-		Path outJar = Path.of(args[3]);
-		Path report = args.length > 4 ? Path.of(args[4]) : null;
+		Path vanillaJar = Path.of(rest[0]);
+		Path forgeJar = Path.of(rest[1]);
+		Path neoJar = Path.of(rest[2]);
+		Path outJar = Path.of(rest[3]);
+		Path report = rest.length > 4 ? Path.of(rest[4]) : null;
 		// The two RUNTIME jars (net.minecraftforge.* / net.neoforged.* "extension" interfaces such as
 		// IForgeItemStack / IItemStackExtension live HERE, not in the patched game jars) — needed only to detect
 		// diamond-default-method conflicts when both ecosystems' interfaces get spliced onto the same class.
-		Path forgeRuntimeJar = args.length > 5 ? Path.of(args[5]) : null;
-		Path neoRuntimeJar = args.length > 6 ? Path.of(args[6]) : null;
+		Path forgeRuntimeJar = rest.length > 5 ? Path.of(rest[5]) : null;
+		Path neoRuntimeJar = rest.length > 6 ? Path.of(rest[6]) : null;
+		Path libraries = rest.length > 7 ? Path.of(rest[7]) : librariesFlag;
 
-		new MergedBaseBuilder().run(vanillaJar, forgeJar, neoJar, outJar, report, forgeRuntimeJar, neoRuntimeJar, args.length > 7 ? Path.of(args[7]) : null);
+		new MergedBaseBuilder().run(vanillaJar, forgeJar, neoJar, outJar, report, forgeRuntimeJar, neoRuntimeJar, libraries);
 	}
 
 	private final List<String> conflicts = new ArrayList<>();
@@ -137,6 +158,12 @@ public final class MergedBaseBuilder {
 	 * {@link #keepBothParallelRetypedContracts} — a deliberate divergence, not a resolved conflict.
 	 */
 	private int parallelRetypedContractsKept;
+	/** How many classes had the other ecosystem's {@code <clinit>} appended to their own. See
+	 * {@link #composeStaticInitializers} — this is what makes a STATIC retyped-contract pair keepable at all. */
+	private int composedInitializerBodies;
+	/** Class names already through {@link #composeStaticInitializers}, so a class with two static retyped
+	 * pairs composes its initializer once rather than once per pair. */
+	private final Set<String> composedStaticInitializers = new LinkedHashSet<>();
 	/** interface internal name -> the name+desc keys of its DEFAULT (non-abstract) methods. */
 	private final Map<String, Set<String>> interfaceDefaults = new LinkedHashMap<>();
 	/** interface internal name -> its OWN direct {@code extends} list — for walking the transitive closure. */
@@ -632,9 +659,13 @@ public final class MergedBaseBuilder {
 	 * <p>Keyed on the DESCRIPTOR SHAPE — never on a class or member name — with four exclusions, each a
 	 * measured case rather than a guess:
 	 * <ul>
-	 *   <li><b>static</b> — {@code ItemBlockRenderTypes#getRenderLayers} has exactly this shape statically, but
-	 *       a class has ONE {@code <clinit>}: only one side's static cache can ever be initialized, so the other
-	 *       overload would read a never-written (null) field. Left to the abort.</li>
+	 *   <li><b>static, unless both initializers compose</b> — {@code ItemBlockRenderTypes#getRenderLayers} has
+	 *       exactly this shape statically, and there a class has ONE {@code <clinit>}, so keeping both contracts
+	 *       only means something if BOTH sides' static caches actually get initialized. That is decided by
+	 *       {@link #composeStaticInitializers}, which appends the other side's initializer body and refuses
+	 *       unless the two are straight-line and every lambda handle the other side's initializer binds either
+	 *       has no base-side namesake or a canonically IDENTICAL one. When it refuses, the pair is left to the
+	 *       abort exactly as before — a half-initialized second cache would be a null-field NPE, not a fix.</li>
 	 *   <li><b>array return</b> — {@code EnderDragon#getParts} returns {@code PartEntity[]}, where the ELEMENT
 	 *       type is a class the merge UNIFIES ({@code EnderDragonPart} can extend only ONE of the two
 	 *       {@code PartEntity}), so one overload's declared element type could never be satisfied by the values
@@ -663,9 +694,15 @@ public final class MergedBaseBuilder {
 	 *         false when this shape is not the parallel one — the caller keeps the abort.
 	 */
 	private boolean keepBothParallelRetypedContracts(String className, MethodNode other, MethodNode base,
-			ClassNode merged, Map<String, MethodNode> mergedMethods, String otherPkg, String basePkg) {
-		// A static retype means two static caches and ONE <clinit> — see the exclusion list above.
-		if ((other.access & Opcodes.ACC_STATIC) != 0 || (base.access & Opcodes.ACC_STATIC) != 0) return false;
+			ClassNode merged, ClassNode otherClass, Map<String, MethodNode> mergedMethods,
+			String otherPkg, String basePkg) {
+		// A static pair means two per-ecosystem static caches behind ONE <clinit>. Keeping both contracts is only
+		// sound once BOTH initializers have run, so composition is a precondition, not an optimisation: if it
+		// cannot be proved, the caller keeps the abort (see the exclusion list above). A pair where only ONE side
+		// is static is not a retype at all.
+		boolean otherStatic = (other.access & Opcodes.ACC_STATIC) != 0;
+		boolean baseStatic = (base.access & Opcodes.ACC_STATIC) != 0;
+		if (otherStatic != baseStatic) return false;
 		// Object returns only: an ARRAY return's element type is what a caller actually consumes, and see above.
 		Type otherReturn = Type.getReturnType(other.desc), baseReturn = Type.getReturnType(base.desc);
 		if (otherReturn.getSort() != Type.OBJECT || baseReturn.getSort() != Type.OBJECT) return false;
@@ -686,6 +723,18 @@ public final class MergedBaseBuilder {
 		if (!mergedFields.containsAll(readOwnerFieldKeys(other, merged.name))) return false;
 		if (!mergedFields.containsAll(readOwnerFieldKeys(base, merged.name))) return false;
 
+		// Last, because it MUTATES the class: a static pair is only kept when the other side's initializer has
+		// actually been appended to the merged one. Everything above is cheap and side-effect free.
+		if (otherStatic) {
+			String refused = composeStaticInitializers(merged, otherClass, mergedMethods);
+			if (refused != null) {
+				// Reaching the caller as an abort is right, but an abort nobody can act on is not: the reason the
+				// static pair could not be kept belongs in the report, not only in the stack trace.
+				conflicts.add(className + "#" + other.name + " (static retyped-contract pair NOT kept: " + refused + ")");
+				return false;
+			}
+		}
+
 		merged.methods.add(other);
 		mergedMethods.put(other.name + other.desc, other);
 		splicedMethods++;
@@ -694,6 +743,206 @@ public final class MergedBaseBuilder {
 		conflicts.add(className + "#" + other.name + " (kept BOTH descriptors — " + base.desc + " AND " + other.desc
 				+ " — as parallel implementations over each side's OWN extension type, mutually unassignable;"
 				+ " deliberate divergence, the two contracts do NOT share state)");
+		return true;
+	}
+
+	/**
+	 * Appends the OTHER ecosystem's {@code <clinit>} body to the merged class's own, so that a static
+	 * retyped-contract pair can keep BOTH contracts without one of the two static caches staying at its
+	 * zero-initialized default (a null-field NPE at first use, which is what the abort existed to prevent).
+	 *
+	 * <p><b>Why appending is sound here.</b> A {@code <clinit>} body is a straight-line assignment sequence
+	 * over the class's own static fields, and a static field is keyed by name+DESCRIPTOR. Running the other
+	 * side's sequence first and the base's own second therefore leaves every ecosystem-typed field holding that
+	 * ecosystem's own instance — the base's writes can only land on a field key the base itself declares.
+	 *
+	 * <p><b>What is refused.</b> Composition is a proof obligation, not a best effort:
+	 * <ul>
+	 *   <li><b>a field BOTH initializers write</b> — the second write wins, so if the two sides meant two
+	 *       different caches under one erased descriptor, one side's cache is silently dead. That is measured on
+	 *       1.21.1: {@code ItemBlockRenderTypes.BLOCK_RENDER_TYPES} is {@code Map<Holder$Reference<Block>,
+	 *       ForgeSet>} for Forge and {@code Map<Block, NeoSet>} for NeoForge, yet both erase to
+	 *       {@code Ljava/util/Map;}. Left to the abort, named in the report, as a hand-reconciliation item.
+	 *       (A field that BOTH write with genuinely the same meaning would also be refused — this cannot tell
+	 *       the two apart, and guessing "it's the same table" is exactly the kind of assumption that costs a
+	 *       silent null later. The vanilla-derived caches were already splice-identical before this pass.)</li>
+	 *   <li>both bodies must be straight-line — no jump, switch, exception handler or {@code FrameNode}, and
+	 *       exactly one terminal {@code RETURN} — because the merge writes classes with COMPUTE_MAXS only
+	 *       (frames are the method's own) and a spliced branch would need frames nobody computed;</li>
+	 *   <li>a lambda {@code Handle} the other side's initializer binds must be declared by that side. Where the
+	 *       name+desc ALSO exists in the merged class, this side's body is copied under a fresh name and only
+	 *       this side's own handle is repointed at it: a lambda is reached by name+descriptor, so leaving the
+	 *       handle alone would run the BASE's lambda — which writes the base's ecosystem-typed field. Measured
+	 *       on 1.21.1: the two {@code lambda$static$2(Object2ObjectOpenHashMap)} bodies differ exactly so.</li>
+	 * </ul>
+	 *
+	 * <p>Refusing leaves the caller's abort in place. That is deliberate: an uncomposed half-initialized second
+	 * cache is exactly the failure this exclusion exists for, and reporting it honestly is better than shipping
+	 * it.
+	 *
+	 * @return true when the other side's initializer is now part of the merged {@code <clinit>} (or there was
+	 *         nothing to run); false when composition could not be proved — the caller keeps the abort.
+	 */
+	private String composeStaticInitializers(ClassNode merged, ClassNode otherClass, Map<String, MethodNode> mergedMethods) {
+		if (otherClass == null) return "the other ecosystem's class node is not available";
+		MethodNode otherInit = ContractGraph.ownMethod(otherClass, "<clinit>", "()V");
+		if (otherInit == null) return null; // nothing on the other side to run
+		if (composedStaticInitializers.contains(merged.name)) return null; // already composed for this class
+		MethodNode mergedInit = ContractGraph.ownMethod(merged, "<clinit>", "()V");
+		if (mergedInit == null) return "the merged class has no <clinit> to append to";
+		if (!straightLineInitializer(mergedInit)) return "the merged <clinit> is not straight-line";
+		if (!straightLineInitializer(otherInit)) return "the other side's <clinit> is not straight-line";
+		// A field BOTH initializers PUTSTATIC is written twice, so only the second write survives. That is fine
+		// only when the two writes are the same logical value; it is NOT fine when the two sides mean different
+		// caches. Measured on 1.21.1: ItemBlockRenderTypes.BLOCK_RENDER_TYPES is Map<Holder$Reference<Block>,
+		// ForgeChunkRenderTypeSet> on Forge and Map<Block, NeoChunkRenderTypeSet> on NeoForge — different KEY
+		// and different VALUE type, but both erase to Ljava/util/Map; so the merge sees ONE field. Composing
+		// there would run Forge's initializer, then let Neo's replace the map, and Forge's getRenderLayers
+		// (which looks up a Holder$Reference) would return null for every block it did not set itself. Silent,
+		// so it is refused rather than discovered at runtime.
+		Set<String> shared = staticWrites(mergedInit);
+		shared.retainAll(staticWrites(otherInit));
+		if (!shared.isEmpty()) return "both static initializers write " + shared
+				+ " — the base's write would replace the other side's cache, and this cannot tell whether the two"
+				+ " mean the same cache (a shared vanilla-derived table) or two different ones under one erased"
+				+ " descriptor; needs hand reconciliation";
+		// Ordering is only invisible if the two sequences touch DISJOINT fields. The other side's body runs
+		// first, so it would read the base's not-yet-written state as the field's default; and the base's body
+		// runs second, so it could read a value the other side had just written where it used to read the
+		// default. Both are silent behaviour changes to a side that must not change, so both are refused.
+		Set<String> crossRead = staticReads(otherInit);
+		crossRead.retainAll(staticWrites(mergedInit));
+		if (!crossRead.isEmpty()) return "the other side's static initializer reads " + crossRead
+				+ ", which the base's initializer writes AFTER it would run — it would see the default instead";
+		crossRead = staticReads(mergedInit);
+		crossRead.retainAll(staticWrites(otherInit));
+		if (!crossRead.isEmpty()) return "the base's static initializer reads " + crossRead
+				+ ", which the other side's initializer would have written FIRST — the base side would change";
+
+		// Build the addition first and only commit once every handle has been accounted for, so a refusal leaves
+		// the merged class exactly as it was.
+		String eco = otherClass.name.startsWith(NEO_PKG) ? "neo" : "forge";
+		InsnList addition = new InsnList();
+		Map<String, String> freshNames = new LinkedHashMap<>();  // other-side name+desc -> its renamed name
+		Map<String, MethodNode> renames = new LinkedHashMap<>(); // other-side name+desc -> its body
+		List<AbstractInsnNode> code = ContractGraph.code(otherInit);
+		for (int i = 0; i < code.size() - 1; i++) {
+			AbstractInsnNode node = code.get(i).clone(new HashMap<>());
+			if (node instanceof InvokeDynamicInsnNode indy) {
+				Object[] args = indy.bsmArgs.clone(); // clone() shares the array with the SOURCE class node
+				indy.bsmArgs = args;
+				for (int k = 0; k < args.length; k++) {
+					if (!(args[k] instanceof org.objectweb.asm.Handle handle)
+							|| !handle.getOwner().equals(otherClass.name)) continue;
+					MethodNode mine = ContractGraph.ownMethod(otherClass, handle.getName(), handle.getDesc());
+					if (mine == null)
+						return "the other side's <clinit> binds " + handle.getName() + handle.getDesc()
+								+ ", which that side does not declare";
+					// No base namesake: the ordinary method pass splices the other side's own body, so this
+					// handle resolves correctly as it stands.
+					if (ContractGraph.ownMethod(merged, handle.getName(), handle.getDesc()) == null) continue;
+					// COLLISION. A lambda is reached by name+descriptor, so leaving this handle alone would make
+					// the other side's initializer run the BASE's lambda — and that lambda writes the BASE's
+					// ecosystem-typed field, not this side's. Measured on 1.21.1: the two
+					// lambda$static$2(Object2ObjectOpenHashMap) bodies differ exactly that way. Give this side's
+					// body a fresh name and repoint only this side's own handle at it.
+					String key = handle.getName() + handle.getDesc();
+					String fresh = freshNames.get(key);
+					if (fresh == null) {
+						fresh = freshName(handle.getName(), merged, eco, freshNames.values());
+						freshNames.put(key, fresh);
+						renames.put(key, mine);
+					}
+					args[k] = new org.objectweb.asm.Handle(handle.getTag(), handle.getOwner(), fresh,
+							handle.getDesc(), handle.isInterface());
+				}
+			}
+			addition.add(node);
+		}
+		// Apply: one renamed copy per collided lambda, at the name its own handle now uses.
+		for (Map.Entry<String, MethodNode> e : renames.entrySet()) {
+			MethodNode source = e.getValue();
+			MethodNode copy = new MethodNode(source.access, freshNames.get(e.getKey()), source.desc,
+					source.signature, source.exceptions.toArray(String[]::new));
+			source.accept(copy);
+			merged.methods.add(copy);
+			mergedMethods.put(copy.name + copy.desc, copy);
+			splicedMethods++;
+			conflicts.add(merged.name + "#" + copy.name + " (kept the " + eco + " lambda body under a RENAMED name:"
+					+ " the other side's <clinit> called " + source.name + source.desc + ", whose name+desc the"
+					+ " base's own lambda already held with a DIFFERENT body)");
+		}
+
+		mergedInit.instructions.insert(addition); // FIRST, so the base's own writes are the ones that survive
+		mergedInit.maxStack = Math.max(mergedInit.maxStack, otherInit.maxStack);
+		mergedInit.maxLocals = Math.max(mergedInit.maxLocals, otherInit.maxLocals);
+		composedStaticInitializers.add(merged.name);
+		composedInitializerBodies++;
+		conflicts.add(merged.name + "#<clinit> (composed the " + eco + " static initializer into the base's so BOTH"
+				+ " ecosystems' static caches are initialized; shared same-descriptor state keeps the base side's"
+				+ " value)");
+		return null;
+	}
+
+	/**
+	 * The {@code name + " " + desc} keys an initializer {@code PUTSTATIC}s on its own class — the fields whose
+	 * value the initializer decides. See {@link #composeStaticInitializers} for why the intersection matters.
+	 */
+	private static Set<String> staticWrites(MethodNode clinit) {
+		Set<String> out = new LinkedHashSet<>();
+		if (clinit.instructions == null) return out;
+		for (AbstractInsnNode insn = clinit.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn instanceof FieldInsnNode field && field.getOpcode() == Opcodes.PUTSTATIC) {
+				out.add(field.name + " " + field.desc);
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * The {@code name + " " + desc} keys an initializer {@code GETSTATIC}s. See
+	 * {@link #composeStaticInitializers} for why the cross-reads matter.
+	 */
+	private static Set<String> staticReads(MethodNode clinit) {
+		Set<String> out = new LinkedHashSet<>();
+		if (clinit.instructions == null) return out;
+		for (AbstractInsnNode insn = clinit.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn instanceof FieldInsnNode field && field.getOpcode() == Opcodes.GETSTATIC) {
+				out.add(field.name + " " + field.desc);
+			}
+		}
+		return out;
+	}
+
+	/** A method name no member of {@code merged} (or pending rename) uses yet. */
+	private static String freshName(String base, ClassNode merged, String eco, java.util.Collection<String> pending) {
+		String candidate = base + "$forbric" + eco;
+		int n = 2;
+		while (pending.contains(candidate) || namesMethod(merged, candidate)) {
+			candidate = base + "$forbric" + eco + n++;
+		}
+		return candidate;
+	}
+
+	private static boolean namesMethod(ClassNode merged, String name) {
+		for (MethodNode m : merged.methods) if (m.name.equals(name)) return true;
+		return false;
+	}
+
+	/**
+	 * Whether {@code m} is a straight-line static initializer: real instructions only, no branch/switch/handler
+	 * or frame, and exactly one terminal {@code RETURN}. See {@link #composeStaticInitializers} for why.
+	 */
+	private static boolean straightLineInitializer(MethodNode m) {
+		if (m.instructions == null || !m.tryCatchBlocks.isEmpty()) return false;
+		List<AbstractInsnNode> code = ContractGraph.code(m);
+		if (code.isEmpty() || code.get(code.size() - 1).getOpcode() != Opcodes.RETURN) return false;
+		for (AbstractInsnNode insn : code) {
+			if (insn instanceof FrameNode || insn instanceof JumpInsnNode
+					|| insn instanceof TableSwitchInsnNode || insn instanceof LookupSwitchInsnNode) return false;
+			int op = insn.getOpcode();
+			if (op >= Opcodes.IRETURN && op <= Opcodes.RETURN && insn != code.get(code.size() - 1)) return false;
+		}
 		return true;
 	}
 
@@ -1149,7 +1398,7 @@ public final class MergedBaseBuilder {
 					if (java.util.Arrays.equals(Type.getArgumentTypes(om.desc),Type.getArgumentTypes(staleSameName.desc))
 							&& mentionsPkg(om.desc, otherPkg) && mentionsPkg(staleSameName.desc, basePkg)
 							&& !compatibleReturnContracts(om, staleSameName, baseN)) {
-						if (!keepBothParallelRetypedContracts(name, om, staleSameName, baseN, baseMethods,
+						if (!keepBothParallelRetypedContracts(name, om, staleSameName, baseN, otherN, baseMethods,
 								otherPkg, basePkg)) {
 							throw new IllegalStateException("Cannot preserve retyped return contracts on " + name + "#" + om.name
 									+ ": " + om.desc + " versus " + staleSameName.desc);
@@ -2056,6 +2305,7 @@ public final class MergedBaseBuilder {
 				+ " divergent-anonymous-materialized=" + divergentAnonymousMaterialized
 				+ " (call sites repointed=" + divergentAnonymousCallSitesRewritten + ")"
 				+ " parallel-retyped-contracts-kept=" + parallelRetypedContractsKept
+				+ " composed-static-initializers=" + composedInitializerBodies
 				+ " custom-payload-interop=" + customPayloadInteropPatched);
 		ps.println("[merge] CONFLICTS: methods=" + conflictMethods + " fields=" + conflictFields
 				+ " STRUCTURAL(superclass/field)=" + structuralConflicts.size()
