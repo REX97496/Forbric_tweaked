@@ -369,7 +369,20 @@ def prepare(args, java, env):
     mc, stage, _, natives = options(args, env['FORBRIC_DEV_ARCH'])
     gradle('forbric-kernel-installer', ['devToolsJar'], env)
     tools = ROOT / 'forbric-kernel-installer/build/libs/forbric-dev-tools.jar'
-    subprocess.run([java, '-jar', str(tools), str(mc), str(stage), java], cwd=ROOT, env=env, check=True)
+    # The pins are system properties on the installer side, so the version has to be handed to that JVM too --
+    # reading MC_VERSION here alone would build a 1.21.1 staged tree from a 26.2 pinned pipeline.
+    #
+    # Minecraft is always passed. Forge and NeoForge only when the environment names them, because they are specific
+    # builds whose bytes were validated rather than versions that can be derived: a plausible-looking pair produces
+    # artifacts that build cleanly and then fail somewhere unrelated. Leaving them unset keeps the installer's own
+    # pins, which is what every existing invocation wants.
+    pin_args = [f'-Dforbric.pin.minecraft={MC_VERSION}']
+    for env_name, prop in (('FORBRIC_PIN_FORGE', 'forbric.pin.forge'),
+                           ('FORBRIC_PIN_NEOFORGE', 'forbric.pin.neoforge')):
+        value = os.environ.get(env_name)
+        if value:
+            pin_args.append(f'-D{prop}={value}')
+    subprocess.run([java, *pin_args, '-jar', str(tools), str(mc), str(stage), java], cwd=ROOT, env=env, check=True)
     stage_minecraft(mc, natives, env['FORBRIC_DEV_ARCH'], assets=not getattr(args, 'no_assets', False))
     for name, url, sha in API_PINS:
         fetch(url, STATE / 'api' / name, sha, 'sha256')

@@ -15,30 +15,32 @@ public final class DevPrepare {
 		Path mc = Path.of(args[0]).toAbsolutePath();
 		Path stage = Path.of(args[1]).toAbsolutePath();
 		JdkLocator.Jvm jvm = JdkLocator.locate(mc, Path.of(args[2]), System.out::println);
-		if (jvm.feature() < 25) throw new IOException("Minecraft 26.2 development needs JDK 25 or newer");
+		int requiredJava = Pins.MINECRAFT.startsWith("26.") ? 25 : 21;
+		if (jvm.feature() < requiredJava) throw new IOException("Minecraft " + Pins.MINECRAFT
+				+ " development needs JDK " + requiredJava + " or newer; the selected JVM is " + jvm.feature());
 		Path version = mc.resolve("versions").resolve(Pins.MINECRAFT);
 		if (!Files.isRegularFile(version.resolve(Pins.MINECRAFT + ".jar"))
 				|| !Files.isRegularFile(version.resolve(Pins.MINECRAFT + ".json"))) {
 			new MojangDownloader(System.out::println).downloadClient(Pins.MINECRAFT, version);
 		}
 		Map<String, Path> artifacts = new ArtifactBuilder(System.out::println).build(mc, Pins.MINECRAFT, jvm);
-		copy(artifacts.get(ArtifactBuilder.MERGED), stage.resolve("merged-base/patched-mc-merged-26.2.jar"));
+		copy(artifacts.get(ArtifactBuilder.MERGED), stage.resolve("merged-base/patched-mc-merged-" + Pins.MINECRAFT + ".jar"));
 		copy(artifacts.get(ArtifactBuilder.FORGE_RUNTIME), stage.resolve("merged-base/forge-runtime-interop.jar"));
 		copy(artifacts.get(ArtifactBuilder.NEOFORGE_RUNTIME), stage.resolve("neoforge-runtime/neoforge-runtime.jar"));
 		// Compilation and bytecode tests read the raw carrier, while launch uses the interop-patched carrier.
 		copy(mc.resolve(".forbric-build/out/forge-runtime.jar"), stage.resolve("forge-runtime/forge-runtime.jar"));
 		// Both patched sides too: the bytecode tests compare the merged base against each of them.
-		copy(mc.resolve(".forbric-build/out/patched-mc-forge-26.2.jar"),
-				stage.resolve("forge-patched/patched-mc-forge-26.2.jar"));
-		copy(mc.resolve(".forbric-build/out/patched-mc-neoforge-26.2.jar"),
-				stage.resolve("neoforge-patched/patched-mc-neoforge-26.2.jar"));
+		copy(mc.resolve(".forbric-build/out/patched-mc-forge-" + Pins.MINECRAFT + ".jar"),
+				stage.resolve("forge-patched/patched-mc-forge-" + Pins.MINECRAFT + ".jar"));
+		copy(mc.resolve(".forbric-build/out/patched-mc-neoforge-" + Pins.MINECRAFT + ".jar"),
+				stage.resolve("neoforge-patched/patched-mc-neoforge-" + Pins.MINECRAFT + ".jar"));
 		// The build pins beside the merged base and the Forge side say both came out of this one merge. A staged
 		// tree without them (forbric-loader's, whose forge-patched/ is an older build than the one its merge read)
 		// sends the tests to the Forge jar a launcher install keeps under libraries/ instead.
-		copy(mc.resolve(".forbric-build/out/patched-mc-merged-26.2.jar.pins"),
-				stage.resolve("merged-base/patched-mc-merged-26.2.jar.pins"));
-		copy(mc.resolve(".forbric-build/out/patched-mc-forge-26.2.jar.pins"),
-				stage.resolve("forge-patched/patched-mc-forge-26.2.jar.pins"));
+		copy(mc.resolve(".forbric-build/out/patched-mc-merged-" + Pins.MINECRAFT + ".jar.pins"),
+				stage.resolve("merged-base/patched-mc-merged-" + Pins.MINECRAFT + ".jar.pins"));
+		copy(mc.resolve(".forbric-build/out/patched-mc-forge-" + Pins.MINECRAFT + ".jar.pins"),
+				stage.resolve("forge-patched/patched-mc-forge-" + Pins.MINECRAFT + ".jar.pins"));
 		// The merge's own report of what it could not reconcile; the tests check the kernel accounts for each loss.
 		copy(mc.resolve(".forbric-build/out/merge-conflicts.txt"), stage.resolve("merged-base/merge-conflicts.txt"));
 		System.out.println("Development artifacts staged under " + stage);
