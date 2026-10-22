@@ -54,11 +54,81 @@ public final class KernelMixinBootstrap {
 	}
 
 	/**
-	 * The Java major version this build of Minecraft needs. Below it the game does not run at all, so the guardrail
-	 * below has something real to say; at or above it, telling the player to install another Java is advice that
-	 * cannot help.
+	 * The Java feature version the game's own class files were compiled for — 25 for 26.2, 21 for 1.21.1.
+	 *
+	 * <p>This used to be the literal {@code 25}, which is correct for exactly one Minecraft version. A branch built
+	 * for an older game would then have told every player to install a Java the game does not need, and worse,
+	 * raised Mixin's compatibility level to a version whose class files are not present. So it is measured instead:
+	 * the major version of a class from the game itself, minus 44 (Java 1.1 is 45, so 65 is 21 and 69 is 25).
+	 *
+	 * <p>Measured, not guessed, and measured twice: {@code patched-mc-merged-26.2.jar} reports major 69 at
+	 * {@code net/minecraft/world/item/ItemStack.class}, and both 1.21.1 bases report major 65 at the same path.
+	 *
+	 * <p>{@code 0} when it cannot be read. Every use treats 0 as "no opinion", never as "Java 0" — the caller below
+	 * falls back to what the runtime itself claims rather than refusing to start over a probe failure.
 	 */
-	private static final int REQUIRED_JAVA_FEATURE = 25;
+	private static int requiredJavaFeature() {
+		if (derivedJavaFeature != 0) return derivedJavaFeature;
+		synchronized (KernelMixinBootstrap.class) {
+			if (derivedJavaFeature != 0) return derivedJavaFeature;
+			derivedJavaFeature = probeGameClassMajor() - 44;
+			return derivedJavaFeature;
+		}
+	}
+
+	/** Cached result of {@link #probeGameClassMajor()}; 0 means "not measured yet" and also "could not measure". */
+	private static int derivedJavaFeature;
+
+	/**
+	 * The Mixin {@code CompatibilityLevel} matching a Java feature version.
+	 *
+	 * <p>Falls back to whatever Mixin already holds when the feature is unmapped or was never measured — raising the
+	 * level to a guess is worse than leaving it, because Mixin refuses class files newer than its level but also
+	 * refuses a level its own ASM cannot handle.
+	 */
+	private static MixinEnvironment.CompatibilityLevel compatibilityLevelFor(int feature) {
+		return switch (feature) {
+			case 8 -> MixinEnvironment.CompatibilityLevel.JAVA_8;
+			case 11 -> MixinEnvironment.CompatibilityLevel.JAVA_11;
+			case 17 -> MixinEnvironment.CompatibilityLevel.JAVA_17;
+			case 21 -> MixinEnvironment.CompatibilityLevel.JAVA_21;
+			case 25 -> MixinEnvironment.CompatibilityLevel.JAVA_25;
+			default -> {
+				ForbricLog.warn("[Forbric/Mixin] no Mixin compatibility level is mapped for Java %s; leaving Mixin's"
+						+ " current level (%s) alone rather than guessing one", feature,
+						MixinEnvironment.getCompatibilityLevel());
+				yield MixinEnvironment.getCompatibilityLevel();
+			}
+		};
+	}
+
+	/**
+	 * The major version from a game class's header, or 0.
+	 *
+	 * <p>Read straight from the class file: bytes 6-7 of a class are the major version, big-endian, and the first
+	 * four bytes are {@code CAFEBABE}. A class that does not start with that magic is not a class, and returning 0
+	 * says so rather than reporting a number read from something else.
+	 */
+	private static int probeGameClassMajor() {
+		// ItemStack first because both known versions carry it and it is never merged away; Object as a last resort
+		// because it is always loadable and would at least report the runtime's own major rather than nothing.
+		for (String name : new String[] { "net/minecraft/world/item/ItemStack.class", "net/minecraft/server/MinecraftServer.class" }) {
+			try (java.io.InputStream in = KernelMixinBootstrap.class.getClassLoader().getResourceAsStream(name)) {
+				if (in == null) continue;
+				byte[] header = in.readNBytes(8);
+				if (header.length < 8) continue;
+				int magic = ((header[0] & 0xFF) << 24) | ((header[1] & 0xFF) << 16) | ((header[2] & 0xFF) << 8) | (header[3] & 0xFF);
+				if (magic != 0xCAFEBABE) continue;
+				return ((header[6] & 0xFF) << 8) | (header[7] & 0xFF);
+			} catch (java.io.IOException | RuntimeException unreadable) {
+				ForbricLog.warn("[Forbric/Mixin] could not read %s's class header to derive the Java version (%s) —"
+						+ " trying the next candidate", name, unreadable);
+			}
+		}
+		ForbricLog.warn("[Forbric/Mixin] no game class could be read to derive the Java version; the compatibility"
+				+ " report falls back to the runtime's own version and will not claim the game needs a newer Java");
+		return 0;
+	}
 
 	/**
 	 * The running JVM's feature version — 25 for Java 25 — or 0 when it cannot be read.
@@ -152,7 +222,7 @@ public final class KernelMixinBootstrap {
 		// JAVA_25 through getMaxCompatibilityLevel() two hundred lines up, sponge-mixin 0.17.3 with asm 9.10.1
 		// reports canSupport(JAVA_25) == true, and MC 26.2 ships Java 25 class files — a lower level would be a
 		// worse lie than this assignment is a liberty.
-		MixinEnvironment.CompatibilityLevel wanted = MixinEnvironment.CompatibilityLevel.JAVA_25;
+		MixinEnvironment.CompatibilityLevel wanted = compatibilityLevelFor(requiredJavaFeature());
 		// Raise only, never lower: a field already at or above the target is Mixin having got there itself, and
 		// overwriting that with our value would be this file claiming authority it has not measured.
 		if (!MixinEnvironment.CompatibilityLevel.MAX_SUPPORTED.isAtLeast(wanted)) {
@@ -225,7 +295,10 @@ public final class KernelMixinBootstrap {
 				// Java guidance is given ONLY when the Java is actually below what this build needs. Emitting
 				// "install Java 25" to someone already running Java 25 is worse than emitting nothing: it costs
 				// them a download and teaches them the message is noise.
-				boolean javaTooOld = javaFeatureVersion() < REQUIRED_JAVA_FEATURE;
+				int needs = requiredJavaFeature();
+		// needs == 0 means the probe failed, not that the game needs Java 0. Claiming "too old" then would send
+		// someone to install a Java they may already have.
+		boolean javaTooOld = needs > 0 && javaFeatureVersion() < needs;
 				StringBuilder detail = new StringBuilder();
 				detail.append("Mixin refused the compatibility level ").append(wanted)
 						.append(" that a mixin config asks for, so the launch stops here rather than part-way"
@@ -241,10 +314,10 @@ public final class KernelMixinBootstrap {
 						.append(" (feature ").append(javaFeatureVersion()).append(')').append(System.lineSeparator());
 				if (javaTooOld) {
 					detail.append(System.lineSeparator())
-							.append("This Minecraft version needs Java ").append(REQUIRED_JAVA_FEATURE)
+							.append("This Minecraft version needs Java ").append(needs)
 							.append(" or newer and this launcher started it on Java ").append(javaFeatureVersion())
 							.append(". In your launcher's Java settings, choose a Java ")
-							.append(REQUIRED_JAVA_FEATURE).append(" runtime (Adoptium Temurin, Microsoft"
+							.append(needs).append(" runtime (Adoptium Temurin, Microsoft"
 									+ " OpenJDK, or any other build of the same major version), then start again.");
 				} else {
 					detail.append(System.lineSeparator())
