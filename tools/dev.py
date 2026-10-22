@@ -32,10 +32,31 @@ STATE = KERNEL / '.dev'
 # the two patched bases have to exist for that version before anything downstream can run. Said here because an
 # override that silently produces a half-26.2 stage would be worse than no override.
 MC_VERSION = os.environ.get('FORBRIC_MC_VERSION', '26.2')
-API_PINS = (
-    ('fabric-api-0.155.2+26.2.jar',
-     'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.155.2+26.2/fabric-api-0.155.2+26.2.jar',
-     'd6518c770024cbe8a556248f16fcdbb91c6a62f50227a6c3bae8190511e2c1b8'),
+# The two API jars whose bytes this pipeline verifies. A tuple per version, because these are real distributions:
+# 1.21.1's fabric-api is a different build with a different size and a different digest, and pinning 26.2's URL for
+# a 1.21.1 run would download the wrong jar and then fail the digest check -- or worse, pass it against the wrong
+# expected value if someone copied one across.
+#
+# `energy` is a Fabric API module that did not depend on the game version, so it stays one row for both.
+_API_FOR_VERSION = {
+    '26.2': (
+        ('fabric-api-0.155.2+26.2.jar',
+         'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.155.2+26.2/fabric-api-0.155.2+26.2.jar',
+         'd6518c770024cbe8a556248f16fcdbb91c6a62f50227a6c3bae8190511e2c1b8'),
+    ),
+    '1.21.1': (
+        ('fabric-api-0.116.17+1.21.1.jar',
+         'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.116.17+1.21.1/fabric-api-0.116.17+1.21.1.jar',
+         # Measured locally on the downloaded jar: 2,452,735 bytes, SHA-256 below.
+         '79ac44b40780acbd884b34c50be1e39af682847e5f5cb3b1fddeeaa768dce800'),
+    ),
+}
+if MC_VERSION not in _API_FOR_VERSION:
+    raise SystemExit(
+        f'FORBRIC_MC_VERSION={MC_VERSION!r} has no pinned API jars. Add an entry to _API_FOR_VERSION in '
+        f'{Path(__file__).name} with the fabric-api build for that version and its SHA-256; guessing a URL here '
+        f'would download something and then either fail the digest or pin the wrong bytes.')
+API_PINS = _API_FOR_VERSION[MC_VERSION] + (
     ('energy-5.0.0.jar', 'https://maven.modmuss50.me/teamreborn/energy/5.0.0/energy-5.0.0.jar',
      '889afc438d3e4add5cfdac76517da7987a2c495e4731690a56f2c5dee775db59'),
 )
