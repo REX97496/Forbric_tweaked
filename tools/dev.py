@@ -22,7 +22,16 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 KERNEL = ROOT / 'forbric-kernel'
 STATE = KERNEL / '.dev'
-MC_VERSION = '26.2'
+# The one knob that turns this pipeline at another Minecraft line.
+#
+# It was the literal '26.2', which is why a second version could not be prepared at all without editing this file.
+# Reading it from the environment keeps every existing invocation byte-identical (unset means 26.2) while letting a
+# branch prepare a different version into its own state directory.
+#
+# Naming a version here is NOT sufficient to prepare it: the API_PINS below still point at jars built for 26.2, and
+# the two patched bases have to exist for that version before anything downstream can run. Said here because an
+# override that silently produces a half-26.2 stage would be worse than no override.
+MC_VERSION = os.environ.get('FORBRIC_MC_VERSION', '26.2')
 API_PINS = (
     ('fabric-api-0.155.2+26.2.jar',
      'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.155.2+26.2/fabric-api-0.155.2+26.2.jar',
@@ -30,14 +39,15 @@ API_PINS = (
     ('energy-5.0.0.jar', 'https://maven.modmuss50.me/teamreborn/energy/5.0.0/energy-5.0.0.jar',
      '889afc438d3e4add5cfdac76517da7987a2c495e4731690a56f2c5dee775db59'),
 )
-STAGED_FILES = ('merged-base/patched-mc-merged-26.2.jar', 'forge-runtime/forge-runtime.jar',
+_MC = MC_VERSION
+STAGED_FILES = (f'merged-base/patched-mc-merged-{_MC}.jar', 'forge-runtime/forge-runtime.jar',
                 'merged-base/forge-runtime-interop.jar', 'neoforge-runtime/neoforge-runtime.jar',
                 # Not launched, but the bytecode tests compare the merge against both patched sides.
-                'forge-patched/patched-mc-forge-26.2.jar', 'neoforge-patched/patched-mc-neoforge-26.2.jar',
+                f'forge-patched/patched-mc-forge-{_MC}.jar', f'neoforge-patched/patched-mc-neoforge-{_MC}.jar',
                 # Also only read by tests: the merge's own report, the pins that tie the Forge side to this merge,
                 # and the two canary mods (see CANARIES).
-                'merged-base/merge-conflicts.txt', 'merged-base/patched-mc-merged-26.2.jar.pins',
-                'forge-patched/patched-mc-forge-26.2.jar.pins',
+                'merged-base/merge-conflicts.txt', f'merged-base/patched-mc-merged-{_MC}.jar.pins',
+                f'forge-patched/patched-mc-forge-{_MC}.jar.pins',
                 'forge-runtime/forbriclive.jar', 'neoforge-runtime/forbricneolive.jar')
 # forbric-loader/run/build-testmods.sh's two canary mods, built the same way into the stage: (sources, jar, javac
 # --release, the staged game jars they compile against). Their sources go beside them, as in forbric-loader/run/,
@@ -47,9 +57,9 @@ CANARIES = (
     # The NeoForge carrier last: the MinecraftForge canary asks NeoForge's loader whether a foreign mod is there, as
     # a multi-platform mod does. build-testmods.sh found that loader among a launcher's libraries.
     ('livemod-src', 'forge-runtime/forbriclive.jar', '17',
-     ('forge-runtime/forge-runtime.jar', 'forge-patched/patched-mc-forge-26.2.jar', 'neoforge-runtime/neoforge-runtime.jar')),
+     ('forge-runtime/forge-runtime.jar', f'forge-patched/patched-mc-forge-{_MC}.jar', 'neoforge-runtime/neoforge-runtime.jar')),
     ('livemod-src-neoforge', 'neoforge-runtime/forbricneolive.jar', '21',
-     ('neoforge-runtime/neoforge-runtime.jar', 'neoforge-patched/patched-mc-neoforge-26.2.jar')),
+     ('neoforge-runtime/neoforge-runtime.jar', f'neoforge-patched/patched-mc-neoforge-{_MC}.jar')),
 )
 # What build-testmods.sh packages besides classes. The mixin config goes at the jar root: Forge drops a declared
 # config whose entry is missing with only a warning, so a misplaced one makes the canary silently do nothing.
@@ -574,7 +584,12 @@ def main(argv=None):
             subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', str(mac), '-t', str(mac), '-p', 'test_*.py'], check=True, cwd=KERNEL)
             return 0
         java = java_bin(args.java)
-        env = java_environment(java, minimum=21 if args.command == 'test' else 25)
+        # Tests always needed only 21. Everything else needed 25, because the staged game jars are class-file 69 and
+        # javac refuses to read those under an older release. That is a property of the VERSION, not of the command:
+        # a 1.21.1 stage ships class-file 65 and compiles under 21, so the requirement is derived from MC_VERSION
+        # rather than from which subcommand is running.
+        required_java = 25 if MC_VERSION.startswith('26.') else 21
+        env = java_environment(java, minimum=21 if args.command == 'test' else required_java)
         if args.command == 'prepare':
             prepare(args, java, env)
         elif args.command in ('client', 'server'):
