@@ -81,6 +81,8 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * <p>Usage: {@code MergedBaseBuilder <vanilla.jar> <forge-patched.jar> <neo-patched.jar> <out.jar> [report.txt]}
  */
 public final class MergedBaseBuilder {
+	/** Conflicts printed instead of thrown in -Dforbric.merge.collect=true mode. See the gate at the mergeBoth call. */
+	private static int collectedConflicts;
 	public static void main(String[] args) throws IOException {
 		if (args.length < 4) {
 			System.err.println("usage: MergedBaseBuilder <vanilla> <forge-patched> <neo-patched> <out.jar> [report.txt]");
@@ -468,6 +470,22 @@ public final class MergedBaseBuilder {
 		boolean neoMod = classHasHook(parse(neu), vanN, NEO_PKG);
 		if (forgeMod && neoMod) {
 			classesMerged++;
+			// Collection mode, wrapped around the WHOLE call rather than around each throw site. There are fourteen
+			// "cannot reconcile this" throw sites across this class and the tools beside it, so a build learns one
+			// problem per invocation. Catching here covers all of them and any future one, and keeps each throw's own
+			// message intact. A caught class did NOT merge: the Neo side is kept wholesale, which is the same fallback
+			// used two lines below when neither side is hooked, and nothing pretends otherwise.
+			if (Boolean.getBoolean("forbric.merge.collect")) {
+				try {
+					return mergeBoth(name, van, frg, neu);
+				} catch (RuntimeException collect) {
+					collectedConflicts++;
+					System.out.println("[merge] CONFLICT-COLLECTED #" + collectedConflicts + " " + name
+							+ " :: " + collect.getClass().getSimpleName() + ": " + collect.getMessage()
+							+ " (kept Neo side wholesale — this class did NOT merge)");
+					return neu;
+				}
+			}
 			return mergeBoth(name, van, frg, neu);
 		}
 		if (forgeMod) { classesTakenForge++; return frg; }
