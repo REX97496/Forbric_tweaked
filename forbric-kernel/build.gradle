@@ -41,7 +41,19 @@ java {
 // becomes the one FORBRIC_OLD names, so the two stay in step wherever the artifacts actually are.
 def stagedRoot         = file(project.findProperty('forbric.stagedRoot')
 		?: (System.getenv('FORBRIC_OLD') ? System.getenv('FORBRIC_OLD') + '/run' : file('run')))
-def stagedMergedBase   = new File(stagedRoot, 'merged-base/patched-mc-merged-26.2.jar')
+// WHICH LINE THIS BUILD IS, resolved here rather than beside the normalisation wiring below, because the merged
+// BASE is named per line and the base is the first thing this script needs. The old literal was
+// `patched-mc-merged-26.2.jar` on every line, and that is a silent-wrong-number defect rather than a tidy-up: a
+// 1.21.1 build with the default staged root compiled the 1.21.1-normalised sources against 26.2's bytes and
+// reported ~100 errors that read as port work, and a 1.21.1 staging directory laid out the way this script's OWN
+// comment at the mapping-table block says it should be ("this line's own merged base, by name") failed at
+// :remapTransferApis demanding a file prepare had correctly not written. The expression is IDENTICAL to the old
+// literal on the default line, because mcLineDefault IS '26.2'.
+def mcLineDefault = '26.2'
+def mcLine = (project.findProperty('forbric.mcLine')
+		?: System.getenv('FORBRIC_MC_VERSION')
+		?: mcLineDefault).toString()
+def stagedMergedBase   = new File(stagedRoot, "merged-base/patched-mc-merged-${mcLine}.jar")
 def stagedForgeRuntime = new File(stagedRoot, 'forge-runtime/forge-runtime.jar')
 def stagedNeoRuntime   = new File(stagedRoot, 'neoforge-runtime/neoforge-runtime.jar')
 def stagedGameJars = [stagedMergedBase, stagedForgeRuntime, stagedNeoRuntime].findAll { it.isFile() }
@@ -55,7 +67,17 @@ def stagedGameJars = [stagedMergedBase, stagedForgeRuntime, stagedNeoRuntime].fi
 // is missing its transfer component" -- a dedicated server exited 78 on a pack that launched before the bridge
 // existed. A machine that builds the game side must supply the API (-Pforbric.fabricApi=<fabric-api jar>) or the
 // build fails naming the file; a machine with no staged game jars builds neither half, exactly as before.
-def devFabricApi = file('.dev/api/fabric-api-0.155.2+26.2.jar')
+// The dev default is KEYED BY LINE, for the same reason the base above is. `.dev/api` holds one fabric-api per
+// Minecraft line, and their filenames differ in BOTH the API version and the `+<mc>` suffix, so a single literal
+// names one line's release. Measured cost of the old literal while the mcLine switch was 1.21.1: the 26.2
+// modules were fed to the 1.21.1 -fabric-ns table and :remapTransferApis died with 30 references to
+// `net/minecraft/resources/Identifier` that do not exist on 1.21.1 -- reported by an earlier round as "fails one
+// task earlier at :remapTransferApis" and attributed to the base filename, which was not the cause: the base in
+// that run was 1.21.1's own bytes. The glob resolves to the SAME file on the default line.
+def devFabricApiCandidates = fileTree('.dev/api') { include "fabric-api-*+${mcLine}.jar" }.files.sort { it.name }
+def devFabricApi = devFabricApiCandidates.isEmpty()
+		? file('.dev/api/fabric-api-0.155.2+26.2.jar')
+		: devFabricApiCandidates.last()
 def stagedFabricApi = file(project.findProperty('forbric.fabricApi') ?: (devFabricApi.isFile() ? devFabricApi
 		: new File(stagedRoot.parentFile.parentFile, 'forbric-kernel/run/client-merged-pack/mods/fabric-api-0.155.2+26.2.jar')))
 def transferApiModules = ['fabric-transfer-api-v1-', 'fabric-api-lookup-api-v1-', 'fabric-api-base-']
@@ -90,11 +112,9 @@ def transferModuleFiles = files(fileTree(transferModulesDir) { include '*.jar' }
 // collection it always was and its build graph does not gain a task.
 //
 // The line itself (and why it is a declared property rather than an inference) is explained under
-// "The Minecraft line: one source tree, two sets of class names" further down.
-def mcLineDefault = '26.2'
-def mcLine = (project.findProperty('forbric.mcLine')
-		?: System.getenv('FORBRIC_MC_VERSION')
-		?: mcLineDefault).toString()
+// "The Minecraft line: one source tree, two sets of class names" further down. `mcLine` / `mcLineDefault` are
+// declared at the TOP of this script, above the staged root: the merged base is named per line and is needed
+// there. It is one value read by two blocks, not two knobs.
 def fabricNsTable = file("src/runtime/mc-line/${mcLine}-fabric-ns.tsv")
 def remappedTransferDir = layout.buildDirectory.dir("transfer-api-mc/${mcLine}")
 def transferJarsForLine = mcLine == mcLineDefault
@@ -489,11 +509,12 @@ if (mcLine != mcLineDefault) {
 	// directory is shared with 26.2, so the verifier refuses it if its class-file major is not the base's.
 	def namespaceOrigin = file(project.findProperty('forbric.namespaceOrigin')
 			?: '.dev/minecraft/.forbric-build/clean-mojmap.jar')
-	// This line's own merged base, by name. The shared `stagedMergedBase` above is the 26.2 filename, and in a
-	// staging directory prepared for another line that file can hold EITHER line's bytes -- measured: under
-	// .dev/staged-1211/run the 1.21.1 and 26.2 names are byte-identical, both carrying mc=1.21.1 pins. The
-	// sidecar .pins file is the artifact's own statement of which line it is, so it is read rather than guessed.
-	def lineMergedBase = file("${stagedRoot}/merged-base/patched-mc-merged-${mcLine}.jar")
+	// This line's own merged base. It is now `stagedMergedBase` itself -- the top of this script names the base
+	// per line, so the 26.2 literal that used to live there (and could hold EITHER line's bytes in a shared
+	// staging directory, measured: under .dev/staged-1211/run the two names are byte-identical, both carrying
+	// mc=1.21.1 pins) is gone. The fallback is kept only so this block still reads as what it is: a verifier that
+	// will not silently adjudicate against a base that is not this line's.
+	def lineMergedBase = stagedMergedBase
 	def namespaceBase = lineMergedBase.isFile() ? lineMergedBase : stagedMergedBase
 	def runtimeMappings = layout.buildDirectory.file("namespace/mappings-${mcLine}.tsv")
 	def runtimeMappingsAnswers = layout.buildDirectory.file("namespace/mappings-${mcLine}-resolver-answers.tsv")
