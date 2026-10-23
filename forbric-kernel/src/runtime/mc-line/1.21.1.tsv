@@ -70,7 +70,15 @@ net.minecraft.world.entity.npc.villager.Villager	net.minecraft.world.entity.npc.
 # (ParticleEngine); 1.21.1 has the two roles on ParticleEngine, which is the class that implements
 # PreparableReloadListener and owns the `providers` map the kernel reads on both lines. Role-based mapping,
 # which is why it is written down: it is the one entry here that is not a literal rename.
-net.minecraft.client.particle.ParticleResources	net.minecraft.client.particle.ParticleEngine
+#
+# THE FULLY-QUALIFIED ROW IS RETIRED IN PLACE (overlay-steals-rules, third occurrence). Its only site was the
+# `import net.minecraft.client.particle.ParticleResources;` in KernelForgeClientInit, and that file is now an
+# overlay (it needs the 1.21.1 listeners field, see the tail) -- overlays are written verbatim, so the row
+# matched nothing and normalizeRuntimeJava would fail with "1 rule(s) matched nothing". Caught by
+# overlay-rules.py BEFORE the build, not by the build. The BARE row below is kept because it still has a site
+# (the {@code ParticleResources} mention in KernelParticleProviders' javadoc, which the normaliser rewrites like
+# any other text) -- so the ported line's documentation keeps this line's class name.
+# net.minecraft.client.particle.ParticleResources	net.minecraft.client.particle.ParticleEngine
 ParticleResources	ParticleEngine
 
 # =====================================================================================================
@@ -246,6 +254,30 @@ ingredientBaseCodec	enhanceIngredientCodec
 #    post call, so the object cast here is whatever THAT body constructed -- and 1.21.1's body constructs
 #    RegisterColorHandlersEvent.Block (javap of BlockColors.createDefault's call). The cast is right on both lines.
 RegisterColorHandlersEvent.BlockTintSources	RegisterColorHandlersEvent.Block
+
+# --- Minecraft#getTimer, renamed to getDeltaTracker in 26.2 -----------------------------------------------
+# A member rename with the SAME return type on both lines: 26.2 has `public DeltaTracker getDeltaTracker()`
+# and NO getTimer(); 1.21.1 has `public DeltaTracker getTimer()` and NO getDeltaTracker() (javap -p both).
+# Both return their line's own net.minecraft.client.DeltaTracker, and both of those interfaces declare
+# getRealtimeDeltaTicks(), which is the only member the kernel calls:
+#     KernelGameClientEvents:150   Minecraft.getInstance().getDeltaTracker().getRealtimeDeltaTicks()
+# One call site, so a rule is the whole fix.
+getDeltaTracker	getTimer
+
+# --- Registry#getValue, renamed to get in 26.2 -----------------------------------------------------------
+# Another member rename on a class BOTH lines have. It is written qualified on purpose, and the reason is the
+# trap in it -- javap -p net.minecraft.core.Registry:
+#     26.2    T getValue(ResourceKey<T>)   T getValue(Identifier)   Optional<Holder$Reference<T>> get(Identifier)
+#     1.21.1  T get(ResourceKey)           T get(ResourceLocation)  Optional<Holder$Reference<T>> getHolder(...)
+# 26.2 shifted BOTH names down one: the old get became getValue, and the old getHolder became get. So a bare
+# `getValue -> get` row is NOT safe: `getValue` occurs 49 times in src/runtime/java and nearly all of them are
+# Map.Entry#getValue() (KernelForgeOptions, KernelForgeSpawnPlacements, KernelCreativeSearch's
+# `tab.getValue()`, IdentityValueBiMap's own override). A whole-token rule on the bare name would rewrite every
+# one of those into a get() that Map.Entry does not have. Written qualified, the receiver expression is
+# untouched and only the member name changes -- a name, not an expression rewrite. Qualification is the
+# established form here: the `.BUS` rows above do the same thing.
+#     KernelParticleProviders:150   BuiltInRegistries.PARTICLE_TYPE.getValue(e.getKey())
+BuiltInRegistries.PARTICLE_TYPE.getValue	BuiltInRegistries.PARTICLE_TYPE.get
 
 # SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
 #
