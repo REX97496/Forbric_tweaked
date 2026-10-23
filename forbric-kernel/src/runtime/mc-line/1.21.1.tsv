@@ -152,6 +152,52 @@ net.minecraftforge.event.AnvilUpdateEvent.BUS	net.minecraftforge.common.Minecraf
 # Direction, so they satisfy that signature. Measured effect of this one line: 3 errors, see the axis-3 note.
 ContainerStorage	InventoryStorage
 
+# --- AXIS 2, two more renames: a type that CHANGED PACKAGE between the lines ---------------------------
+# Both are the same shape as ResourceLocation <-> Identifier -- MUTUALLY EXCLUSIVE, one spelling per line --
+# and both were found by an exhaustive sweep (build/x11/rename-sweep.py) rather than by eye: for every name
+# javac reported absent, every class on the 1.21.1 measurement classpath (39 jars) was listed when it shares
+# ALL of that name's words. Of the 55 absent names on axes 1-3, only FOUR have any such candidate at all, and
+# these are two of the four.
+#
+# WHY A FULLY-QUALIFIED RULE AND NOT A SIMPLE-NAME ONE: the simple name does not change, so the two rules
+# below rewrite the IMPORT and let every bare use resolve through it. A bare `Result` rule would fire inside
+# its own target (…Event.Result) and inside net.minecraft.world.InteractionResult; a bare `TriState` rule
+# would fire inside net.fabricmc.fabric.api.util.TriState. Longest-first ordering cannot save either,
+# because the substitution is textual and the simple name survives it.
+#
+# 1. net.minecraftforge.common.util.Result -> net.minecraftforge.eventbus.api.Event.Result
+#    26.2 pulled MinecraftForge's decision enum OUT of Event: `net.minecraftforge.common.util.Result`
+#    (javap, 26.2: ALLOW/DEFAULT/DENY, isAllowed/isDefault/isDenied). 1.21.1 still has it nested, with the
+#    same three constants and the same three predicates:
+#        public final class net.minecraftforge.eventbus.api.Event$Result extends Enum
+#            DENY, DEFAULT, ALLOW; isDefault(); isDenied(); isAllowed();            (javap, 1.21.1)
+#    Verified through the method that consumes it, on both lines:
+#        26.2    PlayerInteractEvent$RightClickBlock.getUseBlock() : net.minecraftforge.common.util.Result
+#        1.21.1  PlayerInteractEvent$RightClickBlock.getUseBlock() : net.minecraftforge.eventbus.api.Event$Result
+#
+#    THE `$` FORM OF THIS TARGET DOES NOT COMPILE, and that is measured, not assumed: `import
+#    net.minecraftforge.eventbus.api.Event$Result;` fails with "cannot find symbol: class Event$Result,
+#    location: package net.minecraftforge.eventbus.api". The CANONICAL nested spelling is the one that works
+#    (`import net.minecraftforge.eventbus.api.Event.Result;` + bare `Result.DENY`); it was compiled by hand
+#    against the 1.21.1 classpath before this line was written.
+#
+# 2. net.minecraft.util.TriState -> net.neoforged.neoforge.common.util.TriState
+#    26.2 adopted NeoForge's tri-state into vanilla: net.minecraft.util.TriState exists on 26.2 and is
+#    ABSENT from every one of the 39 1.21.1 jars; net.neoforged.neoforge.common.util.TriState exists on
+#    1.21.1 (javap: TRUE/DEFAULT/FALSE, isTrue/isDefault/isFalse) and is ABSENT from 26.2's
+#    neoforge-runtime.jar. Verified through the consumer method, on both lines:
+#        26.2    (NeoForge) PlayerInteractEvent$RightClickBlock.getUseBlock() : net.minecraft.util.TriState
+#        1.21.1  (NeoForge) PlayerInteractEvent$RightClickBlock.getUseBlock() : net.neoforged.neoforge.
+#                                                                            common.util.TriState
+#    Both files that touch these two types use them only as the bridge's value type (KernelGameBlockEvents:
+#    TriState <-> Result; KernelGameWorldEvents: Result), and the enum constants used are the same three, so
+#    the substitution carries every call site. THIS IS NOT VERIFIED BEYOND COMPILATION: nothing has executed
+#    either bridge on 1.21.1.
+net.minecraftforge.common.util.Result	net.minecraftforge.eventbus.api.Event.Result
+net.minecraft.util.TriState	net.neoforged.neoforge.common.util.TriState
+net.neoforged.neoforge.event.level.block.BreakBlockEvent	net.neoforged.neoforge.event.level.BlockEvent.BreakEvent
+BreakBlockEvent	net.neoforged.neoforge.event.level.BlockEvent.BreakEvent
+
 # SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
 #
 #   SpawnPlacementRegisterEvent.BUS          implements net.minecraftforge.fml.event.IModBusEvent
@@ -171,20 +217,46 @@ ContainerStorage	InventoryStorage
 #       recorded in docs/1.21.1-port.md stage 3 (1.21.1 CapabilityProvider has 2 inner classes, 26.2 has 7).
 
 # --- measured absent, with no same-simple-name counterpart anywhere in 1.21.1 -----------------------
-# Every class in the staged 1.21.1 jars was indexed (12,505) and searched by simple name for each of these
-# (build/x11/find-counterparts.py). At most four candidates came back per name and each was a different
-# concept. These are a whole API generation, not a spelling.
+# HOW THIS LIST WAS MADE, AND HOW IT WAS RE-CHECKED. The first pass indexed the three staged 1.21.1 jars
+# (12,505 classes) and searched by simple name. That misses exactly the rename worth finding -- the one where
+# the words survive and the nesting or noun does not (BreakBlockEvent -> BlockEvent$BreakEvent) -- and it also
+# produced two WRONG entries that are corrected below. The re-check indexes the whole MEASUREMENT CLASS PATH
+# (39 jars, build/x11/index-nested.json, nested classes included) and, for every name javac reported absent,
+# lists every class there whose own CamelCase words contain ALL of that name's words
+# (build/x11/rename-sweep.py). Measured on the final transcript: 49 distinct absent names, 36 with NO candidate
+# at all, 13 with at least one, and NONE of those 13 is the same concept (ForgeLayer, below, is the closest and
+# is a different interface). The thirteen share words and nothing else: EnergyHandler vs EnergyStorage /
+# IEnergyStorage (different method sets), ResourceHandler vs fabric's ResourceAmount, Resource vs ResourceKey,
+# TransactionContext vs fabric's own class of that name, TransformingClassLoader/ClassTransformer vs
+# cpw.mods.modlauncher's (a different platform), FluidModel vs DynamicFluidContainerModel, WeightedList/Weighted
+# vs WeightedRandomList (axis 1), Entities/Levels vs ChunkEntities/EnchantWithLevelsFunction (the
+# AttachCapabilitiesEvent inners), ClassProcessor vs Mixin's IClassProcessor. The compile is the oracle for
+# absence: javac read all 39 jars and did not find the name.
 #
 #   net.minecraftforge.eventbus.api.bus.BusGroup    EventBus 7 only. `BusGroup.create(...)` + `.startup()`
 #                                                   (KernelForgeContainers, KernelForgeSetup,
 #                                                   KernelForgeRegistries) is 7's group lifecycle; 1.21.1 has
-#                                                   IEventBus and no BusGroup.
+#                                                   IEventBus and no BusGroup. Its counterpart is POSITIVE, not
+#                                                   absent: net.minecraftforge.eventbus.api.BusBuilder exists on
+#                                                   1.21.1 and is how a standalone bus is built there, so this
+#                                                   is an expression rewrite (BusBuilder.builder().build()),
+#                                                   not a name -- and the type that receives it is passed into
+#                                                   FMLModContainer's eventBusGroup field, which is typed
+#                                                   BusGroup on 26.2. Refused for that reason, not for absence.
 #   net.neoforged.neoforgespi.transformation.*      absent. 1.21.1 transforms through modlauncher:
 #   net.neoforged.fml.classloading.transformation.* cpw.mods.modlauncher.TransformingClassLoader and
 #                                                   cpw.mods.modlauncher.ClassTransformer are its classes, and
 #                                                   that is a different platform, not a rename.
 #   net.neoforged.fml.loading.mixin.FMLMixinClassProcessor        26.x only.
 #   net.neoforged.fml.jarcontents.JarContents       26.x only; no jarcontents package on 1.21.1.
+#       AND THE INTERFACE ON TOP OF IT CHANGED SHAPE, which is why this is not a rule either (javap both):
+#           26.2    IModFile.getContents() : net.neoforged.fml.jarcontents.JarContents
+#                   IModFile.getId() : String
+#           1.21.1  IModFile.getSecureJar() : cpw.mods.jarhandling.SecureJar
+#                   (no getContents(), no getId(); getDiscoveryAttributes() instead of getProvider())
+#       KernelModFile implements that interface, so on 1.21.1 it must answer getSecureJar() and must not
+#       declare getContents(). A type substitution would leave the interface unimplemented: same total,
+#       different bucket. The counterpart is cpw.mods.jarhandling.SecureJar, which exists on BOTH lines.
 #   net.neoforged.neoforge.common.tooltip.*         26.x tooltip rework (ItemTooltipHandler, TooltipAppender,
 #   net.neoforged.neoforge.event.RegisterTooltipAppendersEvent   TooltipLocation). 1.21.1 appends tooltips
 #                                                   through its item-extension/RenderTooltip path; there is no
@@ -200,29 +272,43 @@ ContainerStorage	InventoryStorage
 #       RegisterClientReloadListenersEvent (registerReloadListener, no ordering) and
 #       net.neoforged.neoforge.event.AddReloadListenerEvent -- so the event exists and the ORDERED API does
 #       not. That is a design difference (the kernel depends on listener order), not a rename.
-#   net.minecraftforge.common.util.Result            absent: 1.21.1's common.util has 90 classes and neither
-#                                                   Result nor TriState. The kernel's use is the
-#                                                   TriState<->Result bridge, and 26.2's
-#                                                   net.minecraft.util.TriState is itself absent on 1.21.1, so
-#                                                   the cluster is blocked on axis 1, not on this name.
 #   net.neoforged.neoforge.event.entity.player.AnvilCraftEvent   26.x added Pre/Post craft events; 1.21.1's
 #                                                   AnvilUpdateEvent is a different event, not a new name.
-#   net.neoforged.neoforge.event.level.block.BreakBlockEvent     THE ONE REAL RENAME IN THIS LIST, and still
-#       not a rule. 26.x un-nested the class; 1.21.1's is
-#       net.neoforged.neoforge.event.level.BlockEvent$BreakEvent, and javap shows the SAME constructor
-#       (Level, BlockPos, BlockState, Player), the SAME getPlayer()/setCanceled(boolean) and the same
-#       superclass, so the three call sites would compile. It is left out because a name rule cannot express
-#       the target cleanly: it is a NESTED class, and the file using it already imports a DIFFERENT
-#       `BlockEvent` (net.minecraftforge.event.level.BlockEvent) and writes `BlockEvent.BreakEvent` for the
-#       MinecraftForge event a few lines later. The only spelling that works is the `$` form,
-#       net.neoforged.neoforge.event.level.BlockEvent$BreakEvent, which does compile but puts a `$`-nested
-#       type into source that never otherwise uses one -- for three errors. Written down instead of ruled,
-#       so the next agent does not have to re-derive that the rename exists.
+#   net.neoforged.neoforge.event.level.block.BreakBlockEvent     RULED NOW (three lines up), and the note that
+#       used to sit here was WRONG in a way that mattered. 26.x un-nested the class; 1.21.1's is
+#       net.neoforged.neoforge.event.level.BlockEvent$BreakEvent. The old note said "the only spelling that
+#       works is the `$` form ... which does compile". IT DOES NOT COMPILE: `import
+#       net.neoforged.neoforge.event.level.BlockEvent$BreakEvent;` fails with "cannot find symbol: class
+#       BlockEvent$BreakEvent, location: package net.neoforged.neoforge.event.level" (JDK-21 javac, 1.21.1
+#       class path; the same test on net.minecraftforge.eventbus.api.Event$Result fails identically). What DOES
+#       compile is the CANONICAL nested spelling, which is why the rule now exists:
+#           import net.neoforged.neoforge.event.level.BlockEvent.BreakEvent;   + bare BreakEvent
+#       It costs nothing at the import, and the two body sites become the fully-qualified
+#       net.neoforged...BlockEvent.BreakEvent, which is what a 1.21.1 mod writes for this type anyway.
+#       WHAT IT EXPOSED, and this is the part worth keeping: with the parameter type finally resolving, javac
+#       type-checked the method body for the first time and found a REAL, independent difference -- the
+#       MinecraftForge event's constructor arity:
+#           26.2    BlockEvent$BreakEvent(Level, BlockPos, BlockState, Player, net.minecraftforge.common.util.Result)
+#           1.21.1  BlockEvent$BreakEvent(Level, BlockPos, BlockState, Player)          (javap both)
+#       so the kernel's `new BlockEvent.BreakEvent(level, pos, state, player, seed(...))` cannot be carried by
+#       any name rule: on 1.21.1 the seed has to be applied after construction (Event.setResult). Net effect of
+#       the rule: 3 "cannot find symbol" gone, 1 constructor-arity error newly visible, and the next round's
+#       job is a call-site rewrite instead of a type hunt.
 #   net.neoforged.neoforge.fluids.InFluidPredicate   26.x only.
 #   net.neoforged.neoforge.network.payload.RecipeContentPayload  26.x payload protocol; no 1.21.1 equivalent.
 #   net.neoforged.neoforge.client.model.UnbakedModelParser       26.x only.
-#   net.minecraftforge.client.gui.overlay.ForgeLayer no overlay-layer API before 26.x; the same axis-1
-#                                                   Hud/Gui split as the entry in the tail above.
+#   net.minecraftforge.client.gui.overlay.ForgeLayer THE API IS THERE, THE INTERFACE IS NOT -- this entry used
+#       to say "no overlay-layer API before 26.x", which is false. 1.21.1 HAS
+#       net.minecraftforge.client.gui.overlay.ForgeLayeredDraw (javap: extends net.minecraft.client.gui.
+#       LayeredDraw, named-layer constants HOTBAR/CROSSHAIR/..., add/addAbove/addBelow/putAbove/putBelow/move/
+#       addWithCondition/resolveLayers). What 1.21.1 does not have is ForgeLayer itself: 26.2 introduced
+#           public interface ForgeLayer { void extract(GuiGraphicsExtractor, DeltaTracker); }
+#       which ForgeLayeredDraw implements, so on 26.2 the LAYER is a Forge type. On 1.21.1 the same argument
+#       is net.minecraft.client.gui.LayeredDraw$Layer, whose method is render(GuiGraphics, DeltaTracker).
+#       Different method name AND a different parameter type, and the parameter type (GuiGraphicsExtractor) is
+#       itself one of the absent axis-1 names -- so the substitution cannot be made in a lambda-free way and
+#       the file is blocked on axis 1 anyway (it also names Hud and calls ForgeLayeredDraw.init, which is
+#       26.2-only). Refused, with the corrected fact.
 #   net.minecraftforge.client.event.RegisterPictureInPictureRendererEvent
 #   net.neoforged.neoforge.client.gui.PictureInPictureRendererRegistration
 #       Both belong to 26.x's picture-in-picture pipeline, and 1.21.1 has no
@@ -230,46 +316,96 @@ ContainerStorage	InventoryStorage
 #   net.neoforged.neoforge.transfer.{ResourceHandler, item.ItemResource, item.VanillaContainerWrapper,
 #       fluid.FluidResource, energy.EnergyHandler, transaction.TransactionContext,
 #       transaction.SnapshotJournal, resource.Resource}
-#       NeoForge's OWN transfer API, added after 1.21.1: there is no net.neoforged.neoforge.transfer package in
-#       the 1.21.1 jars at all. This is the largest error group in both axes and it is a whole API generation.
-#       It is NOT the fabric transfer axis -- see AXIS 3 below, where that claim is measured.
+#       NeoForge's OWN transfer API, added after 1.21.1: there is NO net.neoforged.neoforge.transfer package in
+#       the 1.21.1 jars at all (measured: zero entries matching neoforge/transfer in neoforge-runtime.jar and
+#       in forge-runtime.jar; the same grep finds the package in 26.2's neoforge-runtime.jar). This is the
+#       largest error group in both axes and it is a whole API generation. WHAT 1.21.1 HAS INSTEAD is measured,
+#       name by name, in the AXIS 3 block below -- it is the classic capability/handler API, and the two models
+#       differ in more than the type names. Not the fabric transfer axis; that was measured separately.
 
 # =====================================================================================================
-# AXIS 3 -- fabric-api transfer 0.116.17 vs 8.0.11, and Team Reborn Energy
+# AXIS 3 -- what 1.21.1's NeoForge ACTUALLY has, asked as a question instead of assumed
 # =====================================================================================================
 #
-# THE PREMISE DOES NOT HOLD, MEASURED RATHER THAN ARGUED. The 26.2 and 1.21.1 transfer modules were extracted
-# separately (build/x11/transfer-26.2/, build/x11/transfer-1.21.1/) and their class lists diffed:
+# The axis is ONE subsystem, not a set of names: the kernel's 13 files under
+# net.forbric.kernel.runtime.transfer reference seven 26.2 types and every single error on this axis is one of
+# them. So the useful question is not "which name is it now" but "what does 1.21.1 offer for the same job", and
+# it was answered by javap on the 1.21.1 class path, not by reading a changelog.
+#
+# THE SHORT ANSWER: 1.21.1's NeoForge has the CLASSIC capability/handler API, and 26.2's transfer API replaced
+# it. Every counterpart below therefore exists on BOTH lines -- which is the opposite of the other axes, and it
+# is what makes this axis the expensive one: nothing here is mutually exclusive, so nothing is a rename, and
+# nothing can be fixed by one. The two models differ in their METHOD SETS and in whether a write is
+# transactional at all.
+#
+#   26.2 transfer type                         1.21.1 (and 26.2) counterpart, and why it is not a substitution
+#   ---------------------------------------   --------------------------------------------------------------
+#   transfer.ResourceHandler<T extends          net.neoforged.neoforge.items.IItemHandler / .fluids.capability.
+#     resource.Resource> (javap 26.2:             IFluidHandler
+#     size/getResource/getAmountAsLong/           javap 1.21.1 IItemHandler: getSlots/getStackInSlot/
+#     getCapacityAsLong/isValid/insert(int,T,     insertItem(int,ItemStack,boolean)/extractItem(int,int,
+#     int,TransactionContext)/extract(...))       boolean)/getSlotLimit/isItemValid.
+#                                               Different nouns, ItemStack instead of a typed resource, a
+#                                               boolean simulate flag instead of a TransactionContext, and no
+#                                               long amount. Nothing to rename: the call shapes differ.
+#   transfer.item.ItemResource                  ItemStack. 26.2's resource is a stack MINUS the count.
+#   transfer.fluid.FluidResource                net.neoforged.neoforge.fluids.FluidStack.
+#   transfer.energy.EnergyHandler (javap 26.2:  net.neoforged.neoforge.energy.IEnergyStorage (receiveEnergy/
+#     getAmountAsLong/getCapacityAsLong/          extractEnergy/getEnergyStored/getMaxEnergyStored/canExtract/
+#     insert(int,TransactionContext)/extract)     canReceive). Both lines have this one.
+#   transfer.transaction.TransactionContext     NO COUNTERPART. The only TransactionContext on the 1.21.1 class
+#                                               path is fabric's own (net.fabricmc.fabric.api.transfer.v1.
+#                                               transaction), which is the fabric half of the bridge and has
+#                                               different semantics -- it is not NeoForge's journal handle.
+#   transfer.transaction.SnapshotJournal        NO COUNTERPART ANYWHERE. The word-overlap sweep over all 39
+#                                               jars returns 0 candidates for {snapshot, journal}.
+#   transfer.resource.Resource                  NO COUNTERPART.
+#   capabilities.Capabilities.Item/Fluid/Energy capabilities.Capabilities.ItemHandler/FluidHandler/EnergyStorage
+#     (nested classes; javap 26.2               LOOKS like the cleanest rename on this axis and IS NOT, which is
+#     Capabilities$Item/$Fluid/$Energy)         why it is written down instead of ruled: the nested class was
+#                                               renamed, but the capability it holds changed value type with it.
+#                                               On 26.2 `Capabilities.Item.BLOCK` is a
+#                                               BlockCapability<ResourceHandler<ItemResource>, Direction>;
+#                                               on 1.21.1 `Capabilities.ItemHandler.BLOCK` is one over
+#                                               IItemHandler. Substituting the name turns "cannot find symbol
+#                                               Capabilities.Item" into "incompatible types: IItemHandler cannot
+#                                               be converted to ResourceHandler<ItemResource>" -- the same
+#                                               class of lateral move measured for ContainerStorage before the
+#                                               fabric modules were remapped, and here there is no remap that
+#                                               makes it right, because the types really are different.
+#
+# THE BLOCKER THAT OUTLIVES THE TYPES is the transaction. KernelBridge writes across two APIs and relies on
+# 26.2's TransactionContext/SnapshotJournal to make an insert that half-succeeds roll back. 1.21.1's handler API
+# has no transaction at all -- insertItem(..., simulate) is the whole mechanism -- so a port has to supply the
+# snapshot/rollback itself, inside the kernel, for the handler side. That is why this axis is not a mechanical
+# pass and why no rule was written for it: the measured work is "reimplement the transactional layer for the
+# legacy handlers", which is code, and it changes 26.2's shape too if it is done in one source tree.
+#
+# CORROBORATION FROM THE 26.2 SIDE, and the one piece of positive news: 26.2 still SHIPS the legacy handler API
+# (net.neoforged.neoforge.items.IItemHandler, ItemStackHandler, ItemHandlerHelper, fluids.capability.
+# IFluidHandler, energy.IEnergyStorage are all present in 26.2's neoforge-runtime.jar, and 26.2 even adds
+# items.ItemResourceHandlerAdapter, which adapts a handler INTO the new transfer API). So a single source tree
+# that speaks handlers can compile against BOTH lines -- the restructure is available. What it is NOT free of is
+# the behaviour question: on 26.2 a NeoForge mod may register a native ResourceHandler, and a bridge that only
+# asks for handlers would stop seeing it. That decision belongs to whoever does the port, which is why it is
+# written here and not guessed at.
+
+# --- the fabric half, which was measured in an earlier round and is unchanged ------------------------
+# THE FABRIC TRANSFER API ITSELF IS NOT ON THIS AXIS, and that was measured rather than assumed: the 26.2 and
+# 1.21.1 transfer modules were extracted separately and their class lists diffed.
 #
 #     fabric-transfer-api-v1      26.2: 131 classes      1.21.1: 115 classes
 #     present on BOTH: ItemVariant, FluidVariant, Storage, StorageView, Transaction, TransactionContext,
 #                      ContainerItemContext, FluidStorage, ItemStorage, PlayerInventoryStorage,
 #                      SingleVariantStorage, SnapshotParticipant, ResourceAmount, ...
-#     renamed:         ContainerStorage (26.2) -> InventoryStorage (1.21.1), same package
-#                      net.fabricmc.fabric.api.transfer.v1.item, same shape -- both extend
-#                      SlottedStorage<ItemVariant> and both have of(Container, Direction) + getSlots() +
-#                      getSlotCount() + getSlot(int) (javap on both jars).
+#     renamed:         ContainerStorage (26.2) -> InventoryStorage (1.21.1), same package, same shape (the rule
+#                      above; javap on both jars, and on the REMAPPED 1.21.1 module after remapTransferApis)
 #
-# So `ItemVariant`/`FluidVariant`/`Storage` are NOT 26.2-only names, and `ItemResource`/`FluidResource`/
-# `ResourceHandler`/`EnergyHandler`/`TransactionContext` are NOT fabric names at all -- they come from
-# net.neoforged.neoforge.transfer.*, which is why they appear in the axis-2 list above. What the error
-# splitter calls "axis 3" is NeoForge-transfer errors plus Team Reborn Energy errors; the fabric transfer API
-# itself contributes three ContainerStorage errors and a staging problem.
-#
-# ContainerStorage -> InventoryStorage WAS DELIBERATELY NOT A RULE, AND NOW IT IS ONE (above). Applying it
-# first was measurably a lateral move. At the time, 1.21.1's
-#
-#     public static net.fabricmc.fabric.api.transfer.v1.item.InventoryStorage
-#         of(net.minecraft.class_1263, net.minecraft.class_2350);        (javap, INTERMEDIARY names)
-#
-# took intermediary types, so the three "cannot find symbol ContainerStorage" would have become three
-# "incompatible types: Container cannot be converted to class_1263" -- same total, different bucket -- with
-# the real gap hidden. The gap was that the 1.21.1 fabric-api modules are intermediary-remapped, which is also
-# what produced the 8 `class_1937 / class_2248 / class_2338 / class_2350 / class_1792 / class_1935 /
-# class_3611 / class_9326` "cannot access" errors. `remapTransferApis` (build.gradle, gated on mcLine) rewrites
-# those three modules to Mojmap before the runtime set compiles against them, from the declared table
-# src/runtime/mc-line/1.21.1-fabric-ns.tsv; after that the substitution is a rename and not a swap.
-#
+# ContainerStorage -> InventoryStorage is the only fabric rename on this axis, and it is a rule only because the
+# 1.21.1 modules are now rewritten out of intermediary first: while InventoryStorage.of still took
+# (net.minecraft.class_1263, net.minecraft.class_2350) the substitution was a measurably lateral move, so the
+# fix that mattered was the remap (remapTransferApis, gated on mcLine), not the name.
+
 # TEAM REBORN ENERGY IS A STAGING DEFECT, NOT AN API DIFFERENCE. All 12 classes of
 # .dev/api/energy-5.0.0.jar are class-file 69 (Java 25), and a JDK-21 `--release 21` javac cannot read the jar
 # at all:
@@ -297,7 +433,10 @@ ContainerStorage	InventoryStorage
 #   net.minecraft.world.level.block.entity.FuelValues     fuel values are a furnce-block-entity concern
 #                                                         in 1.21.1 (AbstractFurnaceBlockEntity.isFuel)
 #   net.minecraft.server.packs.metadata.pack.PackFormat   pack format is an int before 1.21.9
-#   net.minecraft.util.TriState                           does not exist in 1.21.1
+#   net.minecraft.util.TriState                           RULED NOW, at the top of this file -- 26.2 adopted
+#                                                         NeoForge's TriState into vanilla, so it lives in
+#                                                         net.neoforged.neoforge.common.util on 1.21.1. Left
+#                                                         in this list as a correction, not as an entry.
 #   net.minecraft.core.TypedInstance                      does not exist in 1.21.1
 #   net.minecraft.world.level.storage.ValueInput/Output   CompoundTag-based before 26.x
 #   net.minecraft.client.gui.Hud                          the HUD is Gui/GuiGraphics before 26.x
