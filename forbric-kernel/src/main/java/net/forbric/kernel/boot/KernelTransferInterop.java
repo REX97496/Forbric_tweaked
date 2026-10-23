@@ -35,9 +35,14 @@ public final class KernelTransferInterop {
 
 	public static synchronized boolean configure(ForbricClassLoader loader) {
 		installed = false;
+		// WHICH NATIVE API PROVES THE TRANSFER LAYER IS PRESENT depends on the Minecraft line, and the two are
+		// mutually exclusive: 26.2 has net.neoforged.neoforge.transfer, 1.21.1 has only the handler API (javap both;
+		// see docs/1.21.1-port.md). Asking for the transfer API alone made the bridge unreachable on 1.21.1, where
+		// the ported code exists and compiles. Either API is enough; neither is required in particular.
 		boolean requested = !"off".equalsIgnoreCase(System.getProperty("forbric.transferBridge", "on"))
 				&& present(loader, "net/fabricmc/fabric/api/transfer/v1/storage/Storage.class")
-				&& present(loader, "net/neoforged/neoforge/transfer/ResourceHandler.class");
+				&& (present(loader, "net/neoforged/neoforge/transfer/ResourceHandler.class")
+					|| present(loader, "net/neoforged/neoforge/items/IItemHandler.class"));
 		active = requested && present(loader, BRIDGE.replace('.', '/') + ".class")
 				&& present(loader, ISSUES.replace('.', '/') + ".class")
 				&& present(loader, TRANSACTIONS.replace('.', '/') + ".class");

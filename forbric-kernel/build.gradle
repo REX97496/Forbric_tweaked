@@ -270,6 +270,22 @@ sourceSets {
 // mcLine and mcLineDefault are declared above the transfer-module wiring, which needs them first.
 def mcLineRenames = file("src/runtime/mc-line/${mcLine}.tsv")
 def mcLineJava = layout.buildDirectory.dir("generated/mc-line/${mcLine}/java")
+// SOME DIFFERENCES ARE NOT RENAMES, so the same knob also carries a source overlay: a file under this directory
+// REPLACES the file at the same relative path under src/runtime/java, verbatim -- no rename rule is applied to it,
+// because it is already written in the line's own names. That is the difference between "this symbol is spelled
+// differently here" (a table row) and "this subsystem is a different subsystem here" (a file). It is still ONE
+// version knob: the directory is keyed by the same mcLine, and a target with no overlay simply has none.
+//   guard: every overlay file must replace a real source file, or the build fails naming it. An overlay that has
+//   outlived its base file would otherwise sit in the tree as a silent extra class nobody compiles.
+def mcLineOverlay = file("src/runtime/mc-line/${mcLine}/java")
+def overlaidFiles = []
+if (mcLineOverlay.isDirectory()) {
+	def overlayRootPath = mcLineOverlay.toPath()
+	fileTree(mcLineOverlay).files.each { File overlayed ->
+		overlaidFiles << overlayRootPath.relativize(overlayed.toPath()).toString().replace(File.separator, '/')
+	}
+	overlaidFiles.sort()
+}
 def normalizeRuntimeJava = null
 
 if (mcLine != mcLineDefault) {
@@ -283,6 +299,16 @@ if (mcLine != mcLineDefault) {
 		// it. @InputFiles does not require existence, so the doLast throw below can state both -- and an edit to
 		// the table still invalidates this task.
 		inputs.files(mcLineRenames).withPropertyName('mcLineRenames')
+		if (mcLineOverlay.isDirectory()) inputs.dir(mcLineOverlay).withPropertyName('mcLineOverlay')
+		doFirst {
+			overlaidFiles.each { String rel ->
+				if (!new File(file('src/runtime/java'), rel).isFile()) {
+					throw new GradleException("${mcLineOverlay}/" + rel + " replaces nothing: src/runtime/java/" + rel
+							+ " does not exist. An overlay file REPLACES the file at the same path; a new file has no base"
+							+ " to replace and would have to be a genuine addition to both lines instead.")
+				}
+			}
+		}
 		doLast {
 			if (!mcLineRenames.isFile()) {
 				throw new GradleException("Minecraft ${mcLine} has no rename table: ${mcLineRenames} is absent. " +
@@ -307,6 +333,10 @@ if (mcLine != mcLineDefault) {
 			def sourceRoot = file('src/runtime/java').toPath()
 			def outputRoot = mcLineJava.get().asFile
 			fileTree('src/runtime/java').files.sort { it.path }.each { File source ->
+				def relative = sourceRoot.relativize(source.toPath()).toString().replace(File.separator, '/')
+				// An overlaid file is written VERBATIM from the overlay below, with no rule applied to it: it is
+				// already written in this line's own names, and a rule that matched inside it would be a guess.
+				if (overlaidFiles.contains(relative)) return
 				def text = source.getText('UTF-8')
 				rules.each { rule ->
 					// Whole-token only: `Identifier` must not reach inside `KernelIdentifier`, and `identifier()`
@@ -330,6 +360,15 @@ if (mcLine != mcLineDefault) {
 				target.parentFile.mkdirs()
 				target.setText(text, 'UTF-8')
 			}
+			// THE OVERLAY, verbatim. These are the differences that are not renames: a subsystem this line spells
+			// with different types throughout, which no token table can carry.
+			fileTree(mcLineOverlay).files.sort { it.path }.each { File source ->
+				def relative = mcLineOverlay.toPath().relativize(source.toPath()).toString()
+				File target = new File(outputRoot, relative)
+				target.parentFile.mkdirs()
+				target.setText(source.getText('UTF-8'), 'UTF-8')
+			}
+			if (!overlaidFiles.isEmpty()) logger.lifecycle("[forbric] mc-line ${mcLine}: ${overlaidFiles.size()} file(s) REPLACED by ${mcLineOverlay.name}")
 			// A rule that matched nothing is stale -- the source moved on, or the entry was always wrong. It is
 			// an error rather than a no-op because the failure it would otherwise cause is a compile error on
 			// the other line, which reads as an engine difference for a whole afternoon.
