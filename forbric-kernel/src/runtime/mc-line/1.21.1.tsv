@@ -122,7 +122,13 @@ net.minecraftforge.client.event.ViewportEvent.ComputeFogColor.BUS	net.minecraftf
 net.minecraftforge.client.event.ComputeFovModifierEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.client.event.RegisterClientCommandsEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.event.server.ServerAboutToStartEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.event.entity.living.LivingExperienceDropEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
+# REMOVED, and the reason is a property of the mechanism rather than of the event: the only call site of
+# net.minecraftforge.event.entity.living.LivingExperienceDropEvent.BUS was in KernelGameServerEvents, and that
+# file is now an OVERLAY (the onExplosionDetonate arity). Overlay files are written verbatim and no rule is
+# applied to them, so a rule that matched only there matches nothing at all -- and "matched nothing" fails the
+# build. The overlay already carries the substituted name. Kept here as a record so the next agent does not
+# re-add it and watch the build fail.
+#net.minecraftforge.event.entity.living.LivingExperienceDropEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.event.entity.living.LivingHealEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.event.entity.living.MobEffectEvent.Applicable.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.event.entity.player.PermissionsChangedEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
@@ -198,6 +204,43 @@ net.minecraft.util.TriState	net.neoforged.neoforge.common.util.TriState
 net.neoforged.neoforge.event.level.block.BreakBlockEvent	net.neoforged.neoforge.event.level.BlockEvent.BreakEvent
 BreakBlockEvent	net.neoforged.neoforge.event.level.BlockEvent.BreakEvent
 
+# --- AXIS 2, two more renames found by asking the MEMBERS, not the class names ------------------------
+# The word-overlap sweep cannot see either of these: it compares CLASS simple names, and both of these are
+# member renames inside a class that has the same name on both lines. They were found by listing the members
+# of the class javac had already resolved and diffing the two listings, which is the only method that finds
+# a rename whose owner did not move.
+#
+# 1. ForgeHooks.ingredientBaseCodec(Codec<Ingredient>) -> ForgeHooks.enhanceIngredientCodec(Codec<Ingredient>)
+#    Same class, same parameter type, same return type, same body -- three private lambdas each, doing the
+#    same three things (unwrap Either, re-encode, report a failure) -- and MUTUALLY EXCLUSIVE:
+#        26.2    ingredientBaseCodec(Codec<Ingredient>) : Codec<Ingredient>      (javap)
+#                lambda$ingredientBaseCodec$0/$1/$2
+#        1.21.1  enhanceIngredientCodec(Codec<Ingredient>) : Codec<Ingredient>    (javap)
+#                lambda$enhanceIngredientCodec$17/$18/$19
+#    Neither name exists on the other line (both listings are in the sweep output: 26.2 has no
+#    enhanceIngredientCodec, 1.21.1 has no ingredientBaseCodec). One call site, KernelForgeIngredients:72.
+ingredientBaseCodec	enhanceIngredientCodec
+
+# 2. net.neoforged.neoforge.client.event.RegisterColorHandlersEvent.BlockTintSources
+#        -> net.neoforged.neoforge.client.event.RegisterColorHandlersEvent.Block
+#    26.2 renamed this event class inside the NEOFORGE package tree only, and that is visible by comparing the
+#    two trees on the SAME line -- it is the CompatLayer-style rename 26.2 applies between them (javap, all
+#    four classes):
+#        26.2    neoforged...RegisterColorHandlersEvent$BlockTintSources   PRESENT   register(List<BlockTintSource>, Block...)
+#        26.2    neoforged...RegisterColorHandlersEvent$Block              ABSENT
+#        1.21.1  neoforged...RegisterColorHandlersEvent$BlockTintSources   ABSENT
+#        1.21.1  neoforged...RegisterColorHandlersEvent$Block              PRESENT   register(BlockColor, Block...)
+#    Both io versions carry getBlockColors(), which is the ONLY member the kernel reads
+#    (KernelForgeBlockColors.postBlockTintSources casts the event and asks it for the live BlockColors), so the
+#    read path is a plain rename. THE RULE IS NOT THE WHOLE STORY AND IS NOT A LIE EITHER: register(...) takes
+#    List<BlockTintSource> on 26.2 and BlockColor on 1.21.1, and BlockTintSource is a 26.x vanilla type that
+#    does not exist on 1.21.1 -- so the registration path, if the kernel ever needed it, would be an axis-1
+#    restructure. It never calls register.
+#    It also stays honest about where the event comes from: ForgeBlockTintInjector redirects BlockColors's own
+#    post call, so the object cast here is whatever THAT body constructed -- and 1.21.1's body constructs
+#    RegisterColorHandlersEvent.Block (javap of BlockColors.createDefault's call). The cast is right on both lines.
+RegisterColorHandlersEvent.BlockTintSources	RegisterColorHandlersEvent.Block
+
 # SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
 #
 #   SpawnPlacementRegisterEvent.BUS          implements net.minecraftforge.fml.event.IModBusEvent
@@ -217,111 +260,227 @@ BreakBlockEvent	net.neoforged.neoforge.event.level.BlockEvent.BreakEvent
 #       recorded in docs/1.21.1-port.md stage 3 (1.21.1 CapabilityProvider has 2 inner classes, 26.2 has 7).
 
 # --- measured absent, with no same-simple-name counterpart anywhere in 1.21.1 -----------------------
-# HOW THIS LIST WAS MADE, AND HOW IT WAS RE-CHECKED. The first pass indexed the three staged 1.21.1 jars
-# (12,505 classes) and searched by simple name. That misses exactly the rename worth finding -- the one where
-# the words survive and the nesting or noun does not (BreakBlockEvent -> BlockEvent$BreakEvent) -- and it also
-# produced two WRONG entries that are corrected below. The re-check indexes the whole MEASUREMENT CLASS PATH
-# (39 jars, build/x11/index-nested.json, nested classes included) and, for every name javac reported absent,
-# lists every class there whose own CamelCase words contain ALL of that name's words
-# (build/x11/rename-sweep.py). Measured on the final transcript: 49 distinct absent names, 36 with NO candidate
-# at all, 13 with at least one, and NONE of those 13 is the same concept (ForgeLayer, below, is the closest and
-# is a different interface). The thirteen share words and nothing else: EnergyHandler vs EnergyStorage /
-# IEnergyStorage (different method sets), ResourceHandler vs fabric's ResourceAmount, Resource vs ResourceKey,
-# TransactionContext vs fabric's own class of that name, TransformingClassLoader/ClassTransformer vs
-# cpw.mods.modlauncher's (a different platform), FluidModel vs DynamicFluidContainerModel, WeightedList/Weighted
-# vs WeightedRandomList (axis 1), Entities/Levels vs ChunkEntities/EnchantWithLevelsFunction (the
-# AttachCapabilitiesEvent inners), ClassProcessor vs Mixin's IClassProcessor. The compile is the oracle for
-# absence: javac read all 39 jars and did not find the name.
+# HOW THIS LIST WAS MADE, AND HOW IT WAS RE-CHECKED TWICE. The first pass indexed the three staged 1.21.1 jars
+# (12,505 classes) and searched by simple name. That misses exactly the rename worth finding -- the one where the
+# words survive and the nesting or noun does not (BreakBlockEvent -> BlockEvent$BreakEvent) -- and it also produced
+# two WRONG entries that are corrected below. The second pass indexed the whole MEASUREMENT CLASS PATH (39 jars,
+# build/x11/index-nested.json, nested classes included) and, for every name javac reported absent, listed every
+# class there whose own CamelCase words contain ALL of that name's words (build/x11/rename-sweep.py).
 #
-#   net.minecraftforge.eventbus.api.bus.BusGroup    EventBus 7 only. `BusGroup.create(...)` + `.startup()`
-#                                                   (KernelForgeContainers, KernelForgeSetup,
-#                                                   KernelForgeRegistries) is 7's group lifecycle; 1.21.1 has
-#                                                   IEventBus and no BusGroup. Its counterpart is POSITIVE, not
-#                                                   absent: net.minecraftforge.eventbus.api.BusBuilder exists on
-#                                                   1.21.1 and is how a standalone bus is built there, so this
-#                                                   is an expression rewrite (BusBuilder.builder().build()),
-#                                                   not a name -- and the type that receives it is passed into
-#                                                   FMLModContainer's eventBusGroup field, which is typed
-#                                                   BusGroup on 26.2. Refused for that reason, not for absence.
-#   net.neoforged.neoforgespi.transformation.*      absent. 1.21.1 transforms through modlauncher:
-#   net.neoforged.fml.classloading.transformation.* cpw.mods.modlauncher.TransformingClassLoader and
-#                                                   cpw.mods.modlauncher.ClassTransformer are its classes, and
-#                                                   that is a different platform, not a rename.
-#   net.neoforged.fml.loading.mixin.FMLMixinClassProcessor        26.x only.
-#   net.neoforged.fml.jarcontents.JarContents       26.x only; no jarcontents package on 1.21.1.
-#       AND THE INTERFACE ON TOP OF IT CHANGED SHAPE, which is why this is not a rule either (javap both):
+# THIS ROUND ADDED A THIRD METHOD, because the second one cannot see a member rename: it compares CLASS simple
+# names, and both renames it missed live inside a class that has the SAME name on both lines. So for every error
+# javac reported as "cannot find symbol: method" or "method ... cannot be applied to given types", the class
+# javac had ALREADY RESOLVED was listed with `javap -p` on both carriers and the two member listings were
+# diffed. That is what found ingredientBaseCodec -> enhanceIngredientCodec and
+# BlockTintSources -> Block; both are rules now, above.
+#
+# MEASURED AFTER THIS ROUND: 55 distinct absent names on the final transcript, 9 with at least one word-overlap
+# candidate, and NONE of those 9 is the same concept. The thirteen that share words and nothing else:
+# EnergyHandler vs EnergyStorage / IEnergyStorage (different method sets), ResourceHandler vs fabric's
+# ResourceAmount, Resource vs ResourceKey, TransactionContext vs fabric's own class of that name,
+# TransformingClassLoader/ClassTransformer vs cpw.mods.modlauncher's (a different platform, see below),
+# FluidModel vs DynamicFluidContainerModel, WeightedList/Weighted vs WeightedRandomList (axis 1),
+# Entities/Levels vs ChunkEntities/EnchantWithLevelsFunction (the AttachCapabilitiesEvent inners),
+# ClassProcessor vs Mixin's IClassProcessor. The compile is the oracle for absence: javac read all 39 jars and
+# did not find the name.
+#
+# EVERY REMAINING AXIS-2 NAME, ADJUDICATED. Each line says what 26.2 has, what 1.21.1 has (javap, both carriers,
+# 1.21.1 = the 39-jar measurement class path), and whether it is a RENAME (a rule) or a RESTRUCTURE (code), and
+# whether this round did it. The count in brackets is that name's share of the 95 axis-2 errors left.
+#
+#   net.minecraftforge.eventbus.api.bus.BusGroup    [8]  RESTRUCTURE, not done.
+#       EventBus 7 only. `BusGroup.create(...)` + `.startup()` (KernelForgeContainers, KernelForgeSetup,
+#       KernelForgeRegistries) is 7's group lifecycle; 1.21.1 has IEventBus and no BusGroup. Its counterpart is
+#       POSITIVE, not absent: net.minecraftforge.eventbus.api.BusBuilder exists on 1.21.1 and is how a standalone
+#       bus is built there, so this is an expression rewrite (BusBuilder.builder().build()), not a name -- and
+#       the type that receives it is passed into FMLModContainer's eventBusGroup field, which is typed BusGroup
+#       on 26.2. Refused for that reason, not for absence. The design question (does the 1.21.1 line still need
+#       a per-mod group at all, or one mod bus) is not answered by a name.
+#
+#   net.neoforged.neoforgespi.transformation.*      [22]  RESTRUCTURE, not done.
+#   net.neoforged.fml.classloading.transformation.*
+#       Absent from both 1.21.1 carriers. 1.21.1 transforms through modlauncher, and modlauncher's classes ARE on
+#       the measurement class path -- so this is the closest a refusal gets to a rename, and it is still not one.
+#       WHERE those classes live is part of the evidence: cpw.mods.modlauncher.TransformingClassLoader is in
+#       forge-runtime.jar on BOTH lines (not in neoforge-runtime.jar on either), so the platform is present twice
+#       over and it is the NEOFORGE-side API the kernel uses that is 26.2-only. A substitution would move the name
+#       and leave the shape (next paragraph).
+#       KernelFmlTransformerView builds a VIEW: it allocates a TransformingClassLoader, writes a ClassTransformer
+#       into its `classTransformer` field, a ClassProcessorSet into that transformer's `processors`, and the
+#       kernel's IMixinTransformer into FMLMixinClassProcessor's `transformer`, so a NeoForge mod (LibJF) that
+#       casts the context loader and walks that chain reaches the weaver that weaves. Measured on both sides:
+#           26.2    transforming.TransformingClassLoader{ private final ClassTransformer classTransformer; }
+#                   transforming.ClassTransformer{ Processors processors; }
+#                   neoforgespi.transformation.ClassProcessorSet{ SequencedMap processors; }
+#                   loading.mixin.FMLMixinClassProcessor{ IMixinTransformer transformer; }
+#           1.21.1  cpw.mods.modlauncher.TransformingClassLoader
+#                       { private final cpw.mods.modlauncher.ClassTransformer classTransformer; }   <- SAME field name
+#                   cpw.mods.modlauncher.ClassTransformer
+#                       { TransformStore transformers; LaunchPluginHandler pluginHandler;
+#                         TransformingClassLoader transformingClassLoader; TransformerAuditTrail auditTrail; }
+#                       (package-private constructors, named module: no processors set, no processor ids)
+#       The top field name matches and nothing under it does: there is no processor set, no ProcessorName, no
+#       MIXIN processor to substitute, and the transformer's own constructor is package-private inside a named
+#       module. So the 1.21.1 edition of that view is a port of LibJF's 1.21.1 code path, which is not in this
+#       repository. Written down rather than guessed at.
+#
+#   net.neoforged.neoforge.resource.{NeoForgeReloadListeners, ListenerKey, VanillaServerListeners}   [11]
+#   net.neoforged.neoforge.client.resources.VanillaClientListeners
+#   net.neoforged.neoforge.event.AddServerReloadListenersEvent
+#   net.neoforged.neoforge.client.event.AddClientReloadListenersEvent
+#       RESTRUCTURE, not done. The keyed/ordered listener registry is 26.x. 1.21.1 HAS the older pair --
+#       RegisterClientReloadListenersEvent (javap: registerReloadListener(PreparableReloadListener), no ordering,
+#       no key) and AddReloadListenerEvent (javap: addListener/getListeners/getServerResources/
+#       getConditionContext/getRegistryAccess) -- so the events exist and the KEYED, ORDERED API does not.
+#       Measured one level deeper, because "the event is a rename" would have been the wrong conclusion twice:
+#           26.2    EventHooks.onResourceReload(ReloadableServerResources, RegistryAccess,
+#                                                Map<ListenerKey<?>, PreparableReloadListener>)
+#           1.21.1  EventHooks.onResourceReload(ReloadableServerResources, RegistryAccess)
+#       The kernel's KernelForgeReload declares that Map parameter, so substituting the event name would leave the
+#       hook's own call with the wrong arity -- the lateral move this table exists to refuse. Nothing in this
+#       cluster is attempted here.
+#
+#   net.neoforged.neoforge.common.tooltip.{ItemTooltipHandler, TooltipAppender, TooltipLocation}   [7]
+#   net.neoforged.neoforge.event.RegisterTooltipAppendersEvent
+#       RESTRUCTURE, not done. 26.x tooltip rework; 1.21.1 appends tooltips through its item-extension /
+#       RenderTooltip path and has no equivalent package (both names absent from both carriers).
+#
+#   net.neoforged.neoforge.network.payload.RecipeContentPayload   [4]  RESTRUCTURE, not done. 26.x payload
+#       protocol; no 1.21.1 equivalent.
+#
+#   net.neoforged.fml.jarcontents.JarContents   [6]  RESTRUCTURE, not done, and the interface on top of it
+#       changed shape too (javap both):
 #           26.2    IModFile.getContents() : net.neoforged.fml.jarcontents.JarContents
 #                   IModFile.getId() : String
 #           1.21.1  IModFile.getSecureJar() : cpw.mods.jarhandling.SecureJar
-#                   (no getContents(), no getId(); getDiscoveryAttributes() instead of getProvider())
-#       KernelModFile implements that interface, so on 1.21.1 it must answer getSecureJar() and must not
-#       declare getContents(). A type substitution would leave the interface unimplemented: same total,
-#       different bucket. The counterpart is cpw.mods.jarhandling.SecureJar, which exists on BOTH lines.
-#   net.neoforged.neoforge.common.tooltip.*         26.x tooltip rework (ItemTooltipHandler, TooltipAppender,
-#   net.neoforged.neoforge.event.RegisterTooltipAppendersEvent   TooltipLocation). 1.21.1 appends tooltips
-#                                                   through its item-extension/RenderTooltip path; there is no
-#                                                   equivalent package.
-#   net.neoforged.neoforge.resource.NeoForgeReloadListeners, .resource.ListenerKey,
-#   net.neoforged.neoforge.resource.VanillaServerListeners,
-#   net.neoforged.neoforge.client.resources.VanillaClientListeners
-#       The KEYED listener registry is 26.x. See the ordered-listener note below.
-#   net.neoforged.neoforge.event.AddServerReloadListenersEvent,
-#   net.neoforged.neoforge.client.event.AddClientReloadListenersEvent
-#       26.x sorted-listener events: the kernel calls `SortedReloadListenerEvent.addListener(key, listener,
-#       order)`. 1.21.1 HAS the older pair -- net.neoforged.neoforge.client.event.
-#       RegisterClientReloadListenersEvent (registerReloadListener, no ordering) and
-#       net.neoforged.neoforge.event.AddReloadListenerEvent -- so the event exists and the ORDERED API does
-#       not. That is a design difference (the kernel depends on listener order), not a rename.
-#   net.neoforged.neoforge.event.entity.player.AnvilCraftEvent   26.x added Pre/Post craft events; 1.21.1's
-#                                                   AnvilUpdateEvent is a different event, not a new name.
-#   net.neoforged.neoforge.event.level.block.BreakBlockEvent     RULED NOW (three lines up), and the note that
-#       used to sit here was WRONG in a way that mattered. 26.x un-nested the class; 1.21.1's is
-#       net.neoforged.neoforge.event.level.BlockEvent$BreakEvent. The old note said "the only spelling that
-#       works is the `$` form ... which does compile". IT DOES NOT COMPILE: `import
-#       net.neoforged.neoforge.event.level.BlockEvent$BreakEvent;` fails with "cannot find symbol: class
-#       BlockEvent$BreakEvent, location: package net.neoforged.neoforge.event.level" (JDK-21 javac, 1.21.1
-#       class path; the same test on net.minecraftforge.eventbus.api.Event$Result fails identically). What DOES
-#       compile is the CANONICAL nested spelling, which is why the rule now exists:
-#           import net.neoforged.neoforge.event.level.BlockEvent.BreakEvent;   + bare BreakEvent
-#       It costs nothing at the import, and the two body sites become the fully-qualified
-#       net.neoforged...BlockEvent.BreakEvent, which is what a 1.21.1 mod writes for this type anyway.
-#       WHAT IT EXPOSED, and this is the part worth keeping: with the parameter type finally resolving, javac
-#       type-checked the method body for the first time and found a REAL, independent difference -- the
-#       MinecraftForge event's constructor arity:
-#           26.2    BlockEvent$BreakEvent(Level, BlockPos, BlockState, Player, net.minecraftforge.common.util.Result)
-#           1.21.1  BlockEvent$BreakEvent(Level, BlockPos, BlockState, Player)          (javap both)
-#       so the kernel's `new BlockEvent.BreakEvent(level, pos, state, player, seed(...))` cannot be carried by
-#       any name rule: on 1.21.1 the seed has to be applied after construction (Event.setResult). Net effect of
-#       the rule: 3 "cannot find symbol" gone, 1 constructor-arity error newly visible, and the next round's
-#       job is a call-site rewrite instead of a type hunt.
-#   net.neoforged.neoforge.fluids.InFluidPredicate   26.x only.
-#   net.neoforged.neoforge.network.payload.RecipeContentPayload  26.x payload protocol; no 1.21.1 equivalent.
-#   net.neoforged.neoforge.client.model.UnbakedModelParser       26.x only.
-#   net.minecraftforge.client.gui.overlay.ForgeLayer THE API IS THERE, THE INTERFACE IS NOT -- this entry used
-#       to say "no overlay-layer API before 26.x", which is false. 1.21.1 HAS
+#                   IModFile.setSecurityStatus(SecureJar$Status)
+#                   (no getContents(), no getId())
+#           26.2    IModFileInfo has NO moduleName()
+#           1.21.1  IModFileInfo.moduleName() : String   (abstract)
+#       KernelModFile implements IModFile and KernelModFileInfo implements IModFileInfo, so this is two class
+#       bodies to answer in this line's shape, not a type substitution -- a substitution leaves the interface
+#       unimplemented (same total, different bucket). The counterpart cpw.mods.jarhandling.SecureJar exists on
+#       BOTH lines, which is what makes it look mechanical and is not.
+#
+#   net.minecraftforge.client.gui.overlay.ForgeLayer   [3]  RESTRUCTURE, not done. THE API IS THERE, THE
+#       INTERFACE IS NOT -- an earlier round's "no overlay-layer API before 26.x" was false. 1.21.1 HAS
 #       net.minecraftforge.client.gui.overlay.ForgeLayeredDraw (javap: extends net.minecraft.client.gui.
-#       LayeredDraw, named-layer constants HOTBAR/CROSSHAIR/..., add/addAbove/addBelow/putAbove/putBelow/move/
-#       addWithCondition/resolveLayers). What 1.21.1 does not have is ForgeLayer itself: 26.2 introduced
+#       LayeredDraw, named-layer constants, add/addAbove/addBelow/putAbove/putBelow/move/addWithCondition/
+#       resolveLayers). What 1.21.1 does not have is ForgeLayer itself: 26.2 introduced
 #           public interface ForgeLayer { void extract(GuiGraphicsExtractor, DeltaTracker); }
-#       which ForgeLayeredDraw implements, so on 26.2 the LAYER is a Forge type. On 1.21.1 the same argument
-#       is net.minecraft.client.gui.LayeredDraw$Layer, whose method is render(GuiGraphics, DeltaTracker).
-#       Different method name AND a different parameter type, and the parameter type (GuiGraphicsExtractor) is
-#       itself one of the absent axis-1 names -- so the substitution cannot be made in a lambda-free way and
-#       the file is blocked on axis 1 anyway (it also names Hud and calls ForgeLayeredDraw.init, which is
-#       26.2-only). Refused, with the corrected fact.
-#   net.minecraftforge.client.event.RegisterPictureInPictureRendererEvent
+#       which ForgeLayeredDraw implements. On 1.21.1 the same argument is net.minecraft.client.gui.
+#       LayeredDraw$Layer, whose method is render(GuiGraphics, DeltaTracker) -- different method name AND a
+#       parameter type that is itself one of the absent axis-1 names. Measured beside it: 26.2's
+#       ForgeLayeredDraw.extractRenderState is a STATIC method (javap) and 1.21.1's class does not declare it at
+#       all, which is the one error in KernelForgeOverlayLayers that is a method reference and therefore looks
+#       like a rename. It is not: `ForgeLayeredDraw::render` does not exist there either.
+#
+#   net.minecraftforge.client.event.RegisterPictureInPictureRendererEvent   [7]
 #   net.neoforged.neoforge.client.gui.PictureInPictureRendererRegistration
-#       Both belong to 26.x's picture-in-picture pipeline, and 1.21.1 has no
-#       net.minecraft.client.gui.render.pip package at all (axis 1 tail above).
-#   net.neoforged.neoforge.transfer.{ResourceHandler, item.ItemResource, item.VanillaContainerWrapper,
-#       fluid.FluidResource, energy.EnergyHandler, transaction.TransactionContext,
-#       transaction.SnapshotJournal, resource.Resource}
-#       NeoForge's OWN transfer API, added after 1.21.1: there is NO net.neoforged.neoforge.transfer package in
-#       the 1.21.1 jars at all (measured: zero entries matching neoforge/transfer in neoforge-runtime.jar and
-#       in forge-runtime.jar; the same grep finds the package in 26.2's neoforge-runtime.jar). This is the
-#       largest error group in both axes and it is a whole API generation. WHAT 1.21.1 HAS INSTEAD is measured,
-#       name by name, in the AXIS 3 block below -- it is the classic capability/handler API, and the two models
-#       differ in more than the type names. Not the fabric transfer axis; that was measured separately.
+#       RESTRUCTURE, not done. 26.x's picture-in-picture pipeline; 1.21.1 has no
+#       net.minecraft.client.gui.render.pip package at all (axis-1 tail above).
+#
+#   net.neoforged.neoforge.event.entity.player.AnvilCraftEvent   [2]  RESTRUCTURE, not done. 26.x added
+#       Pre/Post craft events; 1.21.1's AnvilUpdateEvent is a different event, not a new name.
+#
+#   net.neoforged.neoforge.fluids.InFluidPredicate   [3]  RESTRUCTURE, not done. 26.2 only (javap: a functional
+#       interface `boolean test(E, FluidType, double)`); absent from both 1.21.1 carriers and the word-overlap
+#       sweep's only candidates are net.minecraft.advancements.critereon.FluidPredicate, an unrelated loot
+#       predicate. 1.21.1 asks the same question through the entity extension's own canDrownInFluidType, with no
+#       predicate type to hand around -- so the shape of what the kernel stores changes, not just a name.
+#
+#   net.neoforged.neoforge.client.model.UnbakedModelParser   [1]  RESTRUCTURE, not done. 26.x only.
+#
+#   net.minecraftforge.event.AttachCapabilitiesEvent.{Levels,Entities,BlockEntities}   [14]  RESTRUCTURE, not
+#       done, and this is the deepest one. Those three inner classes do not exist on 1.21.1 -- the same 26.x
+#       capability-provider split already recorded in docs/1.21.1-port.md stage 3 (1.21.1 CapabilityProvider has
+#       2 inner classes, 26.2 has 7). Measured on the interface the kernel implements:
+#           26.2    CapabilityProvider
+#                       protected abstract AttachCapabilitiesEvent fireAttachCapabilitiesEvent(B);
+#                       protected abstract boolean shouldFireAttachCapabilitiesEvent();
+#                   CapabilityProvider$AsField(B owner, boolean lazy)          <- the constructor KernelForgeCapabilities
+#                                                                                 calls
+#           1.21.1  CapabilityProvider has NEITHER abstract method (gatherCapabilities/doGatherCapabilities fire
+#                   the single AttachCapabilitiesEvent<B> keyed by the provider's own Class)
+#                   CapabilityProvider$AsField(Class<B>, B) and (Class<B>, B, boolean)   <- NO (B, boolean) ctor
+#                   CapabilityManager.injectCapabilities(ModList)   (26.2: injectCapabilities(), no argument)
+#       1.21.1 keys the event by the provider's CLASS, which is why AsField gained a Class parameter -- so the
+#       1.21.1 edition of KernelForgeCapabilities must supply Class<Entity>/Class<BlockEntity>/Class<Level> where
+#       26.2's three subclasses supply the event type, and must answer "do not fire" (Inert) some other way
+#       than an abstract method that no longer exists. That is a design decision about the merged base's
+#       composed provider, of the same kind stage 1.1 wrote down before writing the transaction, and it is not
+#       decided here.
+#
+#   net.minecraftforge.event.TagsUpdatedEvent$ServerDataLoad   [1]  RESTRUCTURE, not done. 26.2 splits the
+#       event into ClientPacketReceived / ServerDataLoad subtypes (javap: both in 26.2's neoforge-runtime.jar);
+#       1.21.1 has one TagsUpdatedEvent and no subtypes (its jar has only UpdateCause). The kernel listens for
+#       ServerDataLoad.class specifically, so the 1.21.1 edition has to listen for the one event and decide from
+#       getUpdateCause() whether it is the data-load case.
+#
+#   net.neoforged.neoforge.registries.GameData.getFlowerPotBlockTable()   [3]  RESTRUCTURE, DONE as an overlay.
+#       See KernelFlowerPots.java under src/runtime/mc-line/1.21.1/java. 26.2 (neoforged copy only) has
+#       Table<Block,Block,Block> getFlowerPotBlockTable() and getLegacyFlowerPotBlockTable(); 1.21.1's
+#       GameData has neither (javap both). The 1.21.1 edition owns the same table itself. The measurement is
+#       narrower than "the callback class is gone" and says so: NeoForgeRegistryCallbacks$BlockCallbacks exists
+#       on BOTH lines, and only its FIELDS differ -- 26.2 adds EMPTY_POT_AND_FLOWER_TO_FULL_POT_TABLE and
+#       LEGACY_EMPTY_POT_AND_FLOWER_TO_FULL_POT_TABLE, 1.21.1 has INSTANCE and BLOCKSTATE_TO_ID_MAP only.
+#
+#   net.minecraftforge.fml.ModList  -- static facade vs instance API   [9, of which 4 scored axis 2]
+#       RESTRUCTURE, DONE as an overlay (KernelForgeDeclarationReaders.java). This is the round's clearest
+#       "same members, moved receiver" case and it is still not a rule, because a name table cannot insert a
+#       receiver:
+#           26.2    ModList: private ModList(); every member public static; no get()
+#           1.21.1  ModList: public static ModList get(); the same members as INSTANCE methods;
+#                   NO getLoadedMods()
+#       Four call sites gained `ModList.get()`, and getLoadedMods() -- which does not exist on 1.21.1 -- is
+#       rebuilt from forEachModContainer. Five of the nine errors were scored as cascades by the splitter
+#       because javac's message for a static-context misuse names no package; they fall with the same edit.
+#
+#   ForgeHooks / EventHooks.onCreativeModeTabBuildContents   [3]  RESTRUCTURE, DONE as an overlay
+#       (KernelForgeCreativeTabs.java). 26.2: (tab, generator, parameters, output). 1.21.1:
+#       (tab, ResourceKey<CreativeModeTab>, generator, parameters, output) -- and CreativeModeTab has no
+#       builtInRegistryHolder()/getKey() on 1.21.1, so the key is resolved the way the game's own patched
+#       buildContents resolves it (javap -c: getstatic BuiltInRegistries.CREATIVE_MODE_TAB,
+#       Registry.getResourceKey, Optional.orElseThrow, then the five-argument call).
+#
+#   ForgeHooksClient.onModelBake + ModelEvent$BakingCompleted   [1]  RESTRUCTURE, DONE as an overlay
+#       (KernelGameClientResourceEvents.java). 26.2 carries ModelBakery$BakingResult and onModelBake takes
+#       two arguments; 1.21.1 carries Map<ModelResourceLocation,BakedModel> (getModels()) and onModelBake
+#       takes three. Both sides change together, so nothing is converted.
+#
+#   ForgeEventFactory.onShieldBlock   [1]  RESTRUCTURE, DONE as an overlay (KernelGameDamageEvents.java).
+#       26.2: (LivingEntity, DamageSource, float, ItemStack) -> null when the bus cancels
+#             (javap -c: CancellableEventBus.post == true -> aconst_null).
+#       1.21.1: (LivingEntity, DamageSource, float) -> invokestatic fire(...) -> areturn; the refusal is
+#             isCanceled() on the returned event, and ShieldBlockEvent has no getBlockedWith().
+#
+#   ForgeEventFactory.onExplosionDetonate   [1]  RESTRUCTURE, DONE as an overlay (KernelGameServerEvents.java).
+#       26.2: (Level, Explosion, List<BlockPos>, List<Entity>, double)
+#       1.21.1: (Level, Explosion, List<Entity>, double) -- there is nowhere to put the block list.
+#
+#   ForgeEventFactory.fireFarmlandTrampleEvent   [1]  RESTRUCTURE, not done. 26.2 has it as
+#       (ServerLevel, BlockPos, BlockState, double, Entity); 1.21.1 has NO member of that name on
+#       ForgeEventFactory at all (javap both). The kernel's call has to become the event construction plus a
+#       bus post, which is a rewrite of the surrounding branch rather than an argument list.
+#
+#   ForgeEventFactory / EventHooks differences left standing, and why: on 1.21.1 these are all arity or
+#       semantics changes inside a shared file (KernelForgeOverlayLayers, KernelGameBlockEvents, KernelNeoWorldgen),
+#       each needing its own overlay:
+#         BlockEvent$BreakEvent(Level, BlockPos, BlockState, Player, Result)   26.2
+#                                       (Level, BlockPos, BlockState, Player)   1.21.1   -- seed applied after
+#                                                                                         construction
+#         SpawnPlacementRegisterEvent.BUS / RegisterClientReloadListenersEvent.BUS  -- mod bus, no name in
+#                                                                                         6.2.33 (see above)
+#         DataMapLoader(IContext, RegistryAccess) / apply(BaseMappedRegistry, LoadResult)  1.21.1
+#                                       DataMapLoader() / apply(Frozen)                    26.2
+#   (Exact javap lines for the last three are in the
+#    "SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE" block and in docs/1.21.1-port.md, Stage 2.)
+#
+# THE TALLY, so the names above can be checked against the count of 95 that is left: 22 FML transformation platform
+#   + 14 capability provider + 11 reload-listener registry + 8 BusGroup + 7 tooltip + 7 pip + 6 IModFile/JarContents
+#   + 4 RecipeContentPayload + 3 InFluidPredicate + 3 ForgeLayer + 2 AnvilCraftEvent + 2 mod-bus .BUS
+#   + 2 DataMapLoader + 1 TagsUpdatedEvent$ServerDataLoad + 1 fireFarmlandTrampleEvent + 1 UnbakedModelParser
+#   + 1 BreakEvent constructor = 95.
 
 # =====================================================================================================
 # AXIS 3 -- what 1.21.1's NeoForge ACTUALLY has, asked as a question instead of assumed
