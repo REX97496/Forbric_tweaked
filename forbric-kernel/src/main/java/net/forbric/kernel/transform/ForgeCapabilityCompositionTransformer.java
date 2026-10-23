@@ -26,6 +26,7 @@ import java.util.Set;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
@@ -34,6 +35,7 @@ import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
@@ -87,6 +89,7 @@ public final class ForgeCapabilityCompositionTransformer implements ClassTransfo
 	private final net.forbric.kernel.mixin.NativeGameReferences nativeReferences;
 	private final boolean transferFallback;
 	private final boolean dispatch;
+	private volatile Boolean selfCarrier;
 	private final Map<String, ForgeCapabilityProtocol.Certificate> certificates = new java.util.concurrent.ConcurrentHashMap<>();
 	public ForgeCapabilityCompositionTransformer() { this(null); }
 	public ForgeCapabilityCompositionTransformer(java.util.function.Function<String, byte[]> resources) { this(resources, false); }
@@ -106,6 +109,22 @@ public final class ForgeCapabilityCompositionTransformer implements ClassTransfo
 		this.transferFallback = transferInterop && dispatch;
 		this.nativeReferences = resources == null ? null : new net.forbric.kernel.mixin.NativeGameReferences(resources);
 	}
+
+	/**
+	 * Which carrier this run is on, asked of the carrier itself and once: 1.21.1's {@code CapabilityProvider} is the
+	 * state carrier the roots extend, and its {@code AsField} carries {@code <init>(Class, B)}; 26.2's is a base with
+	 * two {@code protected abstract} hooks and an {@code AsField(B, boolean)}. No property and no version string
+	 * decides this — a wrong answer shows up as a certificate that cannot be built.
+	 */
+	private boolean selfCarrier() {
+		Boolean known = selfCarrier;
+		if (known == null) {
+			known = ForgeCapabilityProtocol.selfCarrier(resources);
+			selfCarrier = known;
+		}
+		return known;
+	}
+
 	/** A proof of the final definition, which the switch does not change: an inert root is still a composed one. */
 	@Override public boolean proves(net.forbric.api.AncestorComposition.Requirement requirement, byte[] finalDefinition,
 			java.util.function.Function<String, byte[]> reader) {
@@ -165,6 +184,8 @@ public final class ForgeCapabilityCompositionTransformer implements ClassTransfo
 	static final String ACCESSOR_DESC = "()" + AS_FIELD_DESC;
 	/** {@code KernelForgeCapabilities.inert}: the accessor's factory when dispatch is off. */
 	static final String INERT_FACTORY = "inert";
+	/** 1.21.1's {@code LevelChunk} writes Forge's {@code AsField<LevelChunk>} into this final field. */
+	static final String CAP_PROVIDER = "capProvider";
 	private static final String INERT_COST = "the root's merged definition requires the composed provider state, and "
 			+ "without it the loader refuses to define the class at all";
 
@@ -224,7 +245,7 @@ public final class ForgeCapabilityCompositionTransformer implements ClassTransfo
 		ClassNode before = new ClassNode();
 		new ClassReader(classBytes).accept(before, 0);
 		boolean changed = false;
-		if (ROOTS.contains(internal)) changed = compose(node, dispatch);
+		if (ROOTS.contains(internal)) changed = compose(node, dispatch, selfCarrier());
 		if (dispatch) changed |= dispatchSites(node, internal);
 		if (!changed) return classBytes;
 		ClassWriter writer = new ClassWriter(0);
@@ -237,7 +258,7 @@ public final class ForgeCapabilityCompositionTransformer implements ClassTransfo
 				byte[] extended = new ForgeTransferCapabilityFallback().transform(className, writer.toByteArray(), context);
 				new ClassReader(extended).accept(expected, 0);
 			}
-			ForgeCapabilityProtocol.Certificate certificate = ForgeCapabilityProtocol.certificate(before, expected, original, resources);
+			ForgeCapabilityProtocol.Certificate certificate = ForgeCapabilityProtocol.certificate(before, expected, original, resources, dispatch);
 			if (certificate != null) certificates.put(internal, certificate);
 		}
 		return writer.toByteArray();
@@ -249,23 +270,27 @@ public final class ForgeCapabilityCompositionTransformer implements ClassTransfo
 		if (BLOCK_ENTITY.equals(internal)) {
 			changed |= insertAfterCall(node, "setRemoved", "()V", BLOCK_ENTITY, "invalidateCapabilities", "()V",
 					callOnThis(BLOCK_ENTITY, "invalidateCaps"), "BlockEntity.setRemoved -> invalidateCaps");
-			changed |= saveFunnel(node, "saveAdditional", "(" + VALUE_OUTPUT + ")V", "saveBlockEntity", "BlockEntity.saveAdditional -> ForgeCaps");
-			changed |= loadFunnel(node, "loadAdditional", "(" + VALUE_INPUT + ")V", "BlockEntity.loadAdditional <- ForgeCaps");
+			changed |= selfCarrier()
+					? saveBlockEntityTag(node) | loadBlockEntityTag(node)
+					: saveFunnel(node, "saveAdditional", "(" + VALUE_OUTPUT + ")V", "saveBlockEntity", "BlockEntity.saveAdditional -> ForgeCaps")
+						| loadFunnel(node, "loadAdditional", "(" + VALUE_INPUT + ")V", "BlockEntity.loadAdditional <- ForgeCaps");
 		}
 		if (ENTITY.equals(internal)) {
 			changed |= insertAfterCall(node, "remove", "(Lnet/minecraft/world/entity/Entity$RemovalReason;)V", ENTITY, "setRemoved",
 					"(Lnet/minecraft/world/entity/Entity$RemovalReason;)V", callOnThis(ENTITY, "invalidateCaps"), "Entity.remove -> invalidateCaps");
 			changed |= insertAfterCall(node, "revive", "()V", ENTITY, "unsetRemoved", "()V", callOnThis(ENTITY, "reviveCaps"),
 					"Entity.revive -> reviveCaps");
-			changed |= saveFunnel(node, "saveWithoutId", "(" + VALUE_OUTPUT + ")V", "saveEntity", "Entity.saveWithoutId -> ForgeCaps");
-			changed |= loadFunnel(node, "load", "(" + VALUE_INPUT + ")V", "Entity.load <- ForgeCaps");
+			changed |= selfCarrier()
+					? saveEntityTag(node) | loadEntityTag(node)
+					: saveFunnel(node, "saveWithoutId", "(" + VALUE_OUTPUT + ")V", "saveEntity", "Entity.saveWithoutId -> ForgeCaps")
+						| loadFunnel(node, "load", "(" + VALUE_INPUT + ")V", "Entity.load <- ForgeCaps");
 		}
 		if (ROOTS.contains(internal) && nativeReferences != null) {
 			ClassNode original = nativeReferences.get(net.forbric.api.Ecosystem.FORGE, internal);
 			changed |= ForgeCapabilityProtocol.restoreConstructorGather(node, original);
 		}
-		if (SERVER_LEVEL.equals(internal)) changed |= initServerLevelCapabilities(node);
-		if (LEVEL_CHUNK.equals(internal)) changed |= initLevelChunkProvider(node);
+		if (SERVER_LEVEL.equals(internal)) changed |= selfCarrier() ? initServerLevelCapabilitiesSelf(node) : initServerLevelCapabilities(node);
+		if (LEVEL_CHUNK.equals(internal)) changed |= selfCarrier() ? initLevelChunkProviderSelf(node) : initLevelChunkProvider(node);
 		String lost = LOST_INITIALIZERS.get(internal);
 		if (lost != null) changed |= replayLostInitializer(node, lost);
 		return changed;
@@ -273,7 +298,7 @@ public final class ForgeCapabilityCompositionTransformer implements ClassTransfo
 
 	// ---- E3: the composition itself
 
-	private static boolean compose(ClassNode node, boolean dispatch) {
+	private static boolean compose(ClassNode node, boolean dispatch, boolean selfCarrier) {
 		if (hasMethod(node, "getCapability", GET_CAPABILITY_DESC)) return false;   // rebuilt base, or second pass
 		// The accessor's factory is the one thing the switch changes here: the inert provider never gathers.
 		String helper = !dispatch ? INERT_FACTORY
@@ -339,7 +364,7 @@ public final class ForgeCapabilityCompositionTransformer implements ClassTransfo
 				new VarInsnNode(Opcodes.ALOAD, 1), new VarInsnNode(Opcodes.ALOAD, 2),
 				new MethodInsnNode(Opcodes.INVOKEVIRTUAL, AS_FIELD, "deserializeInternal", "(" + HOLDER_LOOKUP + COMPOUND_TAG + ")V", false),
 				new InsnNode(Opcodes.RETURN));
-		if (BLOCK_ENTITY.equals(node.name)) {
+		if (BLOCK_ENTITY.equals(node.name) && !selfCarrier) {
 			added += add(node, "serializeCaps", "(" + VALUE_OUTPUT + ")" + COMPOUND_TAG, 3, 2,
 					new VarInsnNode(Opcodes.ALOAD, 0),
 					new FieldInsnNode(Opcodes.GETFIELD, node.name, FIELD, AS_FIELD_DESC),
@@ -408,7 +433,6 @@ public final class ForgeCapabilityCompositionTransformer implements ClassTransfo
 	}
 
 	// ---- E5: LevelChunk.<init> writes Forge's AsField$LevelChunks into its final capProvider
-
 	private static boolean initLevelChunkProvider(ClassNode node) {
 		if (!hasField(node, "capProvider")) return false;
 		for (MethodNode method : node.methods) {
@@ -463,6 +487,227 @@ public final class ForgeCapabilityCompositionTransformer implements ClassTransfo
 	}
 
 	// ---- E6: invalidate/revive call sites; E7: ForgeCaps save/load funnels
+
+	// ---- 1.21.1's CompoundTag seam. This line has no ValueInput/ValueOutput at all, and its roots save through
+	// Forge's own signatures: BlockEntity.saveAdditional/loadAdditional(CompoundTag, HolderLookup.Provider) and
+	// Entity.saveWithoutId(CompoundTag)/load(CompoundTag). The funnels below insert the call Forge's patched method
+	// makes at the same slot; each is stack-neutral where it lands, and saveWithoutId's lands ABOVE the return value
+	// (ARETURN still finds the tag) so no instruction has to be found relative to it.
+
+	private boolean saveBlockEntityTag(ClassNode node) {
+		MethodNode target = findMethod(node, "saveAdditional", "(" + COMPOUND_TAG + HOLDER_LOOKUP + ")V");
+		if (target == null || callsRuntime(target)) {
+			if (target == null) ForbricLog.warn("[Forbric/Capabilities] BlockEntity has no saveAdditional(CompoundTag, "
+					+ "HolderLookup.Provider) — block entity capabilities are not saved");
+			return false;
+		}
+		int returns = 0;
+		for (AbstractInsnNode insn = target.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn.getOpcode() != Opcodes.RETURN) continue;
+			InsnList save = new InsnList();
+			save.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			save.add(new FieldInsnNode(Opcodes.GETFIELD, node.name, FIELD, AS_FIELD_DESC));   // read, never create
+			save.add(new VarInsnNode(Opcodes.ALOAD, 1));
+			save.add(new VarInsnNode(Opcodes.ALOAD, 2));
+			save.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "saveBlockEntity",
+					"(" + AS_FIELD_DESC + COMPOUND_TAG + HOLDER_LOOKUP + ")V", false));
+			target.instructions.insertBefore(insn, save);
+			returns++;
+		}
+		if (returns == 0) return false;
+		target.maxStack = Math.max(target.maxStack, 4);
+		REWIRED.add("BlockEntity.saveAdditional -> ForgeCaps");
+		return true;
+	}
+
+	private boolean loadBlockEntityTag(ClassNode node) {
+		MethodNode target = findMethod(node, "loadAdditional", "(" + COMPOUND_TAG + HOLDER_LOOKUP + ")V");
+		if (target == null || callsRuntime(target)) {
+			if (target == null) ForbricLog.warn("[Forbric/Capabilities] BlockEntity has no loadAdditional(CompoundTag, "
+					+ "HolderLookup.Provider) — block entity capabilities are not read back");
+			return false;
+		}
+		int returns = 0;
+		for (AbstractInsnNode insn = target.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn.getOpcode() != Opcodes.RETURN) continue;
+			InsnList load = new InsnList();
+			load.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			load.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, node.name, ACCESSOR, ACCESSOR_DESC, false));   // creating
+			load.add(new VarInsnNode(Opcodes.ALOAD, 1));
+			load.add(new VarInsnNode(Opcodes.ALOAD, 2));
+			load.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "loadBlockEntity",
+					"(" + AS_FIELD_DESC + COMPOUND_TAG + HOLDER_LOOKUP + ")V", false));
+			target.instructions.insertBefore(insn, load);
+			returns++;
+		}
+		if (returns == 0) return false;
+		target.maxStack = Math.max(target.maxStack, 3);
+		REWIRED.add("BlockEntity.loadAdditional <- ForgeCaps");
+		return true;
+	}
+
+	private boolean saveEntityTag(ClassNode node) {
+		MethodNode target = findMethod(node, "saveWithoutId", "(" + COMPOUND_TAG + ")" + COMPOUND_TAG);
+		if (target == null || callsRuntime(target)) {
+			if (target == null) ForbricLog.warn("[Forbric/Capabilities] Entity has no saveWithoutId(CompoundTag) — "
+					+ "entity capabilities are not saved");
+			return false;
+		}
+		int returns = 0;
+		for (AbstractInsnNode insn = target.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn.getOpcode() != Opcodes.ARETURN) continue;
+			InsnList save = new InsnList();
+			save.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			save.add(new FieldInsnNode(Opcodes.GETFIELD, node.name, FIELD, AS_FIELD_DESC));   // read, never create
+			save.add(new VarInsnNode(Opcodes.ALOAD, 1));
+			save.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			save.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "saveEntity",
+					"(" + AS_FIELD_DESC + COMPOUND_TAG + "Ljava/lang/Object;)V", false));
+			target.instructions.insertBefore(insn, save);
+			returns++;
+		}
+		if (returns == 0) return false;
+		target.maxStack = Math.max(target.maxStack, 4);
+		REWIRED.add("Entity.saveWithoutId -> ForgeCaps");
+		return true;
+	}
+
+	private boolean loadEntityTag(ClassNode node) {
+		MethodNode target = findMethod(node, "load", "(" + COMPOUND_TAG + ")V");
+		if (target == null || callsRuntime(target)) {
+			if (target == null) ForbricLog.warn("[Forbric/Capabilities] Entity has no load(CompoundTag) — entity "
+					+ "capabilities are not read back");
+			return false;
+		}
+		int returns = 0;
+		for (AbstractInsnNode insn = target.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn.getOpcode() != Opcodes.RETURN) continue;
+			InsnList load = new InsnList();
+			load.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			load.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, node.name, ACCESSOR, ACCESSOR_DESC, false));   // creating
+			load.add(new VarInsnNode(Opcodes.ALOAD, 1));
+			load.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			load.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "loadEntity",
+					"(" + AS_FIELD_DESC + COMPOUND_TAG + "Ljava/lang/Object;)V", false));
+			target.instructions.insertBefore(insn, load);
+			returns++;
+		}
+		if (returns == 0) return false;
+		target.maxStack = Math.max(target.maxStack, 3);
+		REWIRED.add("Entity.load <- ForgeCaps");
+		return true;
+	}
+
+	// ---- 1.21.1's ServerLevel: Forge's CALL SITE was lost, not the method. 26.2's anchor
+	// (LevelAttachmentsSavedData.init) is a NeoForge class that does not exist on this line, so the call is put where
+	// Forge itself put it — the end of the single constructor — and nothing else moves. The method survived the merge
+	// on the measured base (`javap`: `initCapabilities()` is still declared and still calls gatherCapabilities,
+	// getDataStorage and getCapabilities); when a base does drop it as well, the warning below says so and no call is
+	// invented for a method that is not there.
+
+	private static boolean initServerLevelCapabilitiesSelf(ClassNode node) {
+		if (!hasField(node, "capabilityData") || !hasMethod(node, "initCapabilities", "()V")) {
+			ForbricLog.warn("[Forbric/Capabilities] ServerLevel has capabilityData=%s and initCapabilities=%s — level "
+					+ "capabilities are not re-created", hasField(node, "capabilityData") ? "present" : "absent",
+					hasMethod(node, "initCapabilities", "()V") ? "present" : "absent");
+			return false;
+		}
+		MethodNode ctor = null;
+		int ctors = 0;
+		for (MethodNode method : node.methods) {
+			if (!"<init>".equals(method.name)) continue;
+			ctors++;
+			ctor = method;
+			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+				if (insn instanceof MethodInsnNode already && "initCapabilities".equals(already.name)) return false;   // already there
+			}
+		}
+		int returns = 0;
+		for (AbstractInsnNode insn = ctor == null ? null : ctor.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn.getOpcode() == Opcodes.RETURN) returns++;
+		}
+		if (ctors != 1 || ctor == null || returns != 1) {
+			ForbricLog.warn("[Forbric/Capabilities] ServerLevel has %d constructor(s) and its last has %d return(s), not "
+					+ "one each — level capabilities are not re-created", ctors, returns);
+			return false;
+		}
+		for (AbstractInsnNode insn = ctor.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn.getOpcode() != Opcodes.RETURN) continue;
+			ctor.instructions.insertBefore(insn, callOnThis(SERVER_LEVEL, "initCapabilities"));
+			break;
+		}
+		ctor.maxStack = Math.max(ctor.maxStack, 1);
+		REWIRED.add("ServerLevel.<init> -> initCapabilities");
+		ForbricLog.info("[Forbric/Capabilities] ServerLevel.<init> gathers MinecraftForge level capabilities again "
+				+ "(1 call site) — Forge's own call at the constructor's end was lost in the merge while initCapabilities "
+				+ "itself survived");
+		return true;
+	}
+
+	// ---- 1.21.1's LevelChunk: the final capProvider field survived the merge and nothing writes it, so every chunk
+	// capability call NPEs. 26.2's anchor (a PUTFIELD of unsavedListener) does not exist on this line; the super(...)
+	// call is the one statement that is certainly there and certainly precedes a legal write to a final field.
+
+	private static boolean initLevelChunkProviderSelf(ClassNode node) {
+		if (!hasField(node, CAP_PROVIDER)) {
+			ForbricLog.warn("[Forbric/Capabilities] LevelChunk has no capProvider field — chunk capabilities stay absent");
+			return false;
+		}
+		for (MethodNode method : node.methods) {
+			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+				if (insn instanceof FieldInsnNode field && field.getOpcode() == Opcodes.PUTFIELD && CAP_PROVIDER.equals(field.name)) return false;
+			}
+		}
+		String desc = "(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/world/level/chunk/UpgradeData;"
+				+ "Lnet/minecraft/world/ticks/LevelChunkTicks;Lnet/minecraft/world/ticks/LevelChunkTicks;J[Lnet/minecraft/world/level/chunk/LevelChunkSection;"
+				+ "Lnet/minecraft/world/level/chunk/LevelChunk$PostLoadProcessor;Lnet/minecraft/world/level/levelgen/blending/BlendingData;)V";
+		MethodNode ctor = findMethod(node, "<init>", desc);
+		if (ctor == null) {
+			ForbricLog.warn("[Forbric/Capabilities] LevelChunk's main constructor has a different descriptor — capProvider stays null");
+			return false;
+		}
+		MethodInsnNode superCall = null;
+		int supers = 0, returns = 0;
+		for (AbstractInsnNode insn = ctor.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			// The superclass constructor, not "any constructor call": this body allocates Heightmaps and sections.
+			if (insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESPECIAL && "<init>".equals(call.name)
+					&& node.superName != null && node.superName.equals(call.owner)) {
+				supers++;
+				superCall = call;
+			}
+			if (insn.getOpcode() == Opcodes.RETURN) returns++;
+		}
+		if (supers != 1 || returns != 1) {
+			ForbricLog.warn("[Forbric/Capabilities] LevelChunk.<init> has %d super constructor call(s) and %d return(s), not one "
+					+ "each — capProvider stays null", supers, returns);
+			return false;
+		}
+		InsnList create = new InsnList();
+		create.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		create.add(new TypeInsnNode(Opcodes.NEW, AS_FIELD));
+		create.add(new InsnNode(Opcodes.DUP));
+		create.add(new LdcInsnNode(Type.getObjectType(LEVEL_CHUNK)));
+		create.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		create.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, AS_FIELD, "<init>",
+				"(Ljava/lang/Class;" + PROVIDER_IMPL + ";)V", false));
+		create.add(new FieldInsnNode(Opcodes.PUTFIELD, LEVEL_CHUNK, CAP_PROVIDER, AS_FIELD_DESC));
+		ctor.instructions.insert(superCall, create);
+		for (AbstractInsnNode insn = ctor.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn.getOpcode() != Opcodes.RETURN) continue;
+			InsnList init = new InsnList();
+			init.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			init.add(new FieldInsnNode(Opcodes.GETFIELD, LEVEL_CHUNK, CAP_PROVIDER, AS_FIELD_DESC));
+			init.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, AS_FIELD, "initInternal", "()V", false));
+			ctor.instructions.insertBefore(insn, init);
+			break;
+		}
+		ctor.maxStack = Math.max(ctor.maxStack, 5);
+		REWIRED.add("LevelChunk.<init> -> capProvider");
+		ForbricLog.info("[Forbric/Capabilities] LevelChunk.<init> writes Forge's own capability provider again (1 "
+				+ "constructor) — the merged constructor kept the final field and the fields it depends on and lost the "
+				+ "store, so every chunk capability call NPE'd");
+		return true;
+	}
 
 	// ---- E7: replay a field initializer the merge dropped from the constructor
 
