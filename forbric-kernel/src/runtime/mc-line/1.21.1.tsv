@@ -398,8 +398,8 @@ BuiltInRegistries.PARTICLE_TYPE.getValue	BuiltInRegistries.PARTICLE_TYPE.get
 #   net.neoforged.neoforge.network.payload.RecipeContentPayload   [4]  RESTRUCTURE, not done. 26.x payload
 #       protocol; no 1.21.1 equivalent.
 #
-#   net.neoforged.fml.jarcontents.JarContents   [6]  RESTRUCTURE, not done, and the interface on top of it
-#       changed shape too (javap both):
+#   net.neoforged.fml.jarcontents.JarContents   [6]  RESTRUCTURE, DONE as two overlays (stage 13). The interface
+#       on top of it changed shape too (javap both):
 #           26.2    IModFile.getContents() : net.neoforged.fml.jarcontents.JarContents
 #                   IModFile.getId() : String
 #           1.21.1  IModFile.getSecureJar() : cpw.mods.jarhandling.SecureJar
@@ -411,6 +411,21 @@ BuiltInRegistries.PARTICLE_TYPE.getValue	BuiltInRegistries.PARTICLE_TYPE.get
 #       bodies to answer in this line's shape, not a type substitution -- a substitution leaves the interface
 #       unimplemented (same total, different bucket). The counterpart cpw.mods.jarhandling.SecureJar exists on
 #       BOTH lines, which is what makes it look mechanical and is not.
+#       The two editions, and why neither is a table row:
+#           src/runtime/mc-line/1.21.1/java/net/forbric/kernel/runtime/KernelModFile.java       (overlay 36)
+#           src/runtime/mc-line/1.21.1/java/net/forbric/kernel/runtime/KernelModFileInfo.java   (overlay 37)
+#       A row carries a SPELLING and this is a MEMBER SET: the return type changes with the name,
+#       JarContents.ofPath(p) would have to become SecureJar.from(p) (different arity, different receiver), and
+#       three members (findResource, setSecurityStatus, moduleName) have no 26.2 token to rewrite FROM. A table
+#       also applies to every file, so such a row would fire where 26.2's shape is correct. Neither file is
+#       optional on its own: KernelModFileInfo:62 constructs the KernelModFile, which is the class the throw
+#       names first. What is LOST is written out in KernelModFile's class doc -- IModFile.getId() has no slot
+#       here (IModFileInfo.moduleName() answers the same string), the JarContents read API is a shape change,
+#       and JarContents.empty(path) has NO counterpart because SecureJar.from() refuses a path set with no
+#       existing member (measured), so a jar-less alias answers null there.
+#       Measured presence, this line vs 26.2: cpw.mods.jarhandling is 15 classes on BOTH; the contents type is
+#       net.neoforged.fml.jarcontents 0 vs 15. And do NOT sweep for "getContents" on this line: it has 3 hits
+#       and all three are a different method (ComponentItemHandler/ComponentSerialization/ComponentUtils).
 #
 #   net.minecraftforge.client.gui.overlay.ForgeLayer   [3]  RESTRUCTURE, not done. THE API IS THERE, THE
 #       INTERFACE IS NOT -- an earlier round's "no overlay-layer API before 26.x" was false. 1.21.1 HAS
@@ -529,10 +544,12 @@ BuiltInRegistries.PARTICLE_TYPE.getValue	BuiltInRegistries.PARTICLE_TYPE.get
 #    "SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE" block and in docs/1.21.1-port.md, Stage 2.)
 #
 # THE TALLY, so the names above can be checked against the count of 95 that is left: 22 FML transformation platform
-#   + 14 capability provider + 11 reload-listener registry + 8 BusGroup + 7 tooltip + 7 pip + 6 IModFile/JarContents
+#   + 14 capability provider + 11 reload-listener registry + 8 BusGroup + 7 tooltip + 7 pip
 #   + 4 RecipeContentPayload + 3 InFluidPredicate + 3 ForgeLayer + 2 AnvilCraftEvent + 2 mod-bus .BUS
 #   + 2 DataMapLoader + 1 TagsUpdatedEvent$ServerDataLoad + 1 fireFarmlandTrampleEvent + 1 UnbakedModelParser
-#   + 1 BreakEvent constructor = 95.
+#   + 1 BreakEvent constructor = 89. (The 6 IModFile/JarContents in the original 95 are DONE as overlays 36 and
+#   37 -- stage 13, see the record above.) This table is a record, not a count: the number that matters is
+#   measured by build/x11/measure.sh, and a reader comparing the two should expect them to drift.
 
 # =====================================================================================================
 # AXIS 3 -- what 1.21.1's NeoForge ACTUALLY has, asked as a question instead of assumed
