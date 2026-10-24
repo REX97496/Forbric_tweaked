@@ -361,9 +361,199 @@ public final class TestFixtures {
 		return Path.of(home, ".minecraft");
 	}
 
-	/** Minecraft 26.2's own client jar inside {@link #minecraftDir()}. */
+	/**
+	 * The line a CENSUS is being run for, which is not the same question as the line Gradle is building.
+	 *
+	 * <p>It exists because the census producers are tests and the test half compiles on both lines, while the runtime
+	 * half does not: `test` depends on `compileRuntimeJava`, so on 1.21.1 the only way to run a producer is a task of
+	 * its own, and that task needs to say which line's jars to read. Every fixture a census resolves goes through this
+	 * one value. {@code -Dforbric.censusLine}, defaulting to {@value #DEFAULT_LINE}: on that default every path
+	 * resolves to exactly the string it resolved to before this switch existed, which is what keeps the 26.2 census the
+	 * same census it was.
+	 */
+	public static final String DEFAULT_LINE = "26.2";
+
+	/** The line a census run is for — see {@link #DEFAULT_LINE}. */
+	public static String censusLine() {
+		String configured = System.getProperty(CENSUS_LINE);
+		if (configured == null || configured.isBlank()) return DEFAULT_LINE;
+		return configured.trim();
+	}
+
+	/** The system property {@link #censusLine()} reads. */
+	public static final String CENSUS_LINE = "forbric.censusLine";
+
+	/** Whether this JVM is running a census for a line whose fixtures it is allowed to read. */
+	public static boolean onDefaultLine() {
+		return DEFAULT_LINE.equals(censusLine());
+	}
+
+	/**
+	 * Where a census WRITES its table: {@code src/main/resources} on the default line — the shipped 26.2 table, which
+	 * a regeneration must reproduce byte for byte — and {@code src/main/mc-line/<line>-tables/} otherwise, so a run for
+	 * another line can only ever write that line's edition, under the same relative path. The build overlays the
+	 * second directory into that line's jar; nothing overlays it onto 26.2.
+	 */
+	public static Path censusTableRoot() {
+		return onDefaultLine()
+				? Path.of("src/main/resources")
+				: Path.of("src/main/mc-line/" + censusLine() + "-tables");
+	}
+
+	/**
+	 * The header lines a table gains OFF the default line: which line measured it, and the md5 of every jar the
+	 * derivation read, by file name. Machine-independent on purpose — an absolute path in a committed table would make
+	 * every other machine's re-run disagree with it — and load-bearing: a table derived from different bytes is a
+	 * different table, and the stamp is how a later reader can tell without re-running anything.
+	 *
+	 * <p>On the default line this returns the empty string, because those tables must not change by one byte.
+	 */
+	public static String censusStamp(Path... inputs) {
+		if (onDefaultLine()) return "";
+		StringBuilder stamp = new StringBuilder("# census-line " + censusLine() + "\n");
+		for (Path input : inputs) {
+			if (input == null || !Files.isRegularFile(input)) {
+				stamp.append("# input ").append(input == null ? "absent" : input.getFileName().toString())
+						.append(" ABSENT\n");
+				continue;
+			}
+			stamp.append("# input ").append(input.getFileName().toString()).append(' ').append(md5(input)).append('\n');
+		}
+		return stamp.toString();
+	}
+
+	/**
+	 * Writes a census table's full text — header and rows — under {@link #censusTableRoot()}, at the resource path the
+	 * kernel reads it from. The one way a run lands in the tree, so a run for another line cannot write 26.2's file and
+	 * a 26.2 regeneration cannot write another line's.
+	 */
+	public static void writeCensusTable(String resourcePath, String text) throws IOException {
+		Path target = censusTableRoot().resolve("." + resourcePath).normalize();
+		Files.createDirectories(target.getParent());
+		Files.writeString(target, text);
+	}
+
+	/** The md5 of a file, as the census stamps record it. */
+	public static String md5(Path file) {
+		try (InputStream in = Files.newInputStream(file)) {
+			java.security.MessageDigest md5 = java.security.MessageDigest.getInstance("MD5");
+			byte[] buffer = new byte[1 << 16];
+			for (int read = in.read(buffer); read > 0; read = in.read(buffer)) md5.update(buffer, 0, read);
+			return java.util.HexFormat.of().formatHex(md5.digest());
+		} catch (IOException | java.security.NoSuchAlgorithmException unreadable) {
+			return "unreadable";
+		}
+	}
+
+	/** This line's own launcher-side client jar inside {@link #minecraftDir()}. */
 	public static Path vanillaJar() {
-		return minecraftDir().resolve("versions/26.2/26.2.jar");
+		return minecraftDir().resolve("versions/" + censusLine() + "/" + censusLine() + ".jar");
+	}
+
+	/**
+	 * This line's game <b>in the names the merged base uses</b> — which is what a name census can compare against.
+	 *
+	 * <p>On the default line those are the same file: 26.2 ships unobfuscated, so its launcher jar is already Mojmap
+	 * and this returns {@code versions/26.2/26.2.jar}, the identical path the producers asked for before.
+	 *
+	 * <p>On an obfuscated line they are NOT the same file, and using the launcher jar is a measured failure rather than
+	 * a subtle one. The 1.21.1 client jar on this machine holds 8,269 classes and not one named
+	 * {@code net/minecraft/client/Minecraft}: a census against it finds nothing that matches the base. Measured in this
+	 * stage's first run, which used it: {@code carrier-renames} produced 204 rows and NOT ONE tagged FABRIC,
+	 * {@code lambda-permutations} produced zero rows, and {@code vanilla-early-returns} found 7 folded methods out of
+	 * the thousands 26.2 finds. All three were the same defect — the left-hand side of every comparison was obfuscated.
+	 *
+	 * <p>So off the default line this resolves to the pipeline's unpatched Mojmap jar (vanilla plus Mojang's mappings,
+	 * the file the merged base was merged FROM), and refuses with the reason rather than answering quietly from an
+	 * obfuscated jar. The class-file major is checked against the merged base's, because that file's name carries no
+	 * version and its directory is shared between lines: a 26.2 leftover there is class 69 and must not be read as
+	 * 1.21.1's.
+	 */
+	public static Path mojmapGame() {
+		if (onDefaultLine()) return minecraftDir().resolve("versions/26.2/26.2.jar");
+		Path clean = minecraftDir().resolve(".forbric-build/clean-mojmap.jar");
+		Path launcher = vanillaJar();
+		java.util.List<String> rejected = new java.util.ArrayList<>();
+		for (Path candidate : java.util.List.of(clean, launcher)) {
+			if (!Files.isRegularFile(candidate)) {
+				rejected.add(candidate.getFileName() + " absent");
+				continue;
+			}
+			if (!isMojmapGame(candidate)) {
+				rejected.add(candidate.getFileName() + " has no net/minecraft/client/Minecraft: it is obfuscated, and a"
+						+ " name census against it finds nothing");
+				continue;
+			}
+			int candidateLevel = classFileMajor(candidate);
+			int baseLevel = classFileMajor(mergedBase());
+			if (baseLevel > 0 && candidateLevel != baseLevel) {
+				rejected.add(candidate.getFileName() + " is class file " + candidateLevel + " and the merged base is "
+						+ baseLevel + ": not this line's game");
+				continue;
+			}
+			return candidate;
+		}
+		throw new AssertionFailedError("no Mojmap game for Minecraft " + censusLine() + " under " + minecraftDir()
+				+ ": a census compares NAMES, so it cannot be run against an obfuscated jar. Tried "
+				+ String.join("; ", rejected));
+	}
+
+	/** Whether a jar names {@code net/minecraft/client/Minecraft}: true for a Mojmap jar, false for an obfuscated one. */
+	private static boolean isMojmapGame(Path jar) {
+		try (ZipFile zip = new ZipFile(jar.toFile())) {
+			return zip.getEntry("net/minecraft/client/Minecraft.class") != null;
+		} catch (IOException unreadable) {
+			return false;
+		}
+	}
+
+	/** The class-file major of a jar's first class, or 0 when it cannot be read: the line's generation, cheaply. */
+	private static int classFileMajor(Path jar) {
+		if (!Files.isRegularFile(jar)) return 0;
+		try (ZipFile zip = new ZipFile(jar.toFile())) {
+			for (ZipEntry entry : java.util.Collections.list(zip.entries())) {
+				if (!entry.getName().endsWith(".class")) continue;
+				try (InputStream in = zip.getInputStream(entry)) {
+					byte[] header = in.readNBytes(8);
+					if (header.length == 8) return ((header[6] & 0xff) << 8) | (header[7] & 0xff);
+				}
+			}
+		} catch (IOException unreadable) {
+			return 0;
+		}
+		return 0;
+	}
+
+	/** The merged base the census reads for this line. */
+	public static Path mergedBase() {
+		return stagedRoot().resolve("merged-base/patched-mc-merged-" + censusLine() + ".jar");
+	}
+
+	/** NeoForge's patched game for this line, as the merge read it. */
+	public static Path neoForgePatched() {
+		return stagedRoot().resolve("neoforge-patched/patched-mc-neoforge-" + censusLine() + ".jar");
+	}
+
+	/** The forge-runtime interop jar staged beneath the merged base. */
+	public static Path forgeRuntimeInterop() {
+		return stagedRoot().resolve("merged-base/forge-runtime-interop.jar");
+	}
+
+	/**
+	 * The kernel's GAME-side classes — what the merged game additionally consists of for {@code uncalled-methods} and
+	 * {@code carrier-stubs}, because a repair may call a vanilla method.
+	 *
+	 * <p>Off the default line this deliberately resolves to a path that is not there. The game side cannot be compiled
+	 * on another line (that is the 190 errors), and {@code build/classes/java/runtime} very likely still holds the
+	 * DEFAULT line's classes from the last 26.2 build: handing those to a 1.21.1 census would scan 26.2's kernel as if
+	 * it were this line's and produce a plausible table with no measurement behind it. Failing closed is the only
+	 * honest answer, and it is what makes those two producers skip here instead of answering wrongly.
+	 */
+	public static Path kernelGameSide() {
+		String configured = System.getProperty("forbric.test.runtimeClasses");
+		if (configured != null && !configured.isBlank()) return Path.of(configured);
+		if (!onDefaultLine()) return Path.of("build/census/" + censusLine() + "/no-kernel-game-side");
+		return Path.of("build/classes/java/runtime");
 	}
 
 	/**
@@ -375,9 +565,16 @@ public final class TestFixtures {
 	 */
     private static final java.util.Map<String,Boolean> NATIVE_INPUT_MATCHES=new java.util.concurrent.ConcurrentHashMap<>();
     public static Path forgeMergeInput() {
-        Path staged=stagedRoot().resolve("forge-patched/patched-mc-forge-26.2.jar");
-        Path merged=stagedRoot().resolve("merged-base/patched-mc-merged-26.2.jar");
-        Path launcher=minecraftDir().resolve("libraries/net/forbric/patched-mc-forge/26.2-65.0.1/patched-mc-forge-26.2-65.0.1.jar");
+        // Per line, like every fixture a census reads: the default line's strings are exactly what they were.
+        String line=censusLine();
+        Path staged=stagedRoot().resolve("forge-patched/patched-mc-forge-"+line+".jar");
+        Path merged=stagedRoot().resolve("merged-base/patched-mc-merged-"+line+".jar");
+        // The launcher copy is a 26.2 answer to a 26.2 question (a Forbric install's pinned Forge build). No other
+        // line has one to name, so off the default line the staged file is the only candidate and a missing one is
+        // reported as missing rather than looked for at a guessed path.
+        Path launcher=onDefaultLine()
+                ? minecraftDir().resolve("libraries/net/forbric/patched-mc-forge/26.2-65.0.1/patched-mc-forge-26.2-65.0.1.jar")
+                : staged;
         try {
             if(Files.isRegularFile(merged))try(ZipFile jar=new ZipFile(merged.toFile())){
                 var entry=jar.getEntry("META-INF/forbric/native-reference/FORGE/index.tsv");

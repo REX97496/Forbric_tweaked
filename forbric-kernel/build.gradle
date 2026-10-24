@@ -644,6 +644,105 @@ if (mcLine != mcLineDefault) {
 	tasks.named('compileJava') { dependsOn normalizeBootJava }
 
 	// ---------------------------------------------------------------------------------------------------
+	// The line's CENSUS TABLES — measured for this line, never renamed into place
+	// ---------------------------------------------------------------------------------------------------
+	//
+	// The eight tables under src/main/resources/net/forbric/kernel/ are the measured output of eight census tests
+	// over ONE merged base, and on 1.21.1 2,460 of their rows name something this line does not have — 115 of them
+	// with a KEY that resolves here and a TARGET that does not, so the rule can match and rewrite a selector to a
+	// member this line lacks (docs/1.21.1-port.md, stage 10). They cannot be fixed by renaming inside them: the
+	// descriptors, counts, hashes and ecosystems are 26.2's, and a hand-made edition would be fabricated evidence
+	// that nothing can detect. They can only be RE-RUN.
+	//
+	// The producer of each table is the census TEST itself (see net.forbric.kernel.CensusTable and
+	// TestFixtures.censusLine). This line's suite cannot run — `test` depends on compileRuntimeJava, and the game
+	// side is the 190 errors — but the TEST half compiles, because no test source names a Minecraft type. So:
+	//
+	//   lineCensus            runs the tagged producers on THIS line's classpath and compares each table to the
+	//                         committed edition. It is the verification: a hand-edited row fails it.
+	//   -Pforbric.censusWrite regenerates instead of comparing, writing into src/main/mc-line/<line>-tables/.
+	//                         The first pass reports the mismatch it just wrote over; the second is the check.
+	//   normalizeBootResources copies src/main/resources and overlays this line's edition on top, so the jar this
+	//                         line builds carries the tables that were measured FOR it.
+	//
+	// NOTHING HAPPENS ON 26.2. No task, no extra source directory, no resource — the default build's resources are
+	// exactly src/main/resources and its graph gains nothing. That has to be true byte-for-byte: the 26.2 tables are
+	// the ones every existing consumer was written against, and `-Pforbric.censusWrite` on the default line is
+	// checked by `git diff` being empty afterwards rather than by this comment.
+	def mcLineTables = file("src/main/mc-line/${mcLine}-tables")
+	def mcLineResources = layout.buildDirectory.dir("generated/mc-line/${mcLine}/resources")
+	def normalizeBootResources = tasks.register('normalizeBootResources', Sync) {
+		group = 'build'
+		description = "Copies src/main/resources and overlays Minecraft ${mcLine}'s own census tables on top."
+		from 'src/main/resources'
+		into mcLineResources
+		// Declared so an edited — or re-run — table re-copies instead of leaving the previous bytes in build/.
+		// A FileTree rather than inputs.dir: the directory does not exist until the first run writes it, and a
+		// missing DIRECTORY declared as an input is a validation failure while an empty file tree is not.
+		inputs.files(fileTree(mcLineTables)).withPropertyName('mcLineTables')
+		doFirst {
+			logger.lifecycle("[forbric] mc-line ${mcLine}: resources come from src/main/resources with " +
+					"${mcLineTables.name} overlaid (" + (mcLineTables.isDirectory()
+							? "${fileTree(mcLineTables).files.size()} table file(s)" : "none committed yet") + ")")
+		}
+		doLast {
+			if (!mcLineTables.isDirectory()) return
+			File root = mcLineResources.get().asFile
+			fileTree(mcLineTables).files.sort { it.path }.each { File table ->
+				String relative = mcLineTables.toPath().relativize(table.toPath()).toString().replace(File.separator, '/')
+				File target = new File(root, relative)
+				target.parentFile.mkdirs()
+				target.bytes = table.bytes
+			}
+		}
+	}
+	sourceSets.main.resources.setSrcDirs([])
+	sourceSets.main.resources.srcDir(mcLineResources)
+	tasks.named('processResources') { dependsOn normalizeBootResources }
+
+	def lineCensusWrite = project.hasProperty('forbric.censusWrite')
+	def lineCensus = tasks.register('lineCensus', Test) {
+		group = 'verification'
+		description = "Re-derives Minecraft ${mcLine}'s census tables from its own staged artifacts and checks them."
+		testClassesDirs = sourceSets.test.output.classesDirs
+		classpath = sourceSets.test.runtimeClasspath
+		maxHeapSize = '1g'
+		// The line, and the roots the producers resolve every jar through. `forbric.test.runtimeClasses` is
+		// deliberately NOT set: TestFixtures.kernelGameSide() then answers with a path that does not exist, which is
+		// what makes the two producers whose premise is the compiled game side SKIP here instead of scanning the
+		// 26.2 classes a previous build left in build/classes/java/runtime.
+		systemProperty 'forbric.censusLine', mcLine
+		systemProperty 'forbric.stagedRoot', stagedRoot.absolutePath
+		environment 'MC_DIR', mcLibraries.parentFile.absolutePath
+		environment 'FORBRIC_OLD', stagedRoot.parentFile.absolutePath
+		systemProperty 'java.awt.headless', 'true'
+		// Exactly the eight producers, each by the tag it carries. Gradle fails a filtered Test task that discovers
+		// no tests, so a producer that loses its tag turns into a build failure rather than a silent zero-run.
+		useJUnitPlatform { includeTags 'census-table' }
+		// A census is a MEASUREMENT: an up-to-date task would report the previous verdict on jars that have changed.
+		outputs.upToDateWhen { false }
+		testLogging { events 'passed', 'skipped', 'failed'; exceptionFormat 'full' }
+		if (lineCensusWrite) {
+			// The writers. Each is the same code path with its comparison turned into a file write, and the file it
+			// writes is this line's edition (TestFixtures.censusTableRoot).
+			['CARRIER_RENAMES', 'CARRIER_HELPERS', 'LAMBDA_PERMUTATIONS', 'EARLY_RETURNS', 'CARRIER_TWINS',
+					'CARRIER_STUBS', 'UNCALLED_METHODS', 'NATIVE_ONLY_METHODS'].each { name ->
+				environment "FORBRIC_WRITE_${name}", '1'
+			}
+			// A regeneration pass disagrees with the file it has just replaced — the comparison reads the copy on the
+			// classpath — so its failure is expected once, and the check is the SAME task without this switch.
+			ignoreFailures = true
+			doLast {
+				logger.lifecycle("[forbric] census WRITE run for ${mcLine}: tables rewritten under " +
+						"${mcLineTables}. A regeneration reports the OLD classpath copy as a mismatch by design; " +
+						"run lineCensus again without -Pforbric.censusWrite to verify what it wrote.")
+			}
+		}
+	}
+	logger.lifecycle("[forbric] Minecraft line ${mcLine}: census tables are re-derived by :lineCensus from " +
+			"${stagedMergedBase.name} and the carriers beside it")
+
+	// ---------------------------------------------------------------------------------------------------
 	// The line's fabric-api modules, remapped out of intermediary
 	// ---------------------------------------------------------------------------------------------------
 	//

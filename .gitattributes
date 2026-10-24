@@ -30,6 +30,13 @@ gradle.properties text eol=lf
 *.tsv           text eol=lf
 *.patch         text eol=lf
 
+# The census tables. They are MEASURED OUTPUT: their bytes are the evidence, a stage records their md5, and a
+# checkout that rewrites their line endings makes that md5 unreproducible and makes the next `-Pforbric.censusWrite`
+# run look like an edit (measured: a `git stash pop` turned the freshly written 1.21.1 editions CRLF). Narrow on
+# purpose: only the two directories that hold them, not *.txt everywhere.
+forbric-kernel/src/main/resources/net/forbric/kernel/**     text eol=lf
+forbric-kernel/src/main/mc-line/*-tables/**                text eol=lf
+
 # Java sources: javac is indifferent, but byte-for-byte fixtures are not.
 *.java          text eol=lf
 
