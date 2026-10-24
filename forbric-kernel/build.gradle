@@ -552,6 +552,98 @@ if (mcLine != mcLineDefault) {
 	logger.lifecycle("[forbric] Minecraft line ${mcLine}: runtime sources are normalised through ${mcLineRenames.name}")
 
 	// ---------------------------------------------------------------------------------------------------
+	// The BOOT half is line-keyed too, and it is line-keyed in STRINGS
+	// ---------------------------------------------------------------------------------------------------
+	//
+	// src/main holds no Minecraft type by design -- that is what makes it the boot half -- so javac resolves none
+	// of the ~2,275 names it spells, and a name that does not exist on this line compiles cleanly and fails only
+	// when the string is USED. Stage 7 counted it; stage 10 measured it (docs/1.21.1-port.md): 253 dead
+	// references in 71 boot files, of which 31 are sites that RESOLVE the name (Class.forName / getMethod /
+	// invokeStaticOn / startBus) rather than match it.
+	//
+	// WHICH MECHANISM, AND WHY NOT THE TWO THIS SCRIPT ALREADY HAS
+	//
+	//   * the runtime half's rename table cannot be pointed at src/main: the SAME token is a resolution name in
+	//     one file and pin data in another. `net.minecraft.resources.Identifier` occurs at 2 resolution sites and
+	//     at 18 pin/anchor sites, and MixinEquivalentImplementations pairs its spelling with a 26.2 BODY HASH --
+	//     renaming the spelling there leaves the hash 26.2's and makes a pin that is internally inconsistent
+	//     rather than true. A table cannot tell the two kinds apart; this file can, per site.
+	//   * the runtime half's file overlay would be honest and would mean duplicating KernelClientSmoke.java
+	//     (2,600 lines) to change two strings in it.
+	//   * a per-line edition of the CENSUS TABLES is refused outright (see docs): every row is measured output of
+	//     a census over one merged base, and renaming inside it would leave 26.2's descriptors, counts, hashes and
+	//     ecosystems under a header claiming a line it was never run against. src/main/resources is deliberately
+	//     NOT in this block's scope, so the refusal is enforced by the mechanism's shape.
+	//
+	// So: EXACT substitutions, one row per site, with the expected occurrence count as an assertion. It cannot
+	// over-apply (a row is a whole site, not a token), it fails loudly when the source moves (count mismatch), and
+	// on the default line it does not exist at all: no task, no generated source dir, no input, no byte.
+	//
+	// Format, one row per line, TAB separated, `#` starts a comment:
+	//   <path relative to src/main/java> \t <occurrences> \t <exact old text> \t <exact new text>
+	def mcLineBootPatches = file("src/main/mc-line/${mcLine}.patches")
+	def mcLineBootJava = layout.buildDirectory.dir("generated/mc-line/${mcLine}/boot-java")
+	def normalizeBootJava = tasks.register('normalizeBootJava', Sync) {
+		group = 'build'
+		description = "Applies ${mcLineBootPatches.name}'s exact substitutions to a copy of src/main/java."
+		from 'src/main/java'
+		into mcLineBootJava
+		inputs.files(mcLineBootPatches).withPropertyName('mcLineBootPatches')
+		doFirst {
+			if (mcLineBootPatches.isFile()) {
+				// A row that parses wrong is a row that would silently not apply, so the parse is strict.
+				mcLineBootPatches.eachLine('UTF-8') { String raw ->
+					def line = raw
+					if (line.trim().isEmpty() || line.trim().startsWith('#')) return
+					def parts = line.split('\t', -1)
+					if (parts.length != 4) {
+						throw new GradleException("${mcLineBootPatches}: not '<file> TAB <count> TAB <old> TAB <new>': ${raw}")
+					}
+					if (parts[2] == parts[3]) {
+						throw new GradleException("${mcLineBootPatches}: a row whose old and new text are identical is a"
+								+ " lie about a correction that did not happen: ${raw}")
+					}
+					if (!new File(file('src/main/java'), parts[0]).isFile()) {
+						throw new GradleException("${mcLineBootPatches}: ${parts[0]} does not exist under src/main/java")
+					}
+					if (!(parts[1] ==~ /[0-9]+/) || parts[1].toInteger() < 1) {
+						throw new GradleException("${mcLineBootPatches}: the occurrence count must be a positive integer,"
+								+ " because it is the assertion that the site is still where the row says: ${raw}")
+					}
+				}
+				logger.lifecycle("[forbric] mc-line ${mcLine}: boot half patched through ${mcLineBootPatches.name}")
+			} else {
+				logger.lifecycle("[forbric] mc-line ${mcLine}: no ${mcLineBootPatches.name} — the boot half takes no"
+						+ " line-keyed correction on this line")
+			}
+		}
+		doLast {
+			if (!mcLineBootPatches.isFile()) return
+			def root = mcLineBootJava.get().asFile
+			mcLineBootPatches.eachLine('UTF-8') { String raw ->
+				if (raw.trim().isEmpty() || raw.trim().startsWith('#')) return
+				def parts = raw.split('\t', -1)
+				File target = new File(root, parts[0])
+				String text = target.getText('UTF-8')
+				int expected = parts[1].toInteger()
+				int found = 0
+				int at = text.indexOf(parts[2])
+				while (at >= 0) { found++; at = text.indexOf(parts[2], at + parts[2].length()) }
+				if (found != expected) {
+					throw new GradleException("${mcLineBootPatches}: ${parts[0]} holds ${found} occurrence(s) of the"
+							+ " row's text, expected ${expected}. The site moved or was edited; re-adjudicate the row"
+							+ " against Minecraft ${mcLine} and update the count. Row: ${parts[2]}")
+				}
+				target.setText(text.replace(parts[2], parts[3]), 'UTF-8')
+				logger.lifecycle("[forbric] mc-line ${mcLine}: boot patch applied ${found}x in ${parts[0]}")
+			}
+		}
+	}
+	sourceSets.main.java.setSrcDirs([])
+	sourceSets.main.java.srcDir(mcLineBootJava)
+	tasks.named('compileJava') { dependsOn normalizeBootJava }
+
+	// ---------------------------------------------------------------------------------------------------
 	// The line's fabric-api modules, remapped out of intermediary
 	// ---------------------------------------------------------------------------------------------------
 	//
