@@ -17,39 +17,58 @@
 package net.forbric.kernel.runtime;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.function.Consumer;
 
 import net.forbric.kernel.util.ForbricLog;
 import net.forbric.kernel.util.Reflect;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.ReloadableResourceManager;
-import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
+import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 
 /**
- * Collects traditional MinecraftForge's client reload listeners and hands them to NeoForge's sorted graph.
+ * Collects traditional MinecraftForge's client reload listeners and hands them to NeoForge's registration event.
  *
- * <p>The restored Forge client hook posts its own registration event first. This bridge consumes that capture
- * while NeoForge builds its sorted graph. With the client-init repair disabled it retains its original fallback:
- * posting Forge's event against a scratch manager itself.
+ * <p><b>This is a 1.21.1 EDITION of the 26.2 bridge, not a copy of it.</b> The two lines run the same idea through
+ * an API that changed shape, and the three differences are the whole of the port:
+ *
+ * <ol>
+ *   <li><b>NeoForge renamed its event.</b> 26.2 registers on {@code AddClientReloadListenersEvent}; this line
+ *       registers on {@code RegisterClientReloadListenersEvent}, which is also the simple name MinecraftForge's
+ *       own event has here. Only one of the two can be imported, so NeoForge's is imported and MinecraftForge's
+ *       is written out in full at its one use.</li>
+ *   <li><b>This line's event takes no listener id.</b> 26.2's {@code SortedReloadListenerEvent} keys listeners by
+ *       {@code Identifier} and sorts a dependency graph over them, so the 26.2 bridge SYNTHESISES an id per
+ *       listener. This line's event has {@code registerReloadListener(PreparableReloadListener)} and no key, no
+ *       ordering and no graph (javap, both lines). The id derivation is therefore <em>absent rather than
+ *       skipped</em>: there is nothing on this line to derive it for, and an id nobody reads is not a port of the
+ *       code that needed one.</li>
+ *   <li><b>There is no per-event bus field, and the NeoForge mod bus cannot carry a Forge event.</b> 26.2's
+ *       MinecraftForge event carries a static {@code EventBus<...> BUS} — EventBus 7's per-event bus — and the
+ *       fallback below posts the Forge event through it. On this line the event is a plain {@code IModBusEvent}
+ *       with no {@code BUS} field, and the two event hierarchies are separate types: measured with javap on this
+ *       line, {@code net.neoforged.bus.EventBus implements net.neoforged.bus.api.IEventBus} only, and only
+ *       {@code net.minecraftforge.eventbus.api.IEventBus.post} accepts a {@code net.minecraftforge.eventbus.api.Event}.
+ *       The mod bus this class is handed is a {@code net.neoforged.bus.api.IEventBus}, so it cannot post it — that
+ *       is not a preference, it is what javac says: {@code no suitable method found for post(...)}, which the first
+ *       cut of this file hit. This line's global mod-bus dispatcher is the Forge loader's
+ *       {@code ModLoader.get().postEvent(Event & IModBusEvent)}, the call the loader itself uses to fire mod-bus
+ *       events, so the fallback calls that.</li>
+ * </ol>
+ *
+ * <p>The structure around those three differences is unchanged, because it is a statement about the CARRIER
+ * rather than about a name: the merged base posts only NeoForge's event, so a Forge mod's listeners registered
+ * through MinecraftForge's event reach nothing unless something reposts them here.
  *
  * <h2>The scratch manager</h2>
  *
  * <p>MinecraftForge's event has no accessor for what was registered to it — the listeners go straight into the
  * {@code ReloadableResourceManager} it was constructed with. So one is constructed purely as a capture buffer,
- * the Forge event is posted against it, and whatever landed inside is read back out and re-registered on
- * NeoForge's event. A captured empty list still means the event has already been posted. The manager is never
- * used to reload anything; its constructor seeds an empty list, which is
- * why it is safe to read immediately.
- *
- * <p>Each listener gets a synthetic {@code ResourceLocation} because NeoForge's graph is sorted by id and requires
- * one. The id is derived from the listener's own class name, reduced to the characters an {@code ResourceLocation}
- * path allows, plus its index — so two listeners of the same class do not collide.
+ * the Forge event is posted against it, and whatever landed inside is read out and re-registered on NeoForge's
+ * event. A captured empty list still means the event has already been posted. The manager is never used to reload
+ * anything; its constructor seeds an empty list, which is why it is safe to read immediately.
  */
 public final class KernelGameClientReload {
 	private KernelGameClientReload() {
@@ -60,12 +79,12 @@ public final class KernelGameClientReload {
 	 *               not a game-bus one, which is why it is a separate pass from the other four bridges.
 	 */
 	public static void install(Object modBus) {
-		Consumer<AddClientReloadListenersEvent> bridge = event -> {
+		Consumer<RegisterClientReloadListenersEvent> bridge = event -> {
 			List<PreparableReloadListener> captured = ForgeClientReloadCapture.drain();
 			if (captured != null) {
 				// ForgeHooksClient already posted its self-destructing event. Reposting it would return an
 				// empty list while its handler count still read "one", losing all real reload listeners.
-				// Let graph-registration failures reach NeoForge's normal event error handling.
+				// Let registration failures reach NeoForge's normal event error handling.
 				register(event, captured);
 				return;
 			}
@@ -75,36 +94,35 @@ public final class KernelGameClientReload {
 				// lives on KernelForgeClientInit because that class needs the identical read; both files are this
 				// line's own, so there is one implementation rather than two that can drift.
 				try (ReloadableResourceManager scratch = new ReloadableResourceManager(PackType.CLIENT_RESOURCES)) {
-					RegisterClientReloadListenersEvent.BUS.post(new RegisterClientReloadListenersEvent(scratch));
+					// Fully qualified: this line's NeoForge event has the same simple name, and it is the one imported.
+					// Fired through the Forge LOADER's global mod-bus dispatch, not the NeoForge bus this method is
+					// handed: on this line that bus cannot accept a net.minecraftforge.eventbus.api.Event (javap,
+					// both interfaces). Whether the merged base leaves the Forge loader with any mods registered
+					// there is a property of the merge and is NOT verified here -- no 1.21.1 launch has happened.
+					net.minecraftforge.fml.ModLoader.get().postEvent(
+							new net.minecraftforge.client.event.RegisterClientReloadListenersEvent(scratch));
 					register(event, KernelForgeClientInit.listenersOf(scratch));
 				}
 			} catch (Throwable t) {
-				ForbricLog.warn("[Forbric/EventMux] could not bridge Forge client reload listeners",
+				ForbricLog.warn("[forbric/EventMux] could not bridge Forge client reload listeners",
 						Reflect.unwrap(t));
 			}
 		};
 
 		// Four-argument overload with LOWEST, as everywhere in this package.
-		((IEventBus) modBus).addListener(EventPriority.LOWEST, false, AddClientReloadListenersEvent.class, bridge);
+		((IEventBus) modBus).addListener(EventPriority.LOWEST, false, RegisterClientReloadListenersEvent.class, bridge);
 	}
 
-	private static void register(AddClientReloadListenersEvent event, List<PreparableReloadListener> listeners) {
+	private static void register(RegisterClientReloadListenersEvent event, List<PreparableReloadListener> listeners) {
 		int n = 0;
 		for (PreparableReloadListener listener : listeners) {
-			event.addListener(ResourceLocation.fromNamespaceAndPath("forbric",
-					"forge/" + sanitisePath(listener.getClass().getName()) + "_" + n++), listener);
+			// No id: this line's registration has none (see the class comment, difference 2).
+			event.registerReloadListener(listener);
+			n++;
 		}
 		if (n > 0) {
-			ForbricLog.info("[Forbric/EventMux] bridged %d Forge client reload listener(s) into NeoForge's sorted graph", n);
+			ForbricLog.info("[forbric/EventMux] bridged %d Forge client reload listener(s) into NeoForge's "
+					+ "reload registration", n);
 		}
-	}
-
-	/** A class name reduced to the {@code [a-z0-9._/-]} an {@code ResourceLocation} path allows. */
-	private static String sanitisePath(String className) {
-		StringBuilder out = new StringBuilder(className.length());
-		for (char c : className.toLowerCase(Locale.ROOT).toCharArray()) {
-			out.append(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '.' || c == '/' || c == '-' ? c : '_');
-		}
-		return out.toString();
 	}
 }

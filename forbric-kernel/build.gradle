@@ -133,6 +133,147 @@ def rebornEnergyDefaults = [file('.dev/api/energy-5.0.0.jar'),
 		file('run/energy-api/energy-5.0.0.jar')]
 def stagedRebornEnergy = file(project.findProperty('forbric.rebornEnergy')
 		?: (rebornEnergyDefaults.find { it.isFile() } ?: rebornEnergyDefaults[0]))
+// -------------------------------------------------------------------------------------------------------------
+// THE ENERGY JAR'S CLASS-FILE VERSION IS A PROPERTY OF THE JDK THAT BUILDS THE LINE, NOT OF THE LINE.
+//
+// `.dev/api/energy-5.0.0.jar` holds 12 class files at version 69 (Java 25, Team Reborn's own release). The 1.21.1
+// line is built by a JDK 21, and that javac refuses a class file newer than the version it targets -- "bad class
+// file ... class file has wrong version 69.0, should be 65.0" -- after which every team.reborn.energy reference
+// fails as `cannot find symbol`. Measured, not inferred: 225 errors with the shipped jar against 200 with a
+// class-65 copy, so 25 errors -- one eighth of the remaining distance -- were a staging defect wearing port
+// clothes.
+//
+// This is the DANGER shape in a second place, and NOT the same shape. The merged base's defect is one unversioned
+// FILENAME holding two lines' different bytes. Here one FILE holds one line's bytes and two JDKs disagree about
+// whether they may read it: the shipped jar is a 26.x artifact, 26.2's JDK 25 reads class 69 without complaint
+// (measured: the same jar under a JDK-25 javac with the same `--release 21` is read, and the compile proceeds to
+// unrelated errors), and only a JDK whose maximum class-file version is 65 refuses it. So the default line needs
+// no edition and MUST NOT get one: its classpath stays the shipped FileCollection it always was.
+//
+// The fix is per-line and produced BY THIS BUILD rather than staged by hand into a gitignored directory. On any
+// line but the default, `retargetRebornEnergy` writes a copy whose ONLY difference is the u2 major-version field
+// of the class entries that need lowering (69 -> 65 is 0x0045 -> 0x0041, so exactly ONE byte per class moves);
+// both the compile classpath and `verifyRebornEnergy` consume that output. The task is NOT REGISTERED on the
+// default line, so 26.2 gains no task and no byte.
+//
+// What this is not: a Java-21 build of the library. It is the same bytes under a lower version stamp -- proven by
+// `verifyRebornEnergy`, which runs ApiJarContract over the MEMBERS rather than over a hash -- and it must never be
+// shipped. The runtime jar's own entry check already refuses to bundle team/reborn/ classes.
+def energyTargetMajor = 44 + project.java.targetCompatibility.majorVersion.toInteger()   // --release 21 -> 65
+def energyOutName = (stagedRebornEnergy.name.endsWith('.jar')
+		? stagedRebornEnergy.name.substring(0, stagedRebornEnergy.name.length() - 4)
+		: stagedRebornEnergy.name) + '-j' + project.java.targetCompatibility.majorVersion + '.jar'
+def energyForLineFile = mcLine == mcLineDefault
+		? stagedRebornEnergy
+		: layout.buildDirectory.file("energy-api/${mcLine}/${energyOutName}").get().asFile
+def energyForLine = mcLine == mcLineDefault
+		? files(stagedRebornEnergy)
+		: files(energyForLineFile).builtBy('retargetRebornEnergy')
+if (mcLine != mcLineDefault) {
+	tasks.register('retargetRebornEnergy') {
+		group = 'build'
+		description = "Lowers the energy API jar's class-file version to ${energyTargetMajor} so a JDK " +
+				"${project.java.targetCompatibility.majorVersion} build can read it; every other byte is the input's."
+		// The OUTPUT is what the classpath and verifyRebornEnergy consume, so both are keyed on this task through
+		// `energyForLine` rather than on the shared file. Preview-featured class files are refused: their version
+		// cannot be lowered by a stamp, and pretending otherwise would trade a clear "wrong version" for a
+		// VerifyError at load time.
+		inputs.file(stagedRebornEnergy).withPropertyName('energyImplementation').optional()
+		inputs.property('classFileMajor', energyTargetMajor)
+		outputs.file(energyForLineFile)
+		doLast {
+			File src = stagedRebornEnergy
+			if (!src.isFile()) throw new GradleException("The energy adapter needs a jar exposing its public API: " +
+					src + ". Pass -Pforbric.rebornEnergy=<compatible energy API jar>.")
+			energyForLineFile.parentFile.mkdirs()
+			int retargeted = 0, alreadyReadable = 0, nonClass = 0
+			def versionsSeen = new TreeMap<Integer, Integer>()
+			new java.util.zip.ZipFile(src).withCloseable { zip ->
+				energyForLineFile.withOutputStream { raw ->
+					def out = new java.util.zip.ZipOutputStream(raw)
+					try {
+						zip.entries().each { entry ->
+							byte[] data = zip.getInputStream(entry).bytes
+							boolean isClass = data.length >= 8 && (data[0] & 0xFF) == 0xCA && (data[1] & 0xFF) == 0xFE
+									&& (data[2] & 0xFF) == 0xBA && (data[3] & 0xFF) == 0xBE
+							if (isClass) {
+								int minor = ((data[4] & 0xFF) << 8) | (data[5] & 0xFF)
+								int major = ((data[6] & 0xFF) << 8) | (data[7] & 0xFF)
+								versionsSeen.merge(major, 1) { a, b -> a + b }
+								if (major > energyTargetMajor) {
+									if (minor == 0xFFFF) throw new GradleException("${src.name}: ${entry.name} is " +
+											"compiled with PREVIEW features (minor 0xFFFF). Its class-file version " +
+											"cannot be lowered to ${energyTargetMajor} by a version stamp; supply a " +
+											"Java ${project.java.targetCompatibility.majorVersion} build of it instead.")
+									data[6] = (byte) ((energyTargetMajor >> 8) & 0xFF)
+									data[7] = (byte) (energyTargetMajor & 0xFF)
+									retargeted++
+								} else {
+									alreadyReadable++
+								}
+							} else {
+								nonClass++
+							}
+							// Entry list, order and per-entry compression are preserved, so the only difference a
+							// reader can find is the version field -- the one-variable property the ABI check is about.
+							def outEntry = new java.util.zip.ZipEntry(entry.name)
+							outEntry.method = entry.method
+							if (entry.time >= 0) outEntry.time = entry.time
+							if (entry.method == java.util.zip.ZipEntry.STORED) {
+								def crc = new java.util.zip.CRC32()
+								crc.update(data)
+								outEntry.size = data.length
+								outEntry.compressedSize = data.length
+								outEntry.crc = crc.value
+							}
+							out.putNextEntry(outEntry)
+							out.write(data)
+							out.closeEntry()
+						}
+					} finally {
+						out.close()
+					}
+				}
+			}
+			// Prove the claim from the two files rather than from the writer's intent -- the same rule the normaliser
+			// and the remapper are held to. The assertion is STRUCTURAL: the version field at offset 6..7 is the only
+			// thing allowed to move. It is deliberately NOT "two bytes differ": 69 -> 65 moves the low byte only, so
+			// the honest count is one byte per retargeted class, and an assertion on the decimal spelling rather than
+			// on the field would reject a correct output.
+			int changedBytes = 0
+			new java.util.zip.ZipFile(src).withCloseable { a ->
+				new java.util.zip.ZipFile(energyForLineFile).withCloseable { b ->
+					def before = a.entries()*.name
+					def after = b.entries()*.name
+					if (before != after) throw new GradleException("${energyForLineFile.name}: the entry list or its " +
+							"order changed -- the input had ${before.size()} entries, the output ${after.size()}")
+					before.each { String name ->
+						byte[] x = a.getInputStream(a.getEntry(name)).bytes
+						byte[] y = b.getInputStream(b.getEntry(name)).bytes
+						if (x.length != y.length) throw new GradleException("${name}: length changed ${x.length} -> ${y.length}")
+						boolean same = true
+						for (int i = 0; i < x.length && same; i++) if (x[i] != y[i]) same = false
+						if (same) return
+						if (x.length < 8) throw new GradleException("${name}: only ${x.length} bytes, cannot be a class")
+						for (int i = 0; i <= 5; i++) if (x[i] != y[i]) throw new GradleException(
+								"${name}: byte ${i} (before the version field) changed; only the class-file version may move")
+						int outMajor = ((y[6] & 0xFF) << 8) | (y[7] & 0xFF)
+						if (outMajor != energyTargetMajor) throw new GradleException("${name}: output class-file version " +
+								"is ${outMajor}, expected ${energyTargetMajor}")
+						for (int i = 8; i < x.length; i++) if (x[i] != y[i]) throw new GradleException(
+								"${name}: byte ${i} (after the version field) changed; only the class-file version may move")
+						if (x[6] != y[6]) changedBytes++
+						if (x[7] != y[7]) changedBytes++
+					}
+				}
+			}
+			logger.lifecycle("[forbric] energy ${mcLine}: ${src.name} (class ${versionsSeen.keySet().join('/')}) -> " +
+					"${energyForLineFile.name} (class ${energyTargetMajor}); ${retargeted} class file(s) retargeted " +
+					"(${changedBytes} byte(s) moved, all inside the u2 major-version field), " +
+					"${alreadyReadable} already readable, ${nonClass} non-class entries copied untouched")
+		}
+	}
+}
 // Integration runs pass -Pforbric.requireTransfer=true: there a skipped transfer suite is a failure, not a pass.
 def strictIntegration = gradle.startParameter.taskNames.any { it.tokenize(':').last() == 'integrationTest' }
 def requireTransfer = project.findProperty('forbric.requireTransfer') == 'true' || strictIntegration
@@ -226,8 +367,11 @@ sourceSets {
 	// the build script to run, and `compileRuntimeJava` / `test` skip it so M0 (boot-side only) still builds.
 	runtime {
 		java { srcDir 'src/runtime/java' }
-		compileClasspath += sourceSets.main.output + files(stagedGameJars) + files(stagedMcLibraries) + transferJarsForLine + files(stagedRebornEnergy)
-		runtimeClasspath += sourceSets.main.output + files(stagedGameJars) + files(stagedMcLibraries) + transferJarsForLine + files(stagedRebornEnergy)
+		// `energyForLine`, not `files(stagedRebornEnergy)`: on the default line that IS the shipped FileCollection
+		// (same file, same bytes, no task), and on any other line it is the build-produced class-version edition
+		// that the line's own javac can read. See the energy block above.
+		compileClasspath += sourceSets.main.output + files(stagedGameJars) + files(stagedMcLibraries) + transferJarsForLine + energyForLine
+		runtimeClasspath += sourceSets.main.output + files(stagedGameJars) + files(stagedMcLibraries) + transferJarsForLine + energyForLine
 	}
 	transferTest {
 		java { srcDir 'src/transferTest/java' }
@@ -726,11 +870,13 @@ def verifyRebornEnergy = tasks.register('verifyRebornEnergy', JavaExec) {
 	classpath = sourceSets.main.runtimeClasspath
 	mainClass = 'net.forbric.kernel.metadata.ApiJarContract'
 	inputs.file(energyApiContract).withPropertyName('energyApiContract')
-	inputs.files(stagedRebornEnergy).withPropertyName('energyApiImplementation').optional()
+	// The ABI check runs on the artifact the compile ALSO uses, so "the bytes javac reads" and "the bytes the contract
+	// verified" are the same file by construction -- on 1.21.1 that is the build-produced class-65 edition.
+	inputs.files(energyForLine).withPropertyName('energyApiImplementation').optional()
 	doFirst {
-		if (!stagedRebornEnergy.isFile()) throw new GradleException("The energy adapter needs a jar exposing its public API: " +
-				stagedRebornEnergy + ". Pass -Pforbric.rebornEnergy=<compatible energy API jar>.")
-		setArgs([energyApiContract.absolutePath, stagedRebornEnergy.absolutePath] +
+		if (!energyForLineFile.isFile()) throw new GradleException("The energy adapter needs a jar exposing its public API: " +
+				energyForLineFile + ". Pass -Pforbric.rebornEnergy=<compatible energy API jar>.")
+		setArgs([energyApiContract.absolutePath, energyForLineFile.absolutePath] +
 				transferModuleFiles.files.collect { it.absolutePath })
 	}
 }
