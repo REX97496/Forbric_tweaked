@@ -378,6 +378,18 @@ BuiltInRegistries.PARTICLE_TYPE.getValue	BuiltInRegistries.PARTICLE_TYPE.get
 #       hook's own call with the wrong arity -- the lateral move this table exists to refuse. Nothing in this
 #       cluster is attempted here.
 #
+#       ONE FILE OF THE CLUSTER IS NOW DONE, and it is the one whose INSTALLER is not descriptor-bound:
+#       KernelNeoDataMapWatch (5 of the occurrences above) has a 1.21.1 edition at
+#           src/runtime/mc-line/1.21.1/java/net/forbric/kernel/runtime/KernelNeoDataMapWatch.java
+#       It is an overlay rather than a rule for the same reason as the rest of the cluster -- what moved is the
+#       registration event and the per-cause subevent -- but it needs no ListenerKey and no Map, so the hook's
+#       arity above does not sit under it. Its install contract is reflection on installDataMapWatch(Object)
+#       (GameEventMultiplexer -> KernelLifecycle.startGameBuses), which is line-neutral, and its consumer
+#       (KernelNeoWorldgen.beforeServerStart -> appliedTotal()) is already in this line's own overlay. The three
+#       differences, each javap'd from the two carriers, are written out in that file. KernelForgeReload, the
+#       client/server name tables and KernelClientReloadNames stay refused: theirs are reached only through a
+#       boot-side installer bound to the 26.2 descriptor, or name classes this line does not have at all.
+#
 #   net.neoforged.neoforge.common.tooltip.{ItemTooltipHandler, TooltipAppender, TooltipLocation}   [7]
 #   net.neoforged.neoforge.event.RegisterTooltipAppendersEvent
 #       RESTRUCTURE, not done. 26.x tooltip rework; 1.21.1 appends tooltips through its item-extension /
@@ -449,11 +461,13 @@ BuiltInRegistries.PARTICLE_TYPE.getValue	BuiltInRegistries.PARTICLE_TYPE.get
 #       composed provider, of the same kind stage 1.1 wrote down before writing the transaction, and it is not
 #       decided here.
 #
-#   net.minecraftforge.event.TagsUpdatedEvent$ServerDataLoad   [1]  RESTRUCTURE, not done. 26.2 splits the
-#       event into ClientPacketReceived / ServerDataLoad subtypes (javap: both in 26.2's neoforge-runtime.jar);
-#       1.21.1 has one TagsUpdatedEvent and no subtypes (its jar has only UpdateCause). The kernel listens for
-#       ServerDataLoad.class specifically, so the 1.21.1 edition has to listen for the one event and decide from
-#       getUpdateCause() whether it is the data-load case.
+#   net.minecraftforge.event.TagsUpdatedEvent$ServerDataLoad   [1]  RESTRUCTURE, DONE as part of the
+#       KernelNeoDataMapWatch overlay (see the reload-listener cluster above). 26.2 splits the event into
+#       ClientPacketReceived / ServerDataLoad subtypes (javap: both in 26.2's neoforge-runtime.jar); 1.21.1 has
+#       one TagsUpdatedEvent and no subtypes (its jar has only UpdateCause). The kernel listens for
+#       ServerDataLoad.class specifically, so the 1.21.1 edition listens for the one event and decides from
+#       getUpdateCause() -- measured, and the two UpdateCause enums are IDENTICAL on both lines
+#       (SERVER_DATA_LOAD, CLIENT_PACKET_RECEIVED), which is why the filter is the whole of the difference.
 #
 #   net.neoforged.neoforge.registries.GameData.getFlowerPotBlockTable()   [3]  RESTRUCTURE, DONE as an overlay.
 #       See KernelFlowerPots.java under src/runtime/mc-line/1.21.1/java. 26.2 (neoforged copy only) has
