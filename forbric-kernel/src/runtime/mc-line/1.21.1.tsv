@@ -112,12 +112,7 @@ ParticleResources	ParticleEngine
 # the short form would otherwise fire inside the fully qualified one. Longest-first ordering is what keeps
 # that honest, and a rule that matches nothing fails the build.
 MobSpawnEvent.FinalizeSpawn.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.event.level.BlockEvent.EntityPlaceEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickItem.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickBlock.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.event.entity.player.PlayerInteractEvent.LeftClickBlock.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.event.entity.player.PlayerInteractEvent.EntityInteractSpecific.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-BlockEvent.BreakEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.client.event.ScreenEvent.Init.Pre.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.client.event.ScreenEvent.Init.Post.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.client.event.ScreenEvent.Render.Pre.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
@@ -214,9 +209,6 @@ ContainerStorage	InventoryStorage
 #    the substitution carries every call site. THIS IS NOT VERIFIED BEYOND COMPILATION: nothing has executed
 #    either bridge on 1.21.1.
 net.minecraftforge.common.util.Result	net.minecraftforge.eventbus.api.Event.Result
-net.minecraft.util.TriState	net.neoforged.neoforge.common.util.TriState
-net.neoforged.neoforge.event.level.block.BreakBlockEvent	net.minecraftforge.event.level.BlockEvent.BreakEvent
-BreakBlockEvent	net.minecraftforge.event.level.BlockEvent.BreakEvent
 
 # --- AXIS 2, two more renames found by asking the MEMBERS, not the class names ------------------------
 # The word-overlap sweep cannot see either of these: it compares CLASS simple names, and both of these are

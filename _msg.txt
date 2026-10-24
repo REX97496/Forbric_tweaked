@@ -1,0 +1,48 @@
+kernel: KernelGameBlockEvents gets a 1.21.1 edition -- 162 -> 161, first overlay change to land
+
+One file, ten hand-translations, eight table rows deleted, one constructor rewritten.
+
+WHY THIS IS ONE COMMIT AND NOT FOUR. An overlay is written verbatim and no rule runs on it
+(build.gradle:501-502). So the overlay must arrive already spelled in 1.21.1's own names, and the rows that
+covered its sites must go in the same commit, or :539-542 fires and the branch is red in between. Splitting
+it would leave a tree that does not build.
+
+The ten translations, each the target of the row it replaces:
+
+    3x  BreakBlockEvent                     -> net.minecraftforge.event.level.BlockEvent.BreakEvent
+    1x  neoforged...block.BreakBlockEvent   -> (same, the fully-qualified row)
+    1x  BlockEvent.BreakEvent.BUS           -> net.minecraftforge.common.MinecraftForge.EVENT_BUS
+    1x  net.minecraft.util.TriState         -> net.neoforged.neoforge.common.util.TriState
+    1x  common.util.Result                  -> net.minecraftforge.eventbus.api.Event.Result
+    1x  PlayerInteractEvent.RightClickBlock.BUS  -> MinecraftForge.EVENT_BUS
+    1x  PlayerInteractEvent.RightClickItem.BUS   -> MinecraftForge.EVENT_BUS
+    1x  PlayerInteractEvent.LeftClickBlock.BUS   -> MinecraftForge.EVENT_BUS
+    1x  BlockEvent.EntityPlaceEvent.BUS          -> MinecraftForge.EVENT_BUS
+
+plus the constructor, which is the actual reason for the file: 1.21.1's BreakEvent has exactly one
+constructor, (Level, BlockPos, BlockState, Player) -- javap -- so the five-argument form could never work
+there. Event.setResult(Event$Result) exists, so:
+
+    BlockEvent.BreakEvent forgeEvent = new BlockEvent.BreakEvent(level, neoEvent.getPos(),
+            neoEvent.getState(), neoEvent.getPlayer());
+    forgeEvent.setResult(seed(neoEvent.isCanceled()));
+    return vetoed(forgeEvent);
+
+MEASURED by measure.sh under M2:
+
+    before   TOTAL 162   axis1 73  axis2 83  axis3 0  cascades 6
+    after    TOTAL 161   axis1 73  axis2 82  axis3 0  cascades 6
+
+axis 2 falls 1, cascades unchanged at 6, axis 1 and axis 3 identical. Fourth consecutive change to pass
+the stage-2 acceptance line, and the first one that went through an overlay rather than a table row.
+
+Running total from the restored measurement: 180 -> 165 -> 162 -> 161, axis1 pinned at 73 throughout.
+
+NOT MEASURED: no jar, no launch. 161 is a compile-error count under M2.
+
+REPRODUCING THE GUARD. :539-542 lives in doLast, so Gradle's up-to-date check can skip it. After any
+table edit that should be confirmed with
+
+    gradlew.bat :normalizeRuntimeJava --rerun-tasks -Pforbric.mcLine=1.21.1
+
+or the table can accumulate rows that silently do nothing. Documented as stage 23's hazard.
