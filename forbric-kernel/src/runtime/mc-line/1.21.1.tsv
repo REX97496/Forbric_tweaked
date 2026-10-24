@@ -213,10 +213,10 @@ ContainerStorage	InventoryStorage
 #    TriState <-> Result; KernelGameWorldEvents: Result), and the enum constants used are the same three, so
 #    the substitution carries every call site. THIS IS NOT VERIFIED BEYOND COMPILATION: nothing has executed
 #    either bridge on 1.21.1.
-net.minecraftforge.common.util.Result	net.minecraftforge.eventbus.api.Event.Result
+net.minecraftforge.common.util.Result	net.minecraftforge.eventbus.api.Event$Result
 net.minecraft.util.TriState	net.neoforged.neoforge.common.util.TriState
-net.neoforged.neoforge.event.level.block.BreakBlockEvent	net.neoforged.neoforge.event.level.BlockEvent.BreakEvent
-BreakBlockEvent	net.neoforged.neoforge.event.level.BlockEvent.BreakEvent
+net.neoforged.neoforge.event.level.block.BreakBlockEvent	net.minecraftforge.event.level.BlockEvent$BreakEvent
+BreakBlockEvent	net.minecraftforge.event.level.BlockEvent$BreakEvent
 
 # --- AXIS 2, two more renames found by asking the MEMBERS, not the class names ------------------------
 # The word-overlap sweep cannot see either of these: it compares CLASS simple names, and both of these are
