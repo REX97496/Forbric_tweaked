@@ -271,6 +271,8 @@ getDeltaTracker	getTimer
 #     KernelParticleProviders:150   BuiltInRegistries.PARTICLE_TYPE.getValue(e.getKey())
 BuiltInRegistries.PARTICLE_TYPE.getValue	BuiltInRegistries.PARTICLE_TYPE.get
 net.minecraftforge.fluids.FluidInteractionRegistry.InteractionInformation	net.neoforged.neoforge.fluids.FluidInteractionRegistry.InteractionInformation
+net.neoforged.neoforge.fluids.InFluidPredicate	net.forbric.compat.fluids.ForbricFluidPredicate
+InFluidPredicate	net.forbric.compat.fluids.ForbricFluidPredicate
 
 # SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
 #
