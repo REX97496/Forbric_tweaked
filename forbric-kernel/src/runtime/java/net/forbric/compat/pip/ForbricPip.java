@@ -42,7 +42,7 @@ public final class ForbricPip {
 	private ForbricPip() {
 	}
 
-	public static final class RegisterEvent {
+	public static final class RegisterEvent extends net.neoforged.bus.api.Event {
 
 		public static final net.neoforged.bus.api.IEventBus BUS =
 				net.neoforged.neoforge.common.NeoForge.EVENT_BUS;

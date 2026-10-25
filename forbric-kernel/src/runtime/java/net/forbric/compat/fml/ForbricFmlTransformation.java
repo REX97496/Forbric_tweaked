@@ -83,7 +83,7 @@ public final class ForbricFmlTransformation {
 	}
 
 	/** Holds the mixin weaver. Field name is the contract. */
-	public static final class ForbricFmlMixinClassProcessor {
+	public static final class ForbricFmlMixinClassProcessor implements ForbricClassProcessor {
 
 		private Object transformer;
 
