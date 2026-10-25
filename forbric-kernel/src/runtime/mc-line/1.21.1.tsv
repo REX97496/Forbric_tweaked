@@ -275,6 +275,8 @@ net.neoforged.neoforge.fluids.InFluidPredicate	net.forbric.compat.fluids.Forbric
 InFluidPredicate	net.forbric.compat.fluids.ForbricFluidPredicate
 net.neoforged.neoforge.network.payload.RecipeContentPayload	net.forbric.compat.network.ForbricRecipeContentPayload
 RecipeContentPayload	net.forbric.compat.network.ForbricRecipeContentPayload
+net.minecraftforge.client.gui.overlay.ForgeLayer	net.minecraft.client.gui.LayeredDraw.Layer
+ForgeLayer	net.minecraft.client.gui.LayeredDraw.Layer
 
 # SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
 #
