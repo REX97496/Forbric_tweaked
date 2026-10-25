@@ -273,6 +273,8 @@ BuiltInRegistries.PARTICLE_TYPE.getValue	BuiltInRegistries.PARTICLE_TYPE.get
 net.minecraftforge.fluids.FluidInteractionRegistry.InteractionInformation	net.neoforged.neoforge.fluids.FluidInteractionRegistry.InteractionInformation
 net.neoforged.neoforge.fluids.InFluidPredicate	net.forbric.compat.fluids.ForbricFluidPredicate
 InFluidPredicate	net.forbric.compat.fluids.ForbricFluidPredicate
+net.neoforged.neoforge.network.payload.RecipeContentPayload	net.forbric.compat.network.ForbricRecipeContentPayload
+RecipeContentPayload	net.forbric.compat.network.ForbricRecipeContentPayload
 
 # SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
 #
