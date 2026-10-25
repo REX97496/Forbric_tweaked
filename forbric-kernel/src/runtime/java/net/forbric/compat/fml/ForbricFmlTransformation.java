@@ -47,7 +47,7 @@ public final class ForbricFmlTransformation {
 	}
 
 	/** Holds the transformer. Field name is the contract; see the class note. */
-	public static final class ForbricTransformingClassLoader {
+	public static final class ForbricTransformingClassLoader extends ClassLoader {
 
 		private Object classTransformer;
 
