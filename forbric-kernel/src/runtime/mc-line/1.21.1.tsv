@@ -277,6 +277,9 @@ net.neoforged.neoforge.network.payload.RecipeContentPayload	net.forbric.compat.n
 RecipeContentPayload	net.forbric.compat.network.ForbricRecipeContentPayload
 net.minecraftforge.client.gui.overlay.ForgeLayer	net.minecraft.client.gui.LayeredDraw.Layer
 ForgeLayer	net.minecraft.client.gui.LayeredDraw.Layer
+net.minecraft.world.level.block.entity.FuelValues	net.forbric.compat.fuel.ForbricFuelValues
+FuelValues	net.forbric.compat.fuel.ForbricFuelValues
+EventHooks.getItemBurnTime	net.forbric.compat.fuel.ForbricFuelValues.itemBurnTime
 
 # SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
 #
