@@ -314,6 +314,8 @@ net.neoforged.neoforgespi.transformation.ProcessorName	net.forbric.compat.fml.Fo
 ProcessorName	net.forbric.compat.fml.ForbricFmlTransformation.ForbricProcessorName
 net.minecraft.client.renderer.block.FluidModel	net.forbric.compat.rendering.ForbricFluidModel
 FluidModel	net.forbric.compat.rendering.ForbricFluidModel
+net.neoforged.neoforge.client.model.UnbakedModelParser	net.forbric.compat.model.ForbricUnbakedModelParser
+UnbakedModelParser	net.forbric.compat.model.ForbricUnbakedModelParser
 
 # SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
 #
