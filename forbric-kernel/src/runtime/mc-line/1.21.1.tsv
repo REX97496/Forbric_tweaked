@@ -280,6 +280,16 @@ ForgeLayer	net.minecraft.client.gui.LayeredDraw.Layer
 net.minecraft.world.level.block.entity.FuelValues	net.forbric.compat.fuel.ForbricFuelValues
 FuelValues	net.forbric.compat.fuel.ForbricFuelValues
 EventHooks.getItemBurnTime	net.forbric.compat.fuel.ForbricFuelValues.itemBurnTime
+net.minecraft.world.item.component.TooltipDisplay	net.forbric.compat.tooltip.ForbricTooltips.Display
+TooltipDisplay	net.forbric.compat.tooltip.ForbricTooltips.Display
+net.neoforged.neoforge.common.tooltip.TooltipAppender	net.forbric.compat.tooltip.ForbricTooltips.Appender
+TooltipAppender	net.forbric.compat.tooltip.ForbricTooltips.Appender
+net.neoforged.neoforge.common.tooltip.TooltipLocation	net.forbric.compat.tooltip.ForbricTooltips.Location
+TooltipLocation	net.forbric.compat.tooltip.ForbricTooltips.Location
+net.neoforged.neoforge.common.tooltip.ItemTooltipHandler	net.forbric.compat.tooltip.ForbricTooltips.Handler
+ItemTooltipHandler	net.forbric.compat.tooltip.ForbricTooltips.Handler
+net.neoforged.neoforge.event.RegisterTooltipAppendersEvent	net.forbric.compat.tooltip.ForbricTooltips.RegisterEvent
+RegisterTooltipAppendersEvent	net.forbric.compat.tooltip.ForbricTooltips.RegisterEvent
 
 # SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
 #

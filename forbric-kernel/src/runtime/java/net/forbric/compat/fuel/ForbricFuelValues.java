@@ -173,10 +173,11 @@ public final class ForbricFuelValues {
 	 */
 	public static int itemBurnTime(ItemStack stack, int base, RecipeType<?> type, ForbricFuelValues fuel) {
 		installFabricFuels();
-		net.neoforged.neoforge.event.furnace.FurnaceFuelBurnTimeEvent event =
-				new net.neoforged.neoforge.event.furnace.FurnaceFuelBurnTimeEvent(stack, base, type);
-		net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(event);
-		return event.getBurnTime();
+		// ItemStack.getBurnTime(RecipeType) exists on BOTH lines and is where the event is posted natively,
+		// so the arbitration happens inside it and this bridge does not have to name the event constructor
+		// -- which differs between lines and broke the 26.2 build when this method built the event itself.
+		int nativeBurn = stack.getBurnTime(type);
+		return nativeBurn > 0 ? nativeBurn : base;
 	}
 
 	/** The 26.x Builder, over a plain map. add/remove take the same arguments as 26.2's. */
