@@ -298,6 +298,20 @@ net.neoforged.neoforge.client.gui.PictureInPictureRendererRegistration	net.forbr
 PictureInPictureRendererRegistration	net.forbric.compat.pip.ForbricPip.Registration
 net.minecraftforge.client.event.RegisterPictureInPictureRendererEvent	net.forbric.compat.pip.ForbricPip.RegisterEvent
 RegisterPictureInPictureRendererEvent	net.forbric.compat.pip.ForbricPip.RegisterEvent
+net.neoforged.fml.classloading.transformation.ClassProcessorSet	net.forbric.compat.fml.ForbricFmlTransformation.ForbricClassProcessorSet
+ClassProcessorSet	net.forbric.compat.fml.ForbricFmlTransformation.ForbricClassProcessorSet
+net.neoforged.fml.classloading.transformation.ClassTransformer	net.forbric.compat.fml.ForbricFmlTransformation.ForbricClassTransformer
+ClassTransformer	net.forbric.compat.fml.ForbricFmlTransformation.ForbricClassTransformer
+net.neoforged.fml.classloading.transformation.TransformingClassLoader	net.forbric.compat.fml.ForbricFmlTransformation.ForbricTransformingClassLoader
+TransformingClassLoader	net.forbric.compat.fml.ForbricFmlTransformation.ForbricTransformingClassLoader
+net.neoforged.fml.loading.mixin.FMLMixinClassProcessor	net.forbric.compat.fml.ForbricFmlTransformation.ForbricFmlMixinClassProcessor
+FMLMixinClassProcessor	net.forbric.compat.fml.ForbricFmlTransformation.ForbricFmlMixinClassProcessor
+net.neoforged.neoforgespi.transformation.ClassProcessor	net.forbric.compat.fml.ForbricFmlTransformation.ForbricClassProcessor
+ClassProcessor	net.forbric.compat.fml.ForbricFmlTransformation.ForbricClassProcessor
+net.neoforged.neoforgespi.transformation.ClassProcessorIds	net.forbric.compat.fml.ForbricFmlTransformation.ForbricClassProcessorIds
+ClassProcessorIds	net.forbric.compat.fml.ForbricFmlTransformation.ForbricClassProcessorIds
+net.neoforged.neoforgespi.transformation.ProcessorName	net.forbric.compat.fml.ForbricFmlTransformation.ForbricProcessorName
+ProcessorName	net.forbric.compat.fml.ForbricFmlTransformation.ForbricProcessorName
 
 # SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
 #
