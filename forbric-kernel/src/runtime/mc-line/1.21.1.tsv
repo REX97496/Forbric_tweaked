@@ -312,6 +312,8 @@ net.neoforged.neoforgespi.transformation.ClassProcessorIds	net.forbric.compat.fm
 ClassProcessorIds	net.forbric.compat.fml.ForbricFmlTransformation.ForbricClassProcessorIds
 net.neoforged.neoforgespi.transformation.ProcessorName	net.forbric.compat.fml.ForbricFmlTransformation.ForbricProcessorName
 ProcessorName	net.forbric.compat.fml.ForbricFmlTransformation.ForbricProcessorName
+net.minecraft.client.renderer.block.FluidModel	net.forbric.compat.rendering.ForbricFluidModel
+FluidModel	net.forbric.compat.rendering.ForbricFluidModel
 
 # SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
 #
