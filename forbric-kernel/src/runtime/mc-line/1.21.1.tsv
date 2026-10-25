@@ -117,8 +117,6 @@ net.minecraftforge.client.event.ScreenEvent.Init.Pre.BUS	net.minecraftforge.comm
 net.minecraftforge.client.event.ScreenEvent.Init.Post.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.client.event.ScreenEvent.Render.Pre.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.client.event.ScreenEvent.Render.Post.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-ScreenEvent.MouseButtonPressed.Pre.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-ScreenEvent.MouseButtonReleased.Pre.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.client.event.InputEvent.InteractionKeyMappingTriggered.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.client.event.ViewportEvent.RenderFog.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.client.event.ViewportEvent.ComputeFogColor.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
