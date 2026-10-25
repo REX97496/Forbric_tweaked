@@ -82,7 +82,7 @@ public final class KernelGameDamageEvents {
 				"a MinecraftForge mod that changes what a shield blocks or whether it wears does nothing",
 				event -> {
 					if (!event.getBlocked()) return;
-					ItemStack with = event.getEntity().getItemBlockingWith();
+					ItemStack with = event.getEntity().isBlocking() ? event.getEntity().getUseItem() : ItemStack.EMPTY;
 					if (with == null) return;
 					var forge = ForgeEventFactory.onShieldBlock(event.getEntity(), event.getDamageSource(),
 							event.getBlockedDamage());
