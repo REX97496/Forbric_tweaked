@@ -290,6 +290,14 @@ net.neoforged.neoforge.common.tooltip.ItemTooltipHandler	net.forbric.compat.tool
 ItemTooltipHandler	net.forbric.compat.tooltip.ForbricTooltips.Handler
 net.neoforged.neoforge.event.RegisterTooltipAppendersEvent	net.forbric.compat.tooltip.ForbricTooltips.RegisterEvent
 RegisterTooltipAppendersEvent	net.forbric.compat.tooltip.ForbricTooltips.RegisterEvent
+net.minecraft.client.gui.render.pip.PictureInPictureRenderer	net.forbric.compat.pip.ForbricPip.Renderer
+PictureInPictureRenderer	net.forbric.compat.pip.ForbricPip.Renderer
+net.minecraft.client.renderer.state.gui.pip.PictureInPictureRenderState	net.forbric.compat.pip.ForbricPip.RenderState
+PictureInPictureRenderState	net.forbric.compat.pip.ForbricPip.RenderState
+net.neoforged.neoforge.client.gui.PictureInPictureRendererRegistration	net.forbric.compat.pip.ForbricPip.Registration
+PictureInPictureRendererRegistration	net.forbric.compat.pip.ForbricPip.Registration
+net.minecraftforge.client.event.RegisterPictureInPictureRendererEvent	net.forbric.compat.pip.ForbricPip.RegisterEvent
+RegisterPictureInPictureRendererEvent	net.forbric.compat.pip.ForbricPip.RegisterEvent
 
 # SITES THAT LOOK EXACTLY LIKE THE RULES ABOVE AND MUST NOT GET ONE. Each would compile and be wrong:
 #
