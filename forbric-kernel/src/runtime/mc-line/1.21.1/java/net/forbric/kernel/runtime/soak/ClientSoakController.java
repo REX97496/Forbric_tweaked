@@ -205,7 +205,7 @@ public final class ClientSoakController {
 						// argument would compile and would quietly skip the camera retarget, so this stays an error
 						// until the soak harness gets a `player.setCamera(player)` equivalent it can assert on.
 						if (!player.teleportTo(level(server, point / 2), COORDINATES[point] + .5, 160, COORDINATES[point] + .5,
-								Set.of(), 0, 0, true)) throw new IllegalStateException("native dimension teleport refused point " + point);
+								Set.of(), 0, 0)) throw new IllegalStateException("native dimension teleport refused point " + point);
 					} catch (Throwable failure) { asynchronousFailure.set("movement failed: " + failure); }
 				});
 			}
