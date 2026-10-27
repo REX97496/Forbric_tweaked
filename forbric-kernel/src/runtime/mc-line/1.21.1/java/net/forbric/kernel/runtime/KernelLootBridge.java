@@ -76,6 +76,9 @@ public final class KernelLootBridge {
 	}
 
 	/** {@code ReloadableServerRegistries.lambda$scheduleRegistryLoad$0}'s call, once per reloadable registry. */
+	/** Both parameters are kept although the body refuses: the signature is the shape a transformer redirect would
+	 * match, and changing it would make a future redirect silently miss instead of failing loudly. */
+	@SuppressWarnings("unused")
 	public static void loadTagsForRegistry(ResourceManager resources, WritableRegistry<?> registry) {
 		// 1.21.1's TagLoader has no static loadTagsForRegistry(ResourceManager, WritableRegistry): loading tags
 		// into a registry is done by the instance path inside ReloadableServerRegistries, and there is no static
@@ -84,8 +87,5 @@ public final class KernelLootBridge {
 		// hence the explicit refusal rather than a no-op.
 		throw new UnsupportedOperationException("1.21.1 has no TagLoader.loadTagsForRegistry; tags are loaded by "
 				+ "ReloadableServerRegistries natively and this bridge has nothing to add");
-		if (Registries.LOOT_TABLE.equals(registry.key())) {
-			LootTableEventDispatch.allLoaded(resources, registry);
-		}
 	}
 }
