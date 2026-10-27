@@ -45,8 +45,6 @@ EntitySpawnReason	MobSpawnType
 # 26.2 split the entity constants (EntityTypes) from the registry type (EntityType); 1.21.1 has both on
 # EntityType, whose ZOMBIE / DROWNED / ZOMBIE_VILLAGER / SKELETON / SPIDER are public static finals. A
 # whole-token rule, so `EntityType` written already -- which the sources never do -- would be untouched.
-net.minecraft.world.entity.EntityTypes	net.minecraft.world.entity.EntityType
-EntityTypes	EntityType
 
 # --- BlockAndTintGetter -------------------------------------------------------------------------------
 # Package move only: net.minecraft.client.renderer.block (26.2) -> net.minecraft.world.level (1.21.1).
@@ -60,9 +58,6 @@ AbstractBoat	Boat
 
 # --- entity subclass repackaging ----------------------------------------------------------------------
 # 26.2 moved three entity classes into their own subpackages; 1.21.1 keeps them flat. Simple names unchanged.
-net.minecraft.world.entity.monster.zombie.Zombie	net.minecraft.world.entity.monster.Zombie
-net.minecraft.world.entity.monster.spider.Spider	net.minecraft.world.entity.monster.Spider
-net.minecraft.world.entity.npc.villager.Villager	net.minecraft.world.entity.npc.Villager
 
 # --- ParticleResources --------------------------------------------------------------------------------
 # 26.2 split the particle registry/reload-listener (ParticleResources) away from the ticking engine
@@ -110,7 +105,6 @@ ParticleResources	ParticleEngine
 # Both spellings appear where the sources use both, because the substitution is textual: a rule written for
 # the short form would otherwise fire inside the fully qualified one. Longest-first ordering is what keeps
 # that honest, and a rule that matches nothing fails the build.
-net.minecraftforge.event.entity.player.PlayerInteractEvent.EntityInteractSpecific.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.client.event.RegisterClientCommandsEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 # REMOVED, for exactly the reason recorded eight lines below -- the trap the stage-2 round discovered, hit a
 # second time. The only call site of net.minecraftforge.event.server.ServerAboutToStartEvent.BUS was
@@ -126,12 +120,6 @@ net.minecraftforge.client.event.RegisterClientCommandsEvent.BUS	net.minecraftfor
 # build. The overlay already carries the substituted name. Kept here as a record so the next agent does not
 # re-add it and watch the build fail.
 #net.minecraftforge.event.entity.living.LivingExperienceDropEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.event.entity.living.LivingHealEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.event.entity.living.MobEffectEvent.Applicable.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.event.entity.player.PermissionsChangedEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.event.entity.player.CriticalHitEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.event.CommandEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.event.AnvilUpdateEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 
 # --- AXIS 3: the one genuine fabric-api rename --------------------------------------------------------
 # ContainerStorage (fabric-transfer-api-v1 8.0.11, the 26.2 line) -> InventoryStorage (0.116.17, 1.21.1).
@@ -196,7 +184,6 @@ ContainerStorage	InventoryStorage
 #    TriState <-> Result; KernelGameWorldEvents: Result), and the enum constants used are the same three, so
 #    the substitution carries every call site. THIS IS NOT VERIFIED BEYOND COMPILATION: nothing has executed
 #    either bridge on 1.21.1.
-net.minecraftforge.common.util.Result	net.minecraftforge.eventbus.api.Event.Result
 
 # --- AXIS 2, two more renames found by asking the MEMBERS, not the class names ------------------------
 # The word-overlap sweep cannot see either of these: it compares CLASS simple names, and both of these are
