@@ -115,6 +115,17 @@ public final class LifecycleHookInjector implements ClassTransformer {
 	// Same descriptor as the hook — keep the boolean on the stack, plain owner+name swap.
 	private static final Trigger[] SERVER_TRIGGERS = {
 			new Trigger(ForeignType.SERVER_MOD_LOADER.internal(Ecosystem.NEOFORGE), "load", "(Z)V", "onServerModLoading", 0),
+			// The 1.21.1 shape. NeoForge's ServerModLoader#load took NO argument there and gained the boolean in
+			// 26.2, so the (Z)V row above matches nothing on that line and the kernel refused to boot with
+			// "the genuine server-loading lifecycle trigger was NOT redirected".
+			//
+			// Measured on both lines with javap:
+			//   1.21.1  ServerModLoader.load()V, and MinecraftServer.Main's javap -c shows at offset 453
+			//           invokestatic net/neoforged/neoforge/server/loading/ServerModLoader.load:()V
+			//   26.2    ServerModLoader.load(Z)V
+			// The call site is there on both lines; only the descriptor moved. The no-arg hook already exists
+			// for Forge's ServerModLoader, which is why this is a row and not a new method.
+			new Trigger(ForeignType.SERVER_MOD_LOADER.internal(Ecosystem.NEOFORGE), "load", "()V", "onServerModLoadingNoArg", 0),
 			new Trigger(ForeignType.SERVER_MOD_LOADER.internal(Ecosystem.FORGE), "load", "()V", "onServerModLoadingNoArg", 0),
 	};
 
