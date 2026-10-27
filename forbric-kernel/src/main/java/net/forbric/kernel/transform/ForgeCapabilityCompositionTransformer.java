@@ -689,7 +689,14 @@ public final class ForgeCapabilityCompositionTransformer implements ClassTransfo
 		create.add(new LdcInsnNode(Type.getObjectType(LEVEL_CHUNK)));
 		create.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		create.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, AS_FIELD, "<init>",
-				"(Ljava/lang/Class;" + PROVIDER_IMPL + ";)V", false));
+				// "L" + ... + ";", NOT the bare internal name: PROVIDER_IMPL is
+				// net/minecraftforge/common/capabilities/ICapabilityProviderImpl with no L...; wrapper, and
+				// concatenating it raw produced the descriptor
+				//   (Ljava/lang/Class;net/minecraftforge/common/capabilities/ICapabilityProviderImpl;)V
+				// which the verifier rejects as
+				//   ClassFormatError: Method "<init>" has illegal signature
+				// on the first LevelChunk constructed. Every other descriptor in this file already wraps it.
+				"(Ljava/lang/Class;L" + PROVIDER_IMPL + ";)V", false));
 		create.add(new FieldInsnNode(Opcodes.PUTFIELD, LEVEL_CHUNK, CAP_PROVIDER, AS_FIELD_DESC));
 		ctor.instructions.insert(superCall, create);
 		for (AbstractInsnNode insn = ctor.instructions.getFirst(); insn != null; insn = insn.getNext()) {
