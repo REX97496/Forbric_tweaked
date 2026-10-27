@@ -6,7 +6,6 @@ import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.world.item.Item;
 import net.minecraftforge.event.GatherComponentsEvent;
 import net.minecraftforge.event.ForgeEventFactory;
-import net.minecraftforge.fml.loading.LoadingModList;
 
 /**
  * The gate MinecraftForge's item-component hook passes through, so that a vanilla static initialiser cannot reach
@@ -60,15 +59,35 @@ public final class ForbricItemComponentGate {
 	}
 
 	/**
-	 * Whether FML's mod loading list exists yet. Asked through LoadingModList.get() rather than by touching ModLoader,
-	 * because ModLoader's own initialiser is what throws.
+	 * Whether FML's mod loading list exists yet.
+	 *
+	 * <p>Asked reflectively, and that is not laziness: LoadingModList.get() is PUBLIC on 1.21.1 and PRIVATE on 26.2
+	 * (both checked with javap), so a direct call cannot compile on both lines and this class sits in the shared
+	 * source set. Reflection is the only spelling that resolves on both.
+	 *
+	 * <p>When the probe cannot be made at all, this answers TRUE -- i.e. delegate to ForgeEventFactory exactly as
+	 * before. That is the safe direction: the 26.2 line never has the boot-time problem, so a probe it cannot answer
+	 * must not change its behaviour.
 	 */
 	private static boolean fmlIsUp() {
+		java.lang.reflect.Method get;
 		try {
-			return LoadingModList.get() != null;
-		} catch (Throwable notYet) {
+			get = Class.forName("net.minecraftforge.fml.loading.LoadingModList").getMethod("get");
+		} catch (ReflectiveOperationException | RuntimeException notPublicOrAbsent) {
+			try {
+				get = Class.forName("net.minecraftforge.fml.loading.LoadingModList").getDeclaredMethod("get");
+				get.setAccessible(true);
+			} catch (ReflectiveOperationException | RuntimeException absent) {
+				return true;
+			}
+		}
+		try {
+			return get.invoke(null) != null;
+		} catch (ReflectiveOperationException | RuntimeException notYet) {
 			// LinkageError included on purpose: a class initialiser that fails surfaces as that, not as a checked
 			// exception, and "FML is not up" is the only thing this question can mean.
+			return false;
+		} catch (LinkageError notYet) {
 			return false;
 		}
 	}
