@@ -367,6 +367,15 @@ sourceSets {
 	// the build script to run, and `compileRuntimeJava` / `test` skip it so M0 (boot-side only) still builds.
 	runtime {
 		java { srcDir 'src/runtime/java' }
+		// net/forbric/compat holds the stand-ins for 26.2 types that a NON-default line lacks, and to do its job it
+		// names that line's own Minecraft types: ForbricPip.Renderer's SAM takes net.minecraft.client.gui.GuiGraphics,
+		// which 26.2 calls GuiGraphicsExtractor, and ForbricUnbakedModelParser used ResourceLocation, which 26.2
+		// calls Identifier. Nothing reaches these classes on the default line -- the rename table that points at
+		// them is only applied when mcLine != default -- so compiling them there can only fail, and it did.
+		// Excluded on the default line only; every other line keeps them.
+		if (mcLine == mcLineDefault) {
+			java { exclude 'net/forbric/compat/**' }
+		}
 		// `energyForLine`, not `files(stagedRebornEnergy)`: on the default line that IS the shipped FileCollection
 		// (same file, same bytes, no task), and on any other line it is the build-produced class-version edition
 		// that the line's own javac can read. See the energy block above.
