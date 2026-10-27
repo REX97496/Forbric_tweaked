@@ -1254,6 +1254,15 @@ tasks.named('check') { dependsOn tasks.named('transferTest') }
 // ForbricClassLoader as an owned jar. Bundling keeps the kernel self-sufficient — no launcher-supplied path.
 jar {
 	archiveBaseName = 'forbric-kernel'
+	// The two lines share build/libs, and nothing else in this script carried the line in the file name. Running
+	// assemble for 1.21.1 and then for 26.2 silently replaced one jar with the other under the same name -- the
+	// same failure shape as the unversioned forge-runtime.jar this project already has a DANGER note about, and
+	// just as quiet. A classifier on non-default lines means a produced jar can be identified and cannot be
+	// overwritten by the other line. The default line keeps its exact existing name, so nothing that looks for
+	// forbric-kernel-<version>.jar needs to change.
+	if (mcLine != mcLineDefault) {
+		archiveClassifier = mcLine
+	}
 	into('META-INF/jars') {
 		from configurations.nestedMods
 		rename '.*\\.jar', 'mixinextras-fabric.jar'
@@ -1306,6 +1315,13 @@ jar {
 // dead weight AND a second place to update when the version moves. One bundler owns it.
 tasks.register('runtimeJar', Jar) {
 	archiveBaseName = 'forbric-kernel-runtime'
+	// Same collision as `jar` above, and measured: assembling 1.21.1 and then 26.2 replaced the 626,306-byte
+	// 1.21.1 runtime jar with a 600,321-byte 26.2 one under the identical name. The runtime jar is the one that
+	// actually gets appended to the game classpath, so a silent swap there is the worse of the two. A classifier
+	// on non-default lines fixes it; the default line keeps its existing name.
+	if (mcLine != mcLineDefault) {
+		archiveClassifier = mcLine
+	}
 	dependsOn 'compileRuntimeJava'
 	from sourceSets.runtime.output
 	// Mod Menu's API stand-in, as bytes under META-INF and under a name no class loader resolves: see the modMenuApi
