@@ -254,7 +254,7 @@ public final class KernelGameBlockEvents {
 
 	/** NeoForge {@code net.minecraftforge.event.level.BlockEvent.BreakEvent} → MinecraftForge {@code BlockEvent.BreakEvent}, cancel carried back. */
 	public static void installBlockBreak(Object neoBus) {
-		KernelGameEntityEvents.subscribe((net.neoforged.bus.api.IEventBus) neoBus, net.minecraftforge.event.level.BlockEvent.BreakEvent.class,
+		KernelGameEntityEvents.subscribe((net.neoforged.bus.api.IEventBus) neoBus, net.neoforged.neoforge.event.level.BlockEvent.BreakEvent.class,
 				"BlockEvent.BreakEvent",
 				"a MinecraftForge claim or protection mod does not protect, and a block-logging mod records nothing",
 				KernelGameBlockEvents::fireBreak);
@@ -265,7 +265,7 @@ public final class KernelGameBlockEvents {
 	 *
 	 * @return whether MinecraftForge vetoed the break, by cancelling or by denying it
 	 */
-	static boolean fireBreak(net.minecraftforge.event.level.BlockEvent.BreakEvent neoEvent) {
+	static boolean fireBreak(net.neoforged.neoforge.event.level.BlockEvent.BreakEvent neoEvent) {
 		// A LevelAccessor that is not a Level cannot build the MinecraftForge event, whose constructor takes one.
 		// That is not a failure worth a warning: the merged base only ever posts this from the two game modes,
 		// both of which hold a real Level.

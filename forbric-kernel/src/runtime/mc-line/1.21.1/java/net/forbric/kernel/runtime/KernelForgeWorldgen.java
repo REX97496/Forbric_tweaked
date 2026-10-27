@@ -47,8 +47,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.random.Weighted;
-import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeGenerationSettings;
 import net.minecraft.world.level.biome.BiomeSpecialEffects;
@@ -103,16 +101,17 @@ public final class KernelForgeWorldgen {
 	}
 
 	// ------------------------------------------------------------------------------------------------------
-	// D2: the WeightedList$Builder default the merge lost
-
-	/**
-	 * Stands in for {@code IForgeWeightedList$Builder.removeIf(Predicate<E>)}'s default body — the merged
-	 * {@code WeightedList$Builder} implements no Forge interface, so the default is gone and its only caller,
-	 * {@code ForgeBiomeModifiers$RemoveSpawnsBiomeModifier.modify}, is redirected here. This is that one line.
-	 */
-	public static <E> WeightedList.Builder<E> removeIfValue(WeightedList.Builder<E> builder, Predicate<E> predicate) {
-		return builder.removeIf((Weighted<E> weighted) -> predicate.test(weighted.value()));
-	}
+	// D2: NOT NEEDED ON 1.21.1
+	//
+	// On 26.2 the merged WeightedList$Builder implements no Forge interface, so IForgeWeightedList$Builder's
+	// removeIf(Predicate) default is lost and ForgeBiomeModifiers$RemoveSpawnsBiomeModifier.modify has nothing
+	// to call -- hence the stand-in that used to live here.
+	//
+	// On 1.21.1 none of that applies. IForgeWeightedList and IForgeWeightedList$Builder do not exist in this
+	// line's forge-runtime at all (verified with unzip -l), and neither do WeightedList or Weighted -- while
+	// ForgeBiomeModifiers$RemoveSpawnsBiomeModifier DOES exist here, so it removes spawns through this line's
+	// own code rather than through a default this kernel would have to supply. The stand-in is neither possible
+	// nor needed.
 
 	// ------------------------------------------------------------------------------------------------------
 	// D3 ①: declare forge:biome_modifier and forge:structure_modifier on NeoForge's list
