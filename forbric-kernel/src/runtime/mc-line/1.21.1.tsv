@@ -111,14 +111,6 @@ ParticleResources	ParticleEngine
 # the short form would otherwise fire inside the fully qualified one. Longest-first ordering is what keeps
 # that honest, and a rule that matches nothing fails the build.
 net.minecraftforge.event.entity.player.PlayerInteractEvent.EntityInteractSpecific.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.client.event.ScreenEvent.Init.Pre.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.client.event.ScreenEvent.Init.Post.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.client.event.ScreenEvent.Render.Pre.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.client.event.ScreenEvent.Render.Post.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.client.event.InputEvent.InteractionKeyMappingTriggered.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.client.event.ViewportEvent.RenderFog.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.client.event.ViewportEvent.ComputeFogColor.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
-net.minecraftforge.client.event.ComputeFovModifierEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.client.event.RegisterClientCommandsEvent.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 # REMOVED, for exactly the reason recorded eight lines below -- the trap the stage-2 round discovered, hit a
 # second time. The only call site of net.minecraftforge.event.server.ServerAboutToStartEvent.BUS was
@@ -250,7 +242,6 @@ RegisterColorHandlersEvent.BlockTintSources	RegisterColorHandlersEvent.Block
 # getRealtimeDeltaTicks(), which is the only member the kernel calls:
 #     KernelGameClientEvents:150   Minecraft.getInstance().getDeltaTracker().getRealtimeDeltaTicks()
 # One call site, so a rule is the whole fix.
-getDeltaTracker	getTimer
 
 # --- Registry#getValue, renamed to get in 26.2 -----------------------------------------------------------
 # Another member rename on a class BOTH lines have. It is written qualified on purpose, and the reason is the
