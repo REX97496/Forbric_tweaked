@@ -16,7 +16,8 @@ KERNEL="$(cd "$HERE/.." && pwd)"
 OLD="$(cd "${FORBRIC_OLD:-$KERNEL/../forbric-loader}" && pwd)"
 STAGE="$OLD/run"
 
-MERGED="${MERGED:-$STAGE/merged-base/patched-mc-merged-26.2.jar}"
+MC_LINE="${MC_LINE:-26.2}"
+MERGED="${MERGED:-$STAGE/merged-base/patched-mc-merged-${MC_LINE}.jar}"
 FORGE_RT="${FORGE_RT:-$STAGE/merged-base/forge-runtime-interop.jar}"
 [ -f "$FORGE_RT" ] || FORGE_RT="$STAGE/forge-runtime/forge-runtime.jar"
 NEO_RT="${NEO_RT:-$STAGE/neoforge-runtime/neoforge-runtime.jar}"
@@ -30,7 +31,7 @@ mkdir -p "$RUNDIR"
 
 # Build the boot jar. FAIL LOUDLY: a swallowed build error here silently launches a STALE jar, and every gate
 # downstream then reports on code that is not the code in the tree.
-if ! "$KERNEL/gradlew" --offline -q -p "$KERNEL" jar >/tmp/forbric-kernel-jar.log 2>&1; then
+if ! "$KERNEL/gradlew" --offline -q -p "$KERNEL" -Pforbric.mcLine="$MC_LINE" jar >/tmp/forbric-kernel-jar.log 2>&1; then
   echo "[kernel-launch] FATAL: kernel jar build failed — refusing to launch a stale jar" >&2
   grep -vE 'WARNING: |native-access|Restricted method|--enable-native' /tmp/forbric-kernel-jar.log >&2
   exit 3
@@ -44,10 +45,10 @@ BOOT_JAR="${FORBRIC_BOOT_JAR:-$(ls "$KERNEL"/build/libs/forbric-kernel-[0-9]*.ja
 BOOT_DEPS="$("$KERNEL/gradlew" --offline -q -p "$KERNEL" printBootClasspath 2>/dev/null | grep -vE 'WARNING|native|Restricted|enable' | tail -1)"
 
 # MC 26.2 libraries (parent-loaded), resolved from the Mojang install's version json.
-VANILLA_CP="$(python3 - "$MC" <<'PY'
+VANILLA_CP="$(python3 - "$MC" "$MC_LINE" <<'PY'
 import json, os, sys
 mc = sys.argv[1]
-d = json.load(open(os.path.join(mc, 'versions', '26.2', '26.2.json')))
+d = json.load(open(os.path.join(mc, 'versions', sys.argv[2], sys.argv[2] + '.json')))
 out = []
 for lib in d.get('libraries', []):
     p = lib.get('name', '').split(':')
@@ -62,7 +63,8 @@ PY
 
 # jline (server console) is shipped in the MC libraries tree but not listed in 26.2.json's libraries array;
 # add it explicitly so the dedicated-server console handler doesn't NoClassDefFound.
-JLINE="$(find "$MC/libraries/org/jline" -name 'jline-*-3.25.1.jar' 2>/dev/null | paste -sd: -)"
+SEP="$(python3 -c 'import os;print(os.pathsep)')"
+JLINE="$(find "$MC/libraries/org/jline" -name 'jline-*.jar' 2>/dev/null | paste -sd"$SEP" -)"
 
 
 # Game root metadata (version.json) on the PARENT -cp, as a resources-only jar. Mods that ask
@@ -70,7 +72,11 @@ JLINE="$(find "$MC/libraries/org/jline" -name 'jline-*-3.25.1.jar' 2>/dev/null |
 # version it finds there — get null under Forbric otherwise, because the merged base belongs to
 # ForbricClassLoader. See run/game-metadata-jar.sh for why this must never carry class files.
 META_JAR="$("$HERE/game-metadata-jar.sh" "$MERGED" 2>/dev/null)" || META_JAR=""
-CP="$BOOT_JAR:$BOOT_DEPS:$VANILLA_CP${JLINE:+:$JLINE}${META_JAR:+:$META_JAR}"
+# The separator has to be the platform's, not ':' unconditionally. BOOT_DEPS comes from Gradle and VANILLA_CP is
+# built by python with os.pathsep, so on Windows BOTH already use ';' -- joining them with ':' produced a single
+# bogus first entry and java answered ClassNotFoundException for the boot class while the jar sat on the path.
+# Measured: 114 entries in the argfile, mixed ':' and ';'.
+CP="$BOOT_JAR$SEP$BOOT_DEPS$SEP$VANILLA_CP${JLINE:+$SEP$JLINE}${META_JAR:+$SEP$META_JAR}"
 
 # Guest mixins are written against VANILLA bytecode; the merged base is vanilla+Forge+NeoForge byte-merged, so an
 # injection anchor a mixin expects may have moved. The KERNEL now relaxes EVERY discovered guest mod's mixin
@@ -87,8 +93,19 @@ cd "$RUNDIR"
 # them (fabric-dimension-api-v1 targets DataFixerUpper's TaggedChoice), so the transforming loader must define
 # them. This is what Fabric's Knot does with the whole game classpath.
 # Developer runs use strict compatibility decisions; installed profiles retain the product default (ask).
+# The classpath is long enough to exceed the OS command line limit -- measured on Windows: "Argument list too
+# long" before java starts -- so it is handed over in an @argfile instead of on the command line. The argfile is
+# written next to the run directory and quoted the way java's own parser expects (backslashes doubled inside
+# double quotes), because a Windows path contains backslashes and the classpath is full of them.
+ARGFILE="$RUNDIR/.forbric-java-args"
+python3 - "$ARGFILE" "$CP" <<'PYARGS'
+import sys
+path, cp = sys.argv[1], sys.argv[2]
+with open(path, "w", encoding="utf-8") as fh:
+    fh.write('-cp "%s"\n' % cp.replace("\\", "\\\\"))
+PYARGS
 exec java -Djava.awt.headless=true -Dforbric.compatibilityPolicy="${FORBRIC_COMPAT_POLICY:-strict}" ${FORBRIC_JVM:-} \
-  -cp "$CP" net.forbric.kernel.boot.KernelServerLaunch \
+  "@$ARGFILE" net.forbric.kernel.boot.KernelServerLaunch \
   --gameJar "$MERGED" --runtimeJar "$FORGE_RT" --runtimeJar "$NEO_RT" \
-  --libraryPath "$VANILLA_CP${JLINE:+:$JLINE}" \
+  --libraryPath "$VANILLA_CP${JLINE:+$SEP$JLINE}" \
   -- --gameDir "$RUNDIR" --nogui "$@"
