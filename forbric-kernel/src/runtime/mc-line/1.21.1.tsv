@@ -260,8 +260,6 @@ BuiltInRegistries.PARTICLE_TYPE.getValue	BuiltInRegistries.PARTICLE_TYPE.get
 net.minecraftforge.fluids.FluidInteractionRegistry.InteractionInformation	net.neoforged.neoforge.fluids.FluidInteractionRegistry.InteractionInformation
 InFluidPredicate	net.forbric.compat.fluids.ForbricFluidPredicate
 RecipeContentPayload	net.forbric.compat.network.ForbricRecipeContentPayload
-net.minecraftforge.client.gui.overlay.ForgeLayer	net.minecraft.client.gui.LayeredDraw.Layer
-ForgeLayer	net.minecraft.client.gui.LayeredDraw.Layer
 net.minecraft.world.level.block.entity.FuelValues	net.forbric.compat.fuel.ForbricFuelValues
 FuelValues	net.forbric.compat.fuel.ForbricFuelValues
 EventHooks.getItemBurnTime	net.forbric.compat.fuel.ForbricFuelValues.itemBurnTime
