@@ -38,7 +38,10 @@ if ! "$KERNEL/gradlew" --offline -q -p "$KERNEL" jar >/tmp/forbric-kernel-jar.lo
 fi
 # Overridable so a gate can hand the JVM a COPY and then do something to that copy while the game runs --
 # which is how "the kernel jar was replaced mid-session" is reproduced without touching the real build output.
-BOOT_JAR="${FORBRIC_BOOT_JAR:-$(ls "$KERNEL"/build/libs/forbric-kernel-*.jar | head -1)}"
+# A classifier suffix means '-' (0x2D) where the plain name has '.' (0x2E), so another line's jar sorts BEFORE the
+# default one and `ls | head -1` would launch the wrong kernel while logging normally. Same fix as the server
+# launcher; FORBRIC_BOOT_JAR still overrides on purpose.
+BOOT_JAR="${FORBRIC_BOOT_JAR:-$(ls "$KERNEL"/build/libs/forbric-kernel-[0-9]*.jar | grep -vE -- '-[0-9]+\.[0-9]+\.[0-9]+\.jar$' | head -1)}"
 BOOT_DEPS="$("$KERNEL/gradlew" --offline -q -p "$KERNEL" printBootClasspath 2>/dev/null | grep -vE 'WARNING|native|Restricted|enable' | tail -1)"
 
 # MC 26.2 libraries (parent-loaded), resolved from the Mojang install's version json. Includes LWJGL.

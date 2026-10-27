@@ -35,7 +35,12 @@ if ! "$KERNEL/gradlew" --offline -q -p "$KERNEL" jar >/tmp/forbric-kernel-jar.lo
   grep -vE 'WARNING: |native-access|Restricted method|--enable-native' /tmp/forbric-kernel-jar.log >&2
   exit 3
 fi
-BOOT_JAR="$(ls "$KERNEL"/build/libs/forbric-kernel-*.jar | head -1)"
+# The default line's jar is forbric-kernel-<version>.jar; every other line's carries an archiveClassifier, so it
+# ends -<mcLine>.jar (e.g. -1.21.1.jar). `ls | head -1` used to be enough when there was only one jar, but a
+# classifier name sorts BEFORE the plain one ('-' is 0x2D, '.' is 0x2E), so a plain glob would silently pick another
+# line's jar -- the worst possible failure, because it launches the wrong kernel and still looks like a run.
+# OVERRIDABLE: set FORBRIC_BOOT_JAR to point a launch at a specific jar on purpose.
+BOOT_JAR="${FORBRIC_BOOT_JAR:-$(ls "$KERNEL"/build/libs/forbric-kernel-[0-9]*.jar | grep -vE -- '-[0-9]+\.[0-9]+\.[0-9]+\.jar$' | head -1)}"
 BOOT_DEPS="$("$KERNEL/gradlew" --offline -q -p "$KERNEL" printBootClasspath 2>/dev/null | grep -vE 'WARNING|native|Restricted|enable' | tail -1)"
 
 # MC 26.2 libraries (parent-loaded), resolved from the Mojang install's version json.
