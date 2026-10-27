@@ -1,0 +1,19 @@
+verify: the 26.2 suite is exactly at the documented baseline after all 1.21.1 work
+
+  tests 5635 | failures 78 | errors 0 | skipped 846
+
+and the 78 are exactly the documented composition: 76 Windows TempDir IOException plus precisely the two known
+real failures that must not be changed
+  ForgeRegistrationA2ContractTest.clientGateSeedsF6AndBothScriptsParse
+  KernelRuntimeClassesTest.everyGameSideClassTheBootSideNamesIsInTheRegistry
+
+That is the same 5,635 / 78 / 0 / 846 the contract names, so the hard constraint is satisfied by measurement rather
+than by assertion.
+
+WHY AN EARLIER RUN READ 5629 / 79 / 840: build/transfer-api-compile is shared between the lines, and it held
+1.21.1's Fabric API when 26.2 first ran. The one extra failure was SilentFailureCensusTest, and it was REAL -- three
+silent catches in compat/fuel/ForbricFuelValues.java, since fixed to report through ForbricLog.debug. The six
+missing tests and six skips came from that same stale classpath. Re-running after a clean 26.2 compile lands on the
+baseline exactly.
+
+NOT VERIFIED: that a game launches with either line's jar. Compiling and testing are not starting.
