@@ -50,7 +50,6 @@ EntityTypes	EntityType
 
 # --- BlockAndTintGetter -------------------------------------------------------------------------------
 # Package move only: net.minecraft.client.renderer.block (26.2) -> net.minecraft.world.level (1.21.1).
-net.minecraft.client.renderer.block.BlockAndTintGetter	net.minecraft.world.level.BlockAndTintGetter
 
 # --- AbstractBoat -------------------------------------------------------------------------------------
 # Class renamed AND repackaged: net.minecraft.world.entity.vehicle.boat.AbstractBoat (26.2) ->
@@ -111,7 +110,6 @@ ParticleResources	ParticleEngine
 # Both spellings appear where the sources use both, because the substitution is textual: a rule written for
 # the short form would otherwise fire inside the fully qualified one. Longest-first ordering is what keeps
 # that honest, and a rule that matches nothing fails the build.
-MobSpawnEvent.FinalizeSpawn.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.event.entity.player.PlayerInteractEvent.EntityInteractSpecific.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.client.event.ScreenEvent.Init.Pre.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
 net.minecraftforge.client.event.ScreenEvent.Init.Post.BUS	net.minecraftforge.common.MinecraftForge.EVENT_BUS
@@ -269,7 +267,6 @@ getDeltaTracker	getTimer
 #     KernelParticleProviders:150   BuiltInRegistries.PARTICLE_TYPE.getValue(e.getKey())
 BuiltInRegistries.PARTICLE_TYPE.getValue	BuiltInRegistries.PARTICLE_TYPE.get
 net.minecraftforge.fluids.FluidInteractionRegistry.InteractionInformation	net.neoforged.neoforge.fluids.FluidInteractionRegistry.InteractionInformation
-net.neoforged.neoforge.fluids.InFluidPredicate	net.forbric.compat.fluids.ForbricFluidPredicate
 InFluidPredicate	net.forbric.compat.fluids.ForbricFluidPredicate
 RecipeContentPayload	net.forbric.compat.network.ForbricRecipeContentPayload
 net.minecraftforge.client.gui.overlay.ForgeLayer	net.minecraft.client.gui.LayeredDraw.Layer

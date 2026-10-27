@@ -5,6 +5,7 @@ import java.util.function.BiPredicate;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
@@ -29,8 +30,9 @@ public final class KernelShears {
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public static Operation<Boolean> relay(Operation<Boolean> carrier, Object ability) {
 		return relay(carrier, ability, Items.SHEARS, // 1.21.1 has no net.minecraft.core.TypedInstance (it arrived with the 26.x item-ability split), but
-			// the member it exists for does: ItemStack#is(Item) is public on both lines and means the same thing.
-			(stack, item) -> ((ItemStack) stack).is(item));
+			// the member it exists for does: ItemStack#is(Item) is public on both lines and means the same
+			// thing. Both operands arrive boxed, so both are cast to the vanilla types the call needs.
+			(stack, item) -> ((ItemStack) stack).is((Item) item));
 	}
 
 	/** {@link #relay(Operation, Object)} over a given "shears" and vanilla {@code is}; the seam the unit test drives. */
