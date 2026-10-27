@@ -515,10 +515,6 @@ public final class KernelBoot {
 			}
 		}, transferInterop);
 		loader.registerAncestorComposition(composition);
-		// The merged base also names EnderDragonPart, whose forge PartEntity parent the merge dropped. The two
-		// parents are identical member for member on this line, so the proof compares them rather than asserting
-		// it; without a proof the loader refuses to define the class and the boot ends on a LinkageError.
-		loader.registerAncestorComposition(new net.forbric.kernel.transform.PartEntityPartComposition());
 		chain.register(TransformPhase.COREMOD, composition);
 		boolean forgeCapabilities = composition.dispatches();
 		// The fallback edits the composed getCapability; the composition's proof expects it exactly when it says so.
