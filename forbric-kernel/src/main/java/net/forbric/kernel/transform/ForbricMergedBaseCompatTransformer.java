@@ -745,7 +745,19 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				+ "Lnet/minecraft/world/level/BlockAndLightGetter;Lnet/minecraft/core/BlockPos;"
 				+ "Lnet/minecraft/core/Direction;Lnet/minecraft/world/level/block/state/BlockState;"
 				+ "Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;";
-		if (hasMethod(node, "getAppearance", desc)) return false;
+		// Only supply the method if the class has NONE by that name. The descriptor below is 26.2's, and on a
+		// line whose Block/BlockState already declare getAppearance with a DIFFERENT parameter type the
+		// hasMethod(exact-descriptor) test below is always false -- so the repair used to append a method naming
+		// BlockAndLightGetter, a class 1.21.1 does not have, and the class failed to load with
+		// NoClassDefFoundError the first time anything touched it.
+		//
+		// Measured: 1.21.1 Block.getAppearance(BlockState, BlockAndTintGetter, BlockPos, Direction, BlockState,
+		// BlockPos) EXISTS and 26.2's Block has no getAppearance at all, which is exactly what this repair is
+		// for. Checking by NAME instead of by descriptor makes the decision about whether the method is missing
+		// rather than about how its parameter is spelled.
+		for (MethodNode existing : node.methods) {
+			if ("getAppearance".equals(existing.name)) return false;
+		}
 
 		MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC, "getAppearance", desc, null, null);
 		method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
@@ -768,7 +780,19 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		String desc = "(Lnet/minecraft/world/level/BlockAndLightGetter;Lnet/minecraft/core/BlockPos;"
 				+ "Lnet/minecraft/core/Direction;Lnet/minecraft/world/level/block/state/BlockState;"
 				+ "Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;";
-		if (hasMethod(node, "getAppearance", desc)) return false;
+		// Only supply the method if the class has NONE by that name. The descriptor below is 26.2's, and on a
+		// line whose Block/BlockState already declare getAppearance with a DIFFERENT parameter type the
+		// hasMethod(exact-descriptor) test below is always false -- so the repair used to append a method naming
+		// BlockAndLightGetter, a class 1.21.1 does not have, and the class failed to load with
+		// NoClassDefFoundError the first time anything touched it.
+		//
+		// Measured: 1.21.1 Block.getAppearance(BlockState, BlockAndTintGetter, BlockPos, Direction, BlockState,
+		// BlockPos) EXISTS and 26.2's Block has no getAppearance at all, which is exactly what this repair is
+		// for. Checking by NAME instead of by descriptor makes the decision about whether the method is missing
+		// rather than about how its parameter is spelled.
+		for (MethodNode existing : node.methods) {
+			if ("getAppearance".equals(existing.name)) return false;
+		}
 
 		MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC, "getAppearance", desc, null, null);
 		method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
