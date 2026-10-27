@@ -89,7 +89,10 @@ public final class ForbricFuelValues {
 			Object table = furnace.getMethod("getFuel").invoke(null);
 			if (table instanceof Map<?, ?> map) return new ForbricFuelValues((Map<Item, Integer>) map);
 		} catch (ReflectiveOperationException | RuntimeException absent) {
-			// 26.2: the method does not exist there and this class is unreachable on that line.
+			// Say it rather than swallow it: the two lines differ here by design, and a silent catch is how a
+			// future line change turns this into an empty fuel table nobody notices.
+			net.forbric.kernel.util.ForbricLog.debug("[Forbric/Fuel] AbstractFurnaceBlockEntity#getFuel is not "
+					+ "callable on this line (%s); the vanilla burn table is empty", absent);
 		}
 		return new ForbricFuelValues(new java.util.HashMap<>());
 	}
@@ -143,6 +146,8 @@ public final class ForbricFuelValues {
 				}
 				if (get == null) return;
 			} catch (ReflectiveOperationException | RuntimeException absent) {
+				net.forbric.kernel.util.ForbricLog.debug("[Forbric/Fuel] Fabric's fuel registry is not reachable "
+						+ "on this line (%s); Fabric fuels will not be offered to the furnace", absent);
 				return;
 			}
 			java.lang.reflect.Method lookup = get;
@@ -152,7 +157,9 @@ public final class ForbricFuelValues {
 							Object burn = lookup.invoke(registry, event.getItemStack().getItem());
 							if (burn instanceof Integer time && time > 0) event.setBurnTime(time);
 						} catch (ReflectiveOperationException | RuntimeException ignored) {
-							// an unreadable Fabric entry leaves the NeoForge answer standing
+							// an unreadable Fabric entry leaves the NeoForge answer standing, but it is not silent
+							net.forbric.kernel.util.ForbricLog.debug("[Forbric/Fuel] unreadable Fabric fuel entry for "
+									+ "%s (%s); the NeoForge answer stands", event.getItemStack().getItem(), ignored);
 						}
 					});
 			fabricFuelsInstalled = true;
