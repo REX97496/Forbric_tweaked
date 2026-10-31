@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -283,6 +283,15 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		out.add(scanned("giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith",
 				"Forge's EventListenerHelper instantiates a CONCRETE event class through a no-arg constructor to "
 						+ "obtain its ListenerList, and nothing in the ServerLifecycleEvent chain has one"));
+		// scanned(), LAST. A SECOND, MORE GENERAL strategy than the one above, because that one decides from the
+		// immediate superclass and this family is one indirection deeper: Event <- ModLifecycleEvent <-
+		// FMLCommonSetupEvent, where the immediate superclass is neither a bus base nor ServerLifecycleEvent.
+		// This one needs no knowledge of any other class: it delegates to the event's OWN shortest constructor
+		// with null/zero arguments, so it cannot depend on visit order and cannot chain to a super() that does
+		// not exist. The instance is discarded by the probe.
+		out.add(scanned("delegateAProbedEventsNoArgConstructorToItsOwnShortestOne",
+				"FML lifecycle events are probed for a no-arg constructor too, and their chain is "
+						+ "Event <- ModLifecycleEvent <- the event, one level deeper than the first strategy reaches"));
 		return List.copyOf(out);
 	}
 
@@ -377,6 +386,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			changed |= claim(reporter, "routeItemComponentsThroughTheGate", routeItemComponentsThroughTheGate(node));
 			changed |= claim(reporter, "answerTheForgeVersionForgeCannotRead", answerTheForgeVersionForgeCannotRead(node));
 			changed |= claim(reporter, "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith(node));
+			changed |= claim(reporter, "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", delegateAProbedEventsNoArgConstructorToItsOwnShortestOne(node));
 			changed |= namedOldLoader && adoptInteropHooksTheBaseStillNamesAfterTheOldLoader(node);
 
 			byte[] result = classBytes;
@@ -4111,6 +4121,63 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		ForbricLog.info("[Forbric/MergedBaseCompat] " + node.name.replace('/', '.')
 				+ " gets the no-arg constructor Forge's EventListenerHelper probes it with -- a concrete event class "
 				+ "is instantiated through one to obtain its ListenerList, and none existed");
+		return true;
+	}
+
+	/**
+	 * Gives an FML lifecycle event a no-arg constructor that DELEGATES to its own shortest existing constructor.
+	 *
+	 * <p>Why a second strategy rather than widening the first: the first decides from the immediate superclass, and
+	 * this family is one indirection deeper -- Event &lt;- ModLifecycleEvent &lt;- FMLCommonSetupEvent. Widening it would
+	 * mean either chaining to a super() that may not exist, or reading other classes to find out, and either way the
+	 * answer depends on visit order.
+	 *
+	 * <p>Delegating to the class's OWN constructor needs nothing outside this ClassNode: pick the &lt;init&gt; with the
+	 * fewest parameters, push null for every reference and zero for every primitive, and INVOKESPECIAL it. The probe
+	 * discards the instance after reading its ListenerList, so the arguments are never observed.
+	 *
+	 * <p>WHAT THIS DOES NOT DO: it does not give the event meaningful state. A caller that inspects the instance would
+	 * find nulls. That is acceptable only because the one consumer in EventListenerHelper.computeListenerList calls
+	 * getListenerList() and nothing else.
+	 */
+	static boolean delegateAProbedEventsNoArgConstructorToItsOwnShortestOne(ClassNode node) {
+		if (!node.name.startsWith("net/minecraftforge/fml/event/")) return false;
+		org.objectweb.asm.tree.MethodNode shortest = null;
+		int shortestArity = Integer.MAX_VALUE;
+		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+			if (!"<init>".equals(method.name)) continue;
+			if ("()V".equals(method.desc)) return false; // already has one
+			int arity = org.objectweb.asm.Type.getArgumentTypes(method.desc).length;
+			if (arity < shortestArity) {
+				shortestArity = arity;
+				shortest = method;
+			}
+		}
+		if (shortest == null) return false; // only a no-arg exists, handled above
+		org.objectweb.asm.tree.MethodNode ctor = new org.objectweb.asm.tree.MethodNode(Opcodes.ACC_PUBLIC,
+				"<init>", "()V", null, null);
+		ctor.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		for (org.objectweb.asm.Type arg : org.objectweb.asm.Type.getArgumentTypes(shortest.desc)) {
+			switch (arg.getSort()) {
+				case org.objectweb.asm.Type.BOOLEAN, org.objectweb.asm.Type.BYTE, org.objectweb.asm.Type.CHAR,
+						org.objectweb.asm.Type.SHORT, org.objectweb.asm.Type.INT ->
+						ctor.instructions.add(new InsnNode(Opcodes.ICONST_0));
+				case org.objectweb.asm.Type.LONG -> ctor.instructions.add(new InsnNode(Opcodes.LCONST_0));
+				case org.objectweb.asm.Type.FLOAT -> ctor.instructions.add(new InsnNode(Opcodes.FCONST_0));
+				case org.objectweb.asm.Type.DOUBLE -> ctor.instructions.add(new InsnNode(Opcodes.DCONST_0));
+				default -> ctor.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+			}
+		}
+		ctor.instructions.add(new org.objectweb.asm.tree.MethodInsnNode(Opcodes.INVOKESPECIAL,
+				node.name, "<init>", shortest.desc, false));
+		ctor.instructions.add(new InsnNode(Opcodes.RETURN));
+		ctor.maxStack = Math.max(1, shortestArity * 2 + 1);
+		ctor.maxLocals = 1;
+		node.methods.add(ctor);
+		ForbricLog.info("[Forbric/MergedBaseCompat] " + node.name.replace('/', '.')
+				+ " gets a no-arg constructor that delegates to its own " + shortest.desc
+				+ " -- FML's lifecycle events are probed for a no-arg ctor to read a ListenerList, and their chain "
+				+ "(Event <- ModLifecycleEvent <- event) is one level deeper than the superclass-based strategy reaches");
 		return true;
 	}
 }
