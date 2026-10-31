@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "forbriclineprobe",
+  "version": "1.0.0",
+  "name": "Forbric Line Probe",
+  "description": "Prints one line from its entrypoint, so that 'a mod's code runs on this line' is a measured fact rather than an inference. Does nothing else on purpose.",
+  "license": "Apache-2.0",
+  "depends": { "minecraft": "~1.21.1" },
+  "entrypoints": { "main": [ "probe.Probe" ] }
+}
