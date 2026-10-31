@@ -223,6 +223,21 @@ public final class PassiveSeeder {
 			// never touching brokenFiles, which is a separate mutable field with a PUBLIC setter. Left null,
 			// LoadingModList.getBrokenFiles() returns null and the first caller that streams it ends the boot.
 			lmlCls.getMethod("setBrokenFiles", List.class).invoke(empty, List.of());
+			// FMLLoader.getGameLayer() is getLayer(Layer.GAME).orElseThrow(), and moduleLayerManager is only ever
+			// assigned inside a completeScan(...) this process never calls -- so it is null and getGameLayer()
+			// throws for whoever asks. IModuleLayerManager is a single-method interface, so one small class in the
+			// runtime set satisfies it; it is constructed here reflectively because the boot half has no
+			// modlauncher types on its classpath (no src/main class mentions cpw.mods.modlauncher).
+			Class<?> layerMgr = Class.forName("net.forbric.kernel.runtime.ForbricModuleLayerManager", true, gameLoader);
+			Object layerMgrInstance = layerMgr.getConstructor().newInstance();
+			Field layerField = Class.forName("net.minecraftforge.fml.loading.FMLLoader", false, gameLoader)
+					.getDeclaredField("moduleLayerManager");
+			layerField.setAccessible(true);
+			if (layerField.get(null) == null) {
+				layerField.set(null, layerMgrInstance);
+				ForbricLog.info("[Forbric/Seed] FMLLoader.moduleLayerManager seeded — this process never calls the "
+						+ "one method that assigns it (completeScan), so getGameLayer() was throwing");
+			}
 			field.set(null, empty);
 			ForbricLog.info("[Forbric/Seed] MinecraftForge LoadingModList seeded empty (zero mods) so ModLoader's "
 					+ "constructor can read FMLLoader.getLoadingModList() instead of throwing -- this family was never "
