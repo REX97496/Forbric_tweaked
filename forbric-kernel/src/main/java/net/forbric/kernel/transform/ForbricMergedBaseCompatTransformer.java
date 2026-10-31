@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -276,6 +276,13 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		out.add(scanned("answerTheForgeVersionForgeCannotRead",
 				"ForgeVersion.<clinit> cannot read a version out of the merged base manifest, so it declares "
 						+ "the environment invalid and the boot ends"));
+		// scanned(), LAST. Self-gating rather than line-gated: it fires on a class whose superclass is
+		// ServerLifecycleEvent, which is true on 1.21.1 and false on 26.2 (there ServerStartingEvent is a
+		// Record implementing the interface), so the line where the probe does not exist is untouched by
+		// construction rather than by a flag.
+		out.add(scanned("giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith",
+				"Forge's EventListenerHelper instantiates a CONCRETE event class through a no-arg constructor to "
+						+ "obtain its ListenerList, and nothing in the ServerLifecycleEvent chain has one"));
 		return List.copyOf(out);
 	}
 
@@ -369,6 +376,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		changed |= claim(reporter, "letMinecraftForgeAddPackFinders", letMinecraftForgeAddPackFinders(node));
 			changed |= claim(reporter, "routeItemComponentsThroughTheGate", routeItemComponentsThroughTheGate(node));
 			changed |= claim(reporter, "answerTheForgeVersionForgeCannotRead", answerTheForgeVersionForgeCannotRead(node));
+			changed |= claim(reporter, "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith(node));
 			changed |= namedOldLoader && adoptInteropHooksTheBaseStillNamesAfterTheOldLoader(node);
 
 			byte[] result = classBytes;
@@ -4045,5 +4053,64 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Gives Forge server events the no-arg constructor EventListenerHelper probes them with.
+	 *
+	 * <p>computeListenerList (1.21.1 interop, javap -c) takes one of two paths: a concrete class with flag == false goes
+	 * to {@code eventClass.getConstructor()} with an EMPTY Class[] and then {@code newInstance().getListenerList()}.
+	 * Nothing in the chain provides that constructor:
+	 *
+	 * <pre>
+	 *   Event()                                 yes
+	 *   ServerLifecycleEvent(MinecraftServer)   no no-arg
+	 *   ServerStartingEvent(MinecraftServer)    no no-arg
+	 * </pre>
+	 *
+	 * so TagConventionMigrationHelper's registration of a ServerStartingEvent listener ends the boot.
+	 *
+	 * <p>TWO constructors, not one: a synthetic ServerStartingEvent()V cannot chain to a super() that does not exist,
+	 * so ServerLifecycleEvent()V is added first, chaining to Event()V, and ServerStartingEvent()V chains to that. The
+	 * alternative -- one constructor calling super((MinecraftServer) null) -- would RUN the real one during a probe
+	 * whose instance is discarded, and anything it does with the server would happen for no reason.
+	 *
+	 * <p>The instance the probe builds is thrown away (offsets 62-70 keep only its ListenerList), so a null {@code
+	 * server} field on it is never observed.
+	 *
+	 * <p>SELF-GATING: fires only when the class's superclass is ServerLifecycleEvent. On 26.2 ServerStartingEvent is a
+	 * final Record implementing the interface instead, so this cannot fire there.
+	 */
+	static boolean giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith(ClassNode node) {
+		if (!node.name.startsWith("net/minecraftforge/event/")) return false;
+		// WHICH SUPER TO CHAIN TO, decided from the class's own superclass rather than from a package list. The real
+		// sequence was: event/server fixed, then the next launch named net.minecraftforge.event.network
+		// .CustomPayloadEvent with the identical error. Both extend Event directly, and the ServerLifecycleEvent
+		// subclasses are the one indirection, so those two cases cover the family:
+		//   super == Event                  -> chain to Event()
+		//   super == ServerLifecycleEvent   -> chain to the synthetic one added there
+		//   is  ServerLifecycleEvent        -> chain to Event()
+		String lifecycle = "net/minecraftforge/event/server/ServerLifecycleEvent";
+		String event = "net/minecraftforge/eventbus/api/Event";
+		boolean isLifecycle = lifecycle.equals(node.name);
+		boolean chainToEvent = isLifecycle || event.equals(node.superName);
+		boolean chainToLifecycle = lifecycle.equals(node.superName);
+		if (!chainToEvent && !chainToLifecycle) return false;
+		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+			if ("<init>".equals(method.name) && "()V".equals(method.desc)) return false; // already there
+		}
+		org.objectweb.asm.tree.MethodNode ctor = new org.objectweb.asm.tree.MethodNode(Opcodes.ACC_PUBLIC,
+				"<init>", "()V", null, null);
+		ctor.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		ctor.instructions.add(new org.objectweb.asm.tree.MethodInsnNode(Opcodes.INVOKESPECIAL,
+				chainToEvent ? event : lifecycle, "<init>", "()V", false));
+		ctor.instructions.add(new InsnNode(Opcodes.RETURN));
+		ctor.maxStack = 1;
+		ctor.maxLocals = 1;
+		node.methods.add(ctor);
+		ForbricLog.info("[Forbric/MergedBaseCompat] " + node.name.replace('/', '.')
+				+ " gets the no-arg constructor Forge's EventListenerHelper probes it with -- a concrete event class "
+				+ "is instantiated through one to obtain its ListenerList, and none existed");
+		return true;
 	}
 }
