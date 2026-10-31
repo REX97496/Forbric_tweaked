@@ -203,8 +203,19 @@ public final class PassiveSeeder {
 		try {
 			Class<?> fmlLoader = Class.forName(ForeignType.FML_LOADER.binary(Ecosystem.NEOFORGE), false, gameLoader);
 
-			Method getCurrentOrNull = fmlLoader.getDeclaredMethod("getCurrentOrNull");
-			getCurrentOrNull.setAccessible(true);
+			Method getCurrentOrNull;
+			try {
+				getCurrentOrNull = fmlLoader.getDeclaredMethod("getCurrentOrNull");
+				getCurrentOrNull.setAccessible(true);
+			} catch (NoSuchMethodException otherShape) {
+				// 1.21.1 has a different FMLLoader surface entirely: no getCurrentOrNull, no getCurrent, a
+				// no-arg constructor, and `private static VersionInfo versionInfo` set by
+				// setupLaunchHandler(IEnvironment, VersionInfo). Seed that field instead of constructing a
+				// loader -- it is the "environment identity only, no lifecycle" this method promises, and it
+				// avoids standing up IEnvironment, which is where lifecycle would start.
+				seedNeoForgeVersionInfo(fmlLoader, gameLoader, gameVersion, gameDir);
+				return;
+			}
 			if (getCurrentOrNull.invoke(null) != null) {
 				ForbricLog.debug("[Forbric/Seed] NeoForge FMLLoader already current — not re-seeding");
 				return;
@@ -236,6 +247,55 @@ public final class PassiveSeeder {
 		} catch (Throwable t) {
 			ForbricLog.warn("[Forbric/Seed] could not seed NeoForge FMLLoader identity", unwrap(t));
 		}
+	}
+
+	/**
+	 * Seeds FMLLoader's static VersionInfo on a line whose FMLLoader exposes no current-loader accessor.
+	 *
+	 * <p>Without this, NeoForgeVersion.&lt;clinit&gt; runs
+	 * {@code Optional.ofNullable(FMLLoader.versionInfo()).orElseGet(...).neoForgeVersion()} against a null and ends the
+	 * boot with an NPE. Measured with javap on 1.21.1: {@code private static VersionInfo versionInfo}, a no-arg
+	 * constructor, and {@code static void setupLaunchHandler(IEnvironment, VersionInfo)}. The real setter needs an
+	 * IEnvironment, so this writes the field directly -- data, not lifecycle, which is what seedNeoForgeLoader is for.
+	 *
+	 * <p>VersionInfo is a record of (neoForgeVersion, fmlVersion, mcVersion, neoFormVersion) on this line, in that
+	 * order, checked with javap -p. Values come from the same provider the argument form uses, so nothing is invented
+	 * here that the rest of the seeder does not already trust.
+	 */
+	private static void seedNeoForgeVersionInfo(Class<?> fmlLoader, ClassLoader gameLoader, String gameVersion,
+			Path gameDirForSeeding)
+			throws ReflectiveOperationException {
+		Field field = fmlLoader.getDeclaredField("versionInfo");
+		field.setAccessible(true);
+		if (field.get(null) != null) {
+			ForbricLog.debug("[Forbric/Seed] NeoForge VersionInfo already seeded -- not overwriting");
+			return;
+		}
+		Class<?> versionInfo = Class.forName("net.neoforged.fml.loading.VersionInfo", false, gameLoader);
+		String mc = gameVersion == null || gameVersion.isBlank() ? "unknown" : gameVersion;
+		String neo = net.forbric.kernel.metadata.forge.EcosystemVersions.provided("neoforge");
+		if (neo == null || neo.isBlank()) neo = "unknown";
+		Object seeded = versionInfo
+				.getConstructor(String.class, String.class, String.class, String.class)
+				.newInstance(neo, neo, mc, mc);
+		field.set(null, seeded);
+		// gamePath is the next static this line reads without a loader instance to hang it on, and it is
+		// null for exactly the same reason: nothing constructed an FMLLoader to set it. Same repair, same
+		// justification -- it is a location, not a lifecycle.
+		try {
+			Field gamePath = fmlLoader.getDeclaredField("gamePath");
+			gamePath.setAccessible(true);
+			if (gamePath.get(null) == null) {
+				gamePath.set(null, gameDirForSeeding);
+				ForbricLog.info("[Forbric/Seed] NeoForge gamePath seeded as %s — FMLLoader.getGamePath() resolved it "
+						+ "from a loader instance this line never constructs", gameDirForSeeding);
+			}
+		} catch (NoSuchFieldException otherShape) {
+			ForbricLog.debug("[Forbric/Seed] no FMLLoader.gamePath on this line — nothing to seed");
+		}
+		ForbricLog.info("[Forbric/Seed] NeoForge VersionInfo seeded directly (neoForge=%s, mc=%s) — this line's "
+				+ "FMLLoader has no current-loader accessor, so the field is written instead of constructing one; "
+				+ "environment identity only, no lifecycle", neo, mc);
 	}
 
 	static String[] neoForgeVersionArguments(String gameVersion) {
