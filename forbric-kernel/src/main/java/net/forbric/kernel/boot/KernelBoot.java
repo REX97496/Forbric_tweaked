@@ -514,7 +514,13 @@ public final class KernelBoot {
 				return null;
 			}
 		}, transferInterop);
-		loader.registerAncestorComposition(composition);
+		// ONE registration holding both proofs. TransformerRegistrationOrderTest requires
+		// registerAncestorComposition to be called exactly once, and with nothing branching between building the
+		// proof and registering it -- a second call would violate that, and relaxing the test would remove the
+		// guarantee instead of extending it. ForbricAncestorProofs asks each proof in turn and stops at the
+		// first that answers, which is the contract RequiredAncestorCompositions already applies.
+		loader.registerAncestorComposition(new net.forbric.kernel.transform.ForbricAncestorProofs(
+				composition, new net.forbric.kernel.transform.PartEntityPartComposition()));
 		chain.register(TransformPhase.COREMOD, composition);
 		boolean forgeCapabilities = composition.dispatches();
 		// The fallback edits the composed getCapability; the composition's proof expects it exactly when it says so.
