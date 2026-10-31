@@ -114,6 +114,7 @@ public final class PassiveSeeder {
 	 */
 	public static void seedAll(ClassLoader gameLoader, Path gameDir, Side side) {
 		seedNeoForgeLoader(gameLoader, gameDir, side);
+		seedForgeLoader(gameLoader, gameDir, side);
 		seedNeoForgeModList(gameLoader);
 		seedNeoForgePaths(gameLoader, gameDir);
 		// Normally a no-op by now: KernelBoot seeds the MinecraftForge identity pre-Mixin, because its
@@ -183,6 +184,55 @@ public final class PassiveSeeder {
 	 * {@code FMLLoader.getCurrent()} / {@code FMLEnvironment.isProduction()} answer instead of throwing.
 	 * No-ops if a loader is already current or the class is absent.
 	 */
+
+	/**
+	 * Seeds the MinecraftForge family's loader statics, the way seedNeoForgeLoader does for NeoForge.
+	 *
+	 * <p>The merged base runs BOTH families and PassiveSeeder only knew net.neoforged.fml, so the Forge half stayed
+	 * null and ended the boot with "NoClassDefFoundError: Could not initialize class
+	 * net.minecraftforge.fml.ModLoader$LazyInit" because this.loadingModList is null.
+	 *
+	 * <p>Measured with javap: ModLoader's constructor does putfield loadingModList
+	 * FMLLoader.getLoadingModList(), and that field is final -- so the only thing to seed is FMLLoader's STATIC
+	 * loadingModList. Forge's factory differs from NeoForge's:
+	 *
+	 * <pre>
+	 *   net.minecraftforge LoadingModList.of(List&lt;ModFile&gt;, List&lt;ModInfo&gt;, EarlyLoadingException)
+	 *   net.neoforged   LoadingModList.of(List, List, List, List, List, Map)
+	 * </pre>
+	 *
+	 * <p>Zero mods, so every list is empty and the exception is null -- data, not lifecycle.
+	 *
+	 * <p>WHAT THIS DOES NOT DO: it does not seed VersionInfo or gamePath here. versionInfo is FINAL on this family, so
+	 * it needs a different technique than the one used for NeoForge.
+	 */
+	private static void seedForgeLoader(ClassLoader gameLoader, Path gameDir, Side side) {
+		try {
+			Class<?> fmlLoader = Class.forName("net.minecraftforge.fml.loading.FMLLoader", false, gameLoader);
+			Field field = fmlLoader.getDeclaredField("loadingModList");
+			field.setAccessible(true);
+			if (field.get(null) != null) {
+				ForbricLog.debug("[Forbric/Seed] MinecraftForge LoadingModList already seeded -- not overwriting");
+				return;
+			}
+			Class<?> lmlCls = Class.forName("net.minecraftforge.fml.loading.LoadingModList", false, gameLoader);
+			Class<?> earlyCls = Class.forName("net.minecraftforge.fml.loading.EarlyLoadingException", false, gameLoader);
+			Method of = lmlCls.getMethod("of", List.class, List.class, earlyCls);
+			Object empty = of.invoke(null, List.of(), List.of(), (Object) null);
+			// of(...) sets INSTANCE and nothing else: javap shows it delegating to the private (List, List) ctor and
+			// never touching brokenFiles, which is a separate mutable field with a PUBLIC setter. Left null,
+			// LoadingModList.getBrokenFiles() returns null and the first caller that streams it ends the boot.
+			lmlCls.getMethod("setBrokenFiles", List.class).invoke(empty, List.of());
+			field.set(null, empty);
+			ForbricLog.info("[Forbric/Seed] MinecraftForge LoadingModList seeded empty (zero mods) so ModLoader's "
+					+ "constructor can read FMLLoader.getLoadingModList() instead of throwing -- this family was never "
+					+ "seeded, only NeoForge's was");
+		} catch (ClassNotFoundException absent) {
+			ForbricLog.debug("[Forbric/Seed] MinecraftForge FMLLoader not present — skipping");
+		} catch (Throwable t) {
+			ForbricLog.warn("[Forbric/Seed] could not seed MinecraftForge LoadingModList", unwrap(t));
+		}
+	}
 
 	public static void seedNeoForgeLoader(ClassLoader gameLoader, Path gameDir, Side side) {
 		seedNeoForgeLoader(gameLoader, gameDir, gameDir.resolve("mods"), side);
