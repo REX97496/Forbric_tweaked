@@ -208,6 +208,8 @@ public final class PassiveSeeder {
 				getCurrentOrNull = fmlLoader.getDeclaredMethod("getCurrentOrNull");
 				getCurrentOrNull.setAccessible(true);
 			} catch (NoSuchMethodException otherShape) {
+				ForbricLog.debug("[Forbric/Seed] this line has no FMLLoader.getCurrentOrNull; seeding the statics it "
+						+ "would have populated instead", otherShape);
 				// 1.21.1 has a different FMLLoader surface entirely: no getCurrentOrNull, no getCurrent, a
 				// no-arg constructor, and `private static VersionInfo versionInfo` set by
 				// setupLaunchHandler(IEnvironment, VersionInfo). Seed that field instead of constructing a
