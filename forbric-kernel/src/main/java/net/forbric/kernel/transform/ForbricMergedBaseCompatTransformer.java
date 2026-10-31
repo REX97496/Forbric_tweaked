@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -271,6 +271,11 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		out.add(scanned("routeItemComponentsThroughTheGate",
 				"Foods cannot initialise: its stew bowls build an ItemStack, Item.components reaches "
 						+ "ForgeEventFactory, and FML is not up yet"));
+		// scanned(), LAST, so REPAIRS / claims / execution agree in order. scanned because the merged base
+		// genuinely has no Implementation-Version, so on a base WITH one this repair would land differently.
+		out.add(scanned("answerTheForgeVersionForgeCannotRead",
+				"ForgeVersion.<clinit> cannot read a version out of the merged base manifest, so it declares "
+						+ "the environment invalid and the boot ends"));
 		return List.copyOf(out);
 	}
 
@@ -363,6 +368,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		changed |= claim(reporter, "letMinecraftForgeSeeSpawnerMobs", letMinecraftForgeSeeSpawnerMobs(node));
 		changed |= claim(reporter, "letMinecraftForgeAddPackFinders", letMinecraftForgeAddPackFinders(node));
 			changed |= claim(reporter, "routeItemComponentsThroughTheGate", routeItemComponentsThroughTheGate(node));
+			changed |= claim(reporter, "answerTheForgeVersionForgeCannotRead", answerTheForgeVersionForgeCannotRead(node));
 			changed |= namedOldLoader && adoptInteropHooksTheBaseStillNamesAfterTheOldLoader(node);
 
 			byte[] result = classBytes;
@@ -4004,6 +4010,37 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				ForbricLog.info("[Forbric/MergedBaseCompat] ForgeHooks.gatherItemComponents goes through the gate -- "
 						+ "Foods builds an ItemStack during Bootstrap, which reached ForgeEventFactory before FML "
 						+ "existed and ended the boot on a null loadingModList");
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Retargets ForgeVersion.&lt;clinit&gt;'s JarVersionLookupHandler.getInfo(Class) call to the gate.
+	 *
+	 * <p>One owner swap, instruction count unchanged, no StackMapTable needed. See
+	 * net.forbric.kernel.runtime.ForbricJarVersionGate for why the branch must live in Java.
+	 */
+	static boolean answerTheForgeVersionForgeCannotRead(ClassNode node) {
+		// The whole net/minecraftforge/versions/ family reads its version the same way out of the same manifest:
+		// ForgeVersion, MCPVersion and their siblings each call JarVersionLookupHandler.getInfo and each throws
+		// "invalid environment" when the attribute is absent. Fixing them one class at a time costs one launch
+		// per class; the package prefix covers all of them at once, and a class in that package that does NOT
+		// make this call simply never matches the instruction below.
+		if (!node.name.startsWith("net/minecraftforge/versions/")) return false;
+		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+			if (!"<clinit>".equals(method.name)) continue;
+			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+				if (!(insn instanceof org.objectweb.asm.tree.MethodInsnNode call)) continue;
+				if (call.getOpcode() != Opcodes.INVOKESTATIC) continue;
+				if (!"net/minecraftforge/fml/loading/JarVersionLookupHandler".equals(call.owner)) continue;
+				if (!"getInfo".equals(call.name)) continue;
+				if (!"(Ljava/lang/Class;)Lnet/minecraftforge/fml/loading/JarVersionLookupHandler$Info;".equals(call.desc)) continue;
+				call.owner = "net/forbric/kernel/runtime/ForbricJarVersionGate";
+				ForbricLog.info("[Forbric/MergedBaseCompat] ForgeVersion reads its version through the gate -- the "
+						+ "merged base manifest carries no Implementation-Version, so the direct lookup threw "
+						+ "'invalid environment' and ended the boot");
 				return true;
 			}
 		}
