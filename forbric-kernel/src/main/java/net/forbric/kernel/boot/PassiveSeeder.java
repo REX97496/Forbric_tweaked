@@ -273,6 +273,26 @@ public final class PassiveSeeder {
 				getCurrentOrNull = fmlLoader.getDeclaredMethod("getCurrentOrNull");
 				getCurrentOrNull.setAccessible(true);
 			} catch (NoSuchMethodException otherShape) {
+			// FMLEnvironment.dist is what NeoForge's handleServerStarting dereferences, and it is a public static
+			// FINAL copied out of FMLLoader.getDist() in FMLEnvironment.<clinit>. A final cannot be written on
+			// Java 21, but the field it COPIES is an ordinary one:
+			//   FMLEnvironment.<clinit>: invokestatic FMLLoader.getDist(); putstatic dist
+			// so seeding FMLLoader.dist before FMLEnvironment is first touched makes the copy correct instead of
+			// bypassing the final. Without it, initServer dies:
+			//   NullPointerException: Dist.isDedicatedServer() because FMLEnvironment.dist is null
+			//     at ServerLifecycleHooks.handleServerStarting(:102)
+			try {
+				Field distField = fmlLoader.getDeclaredField("dist");
+				distField.setAccessible(true);
+				if (distField.get(null) == null) {
+					Class<?> seededDist = Class.forName(ForeignType.DIST.binary(Ecosystem.NEOFORGE), false, gameLoader);
+					distField.set(null, Enum.valueOf(seededDist.asSubclass(Enum.class), side.distName()));
+					ForbricLog.info("[Forbric/Seed] NeoForge FMLLoader.dist seeded as %s — FMLEnvironment.dist copies it "
+							+ "in its own <clinit>, so this has to happen before anything touches FMLEnvironment", side.distName());
+				}
+			} catch (NoSuchFieldException noDist) {
+				ForbricLog.debug("[Forbric/Seed] no FMLLoader.dist on this line — nothing to seed");
+			}
 				ForbricLog.debug("[Forbric/Seed] this line has no FMLLoader.getCurrentOrNull; seeding the statics it "
 						+ "would have populated instead", otherShape);
 				// 1.21.1 has a different FMLLoader surface entirely: no getCurrentOrNull, no getCurrent, a
