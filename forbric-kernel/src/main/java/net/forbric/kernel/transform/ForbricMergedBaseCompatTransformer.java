@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -140,6 +140,16 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		out.add(fixed("convertRadiansWithVanillasFoldedConstant", "net/minecraft/world/entity/Entity",
 				"every angle the game computes from a vector is off in the eighth digit — the merged base divides by "
 						+ "pi at run time where vanilla multiplies by a constant it folded in float"));
+		// AFTER the radians claim, because TransformerAnchorCensusTest compares REPAIRS against the claims in
+		// TRANSFORM ORDER -- the first attempt at this repair appended to REPAIRS but inserted the claim BEFORE
+		// this block, so the two lists disagreed and the census named it.
+		// scanned(), not fixed(): this repair by construction does NOT land on the default line -- 26.2's
+		// MappedRegistry.<clinit> already assigns KNOWN, so the method returns false there on purpose. fixed()
+		// means "this claim must land on the staged base", and claiming that would be a lie the ledger test
+		// correctly refuses. scanned() means "declared, and known not to land here".
+		out.add(scanned("restoreTheRegistriesKnownSetInitialiser",
+				"the merge dropped MappedRegistry.KNOWN's initialiser on a line whose <clinit> lacks it; the "
+						+ "default line assigns it already, so the repair stands down there by design"));
 		out.add(vanillaWriteByteEnabled()
 				? fixed("callVanillasWriteByteAgain", PLAYER_ABILITIES_PACKET,
 						"a packet writes its byte through NeoForge's writeByte(byte), so a mixin on vanilla's writeByte(int) "
@@ -300,6 +310,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			changed |= claim(reporter, "letDungeonsGenerateWithoutTheDataMap", letDungeonsGenerateWithoutTheDataMap(node));
 			changed |= claim(reporter, "restoreDoublePrecisionToTheRandomSources", restoreDoublePrecisionToTheRandomSources(node));
 			changed |= claim(reporter, "convertRadiansWithVanillasFoldedConstant", convertRadiansWithVanillasFoldedConstant(node));
+			changed |= claim(reporter, "restoreTheRegistriesKnownSetInitialiser", restoreTheRegistriesKnownSetInitialiser(node));
 			changed |= claim(reporter, "callVanillasWriteByteAgain", callVanillasWriteByteAgain(node));
 			changed |= claim(reporter, "saveTheHeightmapsVanillaSaves", saveTheHeightmapsVanillaSaves(node));
 			changed |= claim(reporter, "guardNeoForgesWorldModifierPass", guardNeoForgesWorldModifierPass(node));
@@ -3927,4 +3938,42 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		return true;
 	}
 
+
+	/**
+	 * Restores the assignment to MappedRegistry.KNOWN that the byte merge dropped.
+	 *
+	 * <p>Measured with javap -c: 26.2's &lt;clinit&gt; is
+	 * {@code putstatic LOGGER; putstatic MARKER; new LinkedHashSet; putstatic KNOWN; return} and 1.21.1's is
+	 * {@code putstatic LOGGER; return}. The field and both readers survived; the initialiser did not, so KNOWN is
+	 * null for the life of the process and the first registration through
+	 * net.minecraftforge.registries.NamespacedWrapper.register throws in markKnown.
+	 *
+	 * <p>LinkedHashSet, not HashSet: 26.2 uses it, and the order registrations arrive in is the order something may
+	 * later report -- a HashSet would be a silent behavioural difference. Prepended so it runs first.
+	 */
+	static boolean restoreTheRegistriesKnownSetInitialiser(ClassNode node) {
+		if (!"net/minecraft/core/MappedRegistry".equals(node.name)) return false;
+		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+			if (!"<clinit>".equals(method.name) || !"()V".equals(method.desc)) continue;
+			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+				if (insn instanceof FieldInsnNode put && put.getOpcode() == Opcodes.PUTSTATIC
+						&& "net/minecraft/core/MappedRegistry".equals(put.owner) && "KNOWN".equals(put.name)) {
+					return false;
+				}
+			}
+			InsnList build = new InsnList();
+			build.add(new org.objectweb.asm.tree.TypeInsnNode(Opcodes.NEW, "java/util/LinkedHashSet"));
+			build.add(new InsnNode(Opcodes.DUP));
+			build.add(new org.objectweb.asm.tree.MethodInsnNode(Opcodes.INVOKESPECIAL,
+					"java/util/LinkedHashSet", "<init>", "()V", false));
+			build.add(new FieldInsnNode(Opcodes.PUTSTATIC, "net/minecraft/core/MappedRegistry", "KNOWN",
+					"Ljava/util/Set;"));
+			method.instructions.insert(build);
+			ForbricLog.info("[Forbric/MergedBaseCompat] " + node.name.replace('/', '.')
+					+ " gets its KNOWN set assigned again -- the merged clinit had the field and both readers but "
+					+ "not the initialiser, so every registration threw NullPointerException in markKnown");
+			return true;
+		}
+		return false;
+	}
 }
