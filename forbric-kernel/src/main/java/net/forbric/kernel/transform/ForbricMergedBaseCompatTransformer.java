@@ -4083,19 +4083,19 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	 */
 	static boolean giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith(ClassNode node) {
 		if (!node.name.startsWith("net/minecraftforge/event/")) return false;
-		// WHICH SUPER TO CHAIN TO, decided from the class's own superclass rather than from a package list. The real
-		// sequence was: event/server fixed, then the next launch named net.minecraftforge.event.network
-		// .CustomPayloadEvent with the identical error. Both extend Event directly, and the ServerLifecycleEvent
-		// subclasses are the one indirection, so those two cases cover the family:
-		//   super == Event                  -> chain to Event()
-		//   super == ServerLifecycleEvent   -> chain to the synthetic one added there
-		//   is  ServerLifecycleEvent        -> chain to Event()
-		String lifecycle = "net/minecraftforge/event/server/ServerLifecycleEvent";
-		String event = "net/minecraftforge/eventbus/api/Event";
-		boolean isLifecycle = lifecycle.equals(node.name);
-		boolean chainToEvent = isLifecycle || event.equals(node.superName);
-		boolean chainToLifecycle = lifecycle.equals(node.superName);
-		if (!chainToEvent && !chainToLifecycle) return false;
+		// NO CLASS-NAME LITERALS: the superclass to chain to is node.superName itself. The first version wrote
+		// "net/minecraftforge/eventbus/api/Event" inline and ForeignTypeTest named it -- that concept is spelled out
+		// under both Forge families, and ForeignType.EVENT is the 26.2 spelling (eventbus.internal.Event), so a
+		// literal here is exactly the "one half updated, the other missed" the test exists to catch.
+		//
+		// The two cases reduce to one:
+		//   super is a net/minecraftforge/eventbus/ base   -> chain to it directly (Event)
+		//   super is ServerLifecycleEvent                 -> chain to it, whose own synthetic ctor chains to Event
+		String superName = node.superName;
+		if (superName == null) return false;
+		boolean chainToBusBase = superName.startsWith("net/minecraftforge/eventbus/");
+		boolean chainToLifecycle = superName.endsWith("/ServerLifecycleEvent");
+		if (!chainToBusBase && !chainToLifecycle) return false;
 		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
 			if ("<init>".equals(method.name) && "()V".equals(method.desc)) return false; // already there
 		}
@@ -4103,7 +4103,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				"<init>", "()V", null, null);
 		ctor.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		ctor.instructions.add(new org.objectweb.asm.tree.MethodInsnNode(Opcodes.INVOKESPECIAL,
-				chainToEvent ? event : lifecycle, "<init>", "()V", false));
+				superName, "<init>", "()V", false));
 		ctor.instructions.add(new InsnNode(Opcodes.RETURN));
 		ctor.maxStack = 1;
 		ctor.maxLocals = 1;
