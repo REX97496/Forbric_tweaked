@@ -862,7 +862,7 @@ public final class KernelLifecycle {
 			// MOD buses only — buses.get(0) is the baseline, whose registries PassiveSeeder already registered at
 			// seed time; posting there re-collects them and fill() dies on "Attempted duplicate registration".
 			net.forbric.api.ProtocolExtensions.forLoader(cl).beforeConfigurationLoading();
-			postNeoNewRegistryEvent(cl, buses.subList(1, buses.size()));
+			postNeoNewRegistryEvent(cl, buses.size() == 1 ? buses : buses.subList(1, buses.size()));
 			// Isolated for the same reason KernelEventSubscribers.registerAll above is, and this one is wider.
 			// fireRegisterEvents resolves a GAME-side class reflectively, so a LinkageError inside it escapes to
 			// the outer catch and skips EVERYTHING below: the traditional-Forge baseline, the Fabric mods' main
