@@ -871,6 +871,18 @@ public final class KernelLifecycle {
 			// content", which names none of that -- it blames the window for what one call inside it did.
 			int n = 0;
 			try {
+				// Which buses actually receive RegisterEvent. The three NeoForge attributes are in the registry LATER
+				// than this point (measured twice: delegate.getRaw and wrapper.get both return null at freeze), so the
+				// question is whether NeoForge's own DeferredRegisters are among what fires here.
+				try {
+					for (int bi = 0; bi < buses.size(); bi++) {
+						ForbricLog.info("[Forbric/Buses] bus %d of %d: %s", bi, buses.size(),
+								buses.get(bi) == null ? "null" : buses.get(bi).getClass().getName());
+					}
+				} catch (Throwable busProbe) {
+					ForbricLog.warn("[Forbric/Buses] could not enumerate: %s: %s", busProbe.getClass().getName(),
+							busProbe.getMessage());
+				}
 				n = fireRegisterEvents(cl, buses);
 			} catch (Throwable t) {
 				ForbricLog.warn("[Forbric/Lifecycle] could not fire RegisterEvent — mods that register content "
