@@ -57,7 +57,6 @@ public final class ForbricRegistryHolders {
 			}
 			if (registry == null) continue;
 			String type = registry.getClass().getName();
-			if (!type.contains("Namespaced")) continue;
 			try {
 				Field mapField = findField(registry.getClass(), "holdersByName");
 				if (mapField == null) continue;
@@ -67,25 +66,32 @@ public final class ForbricRegistryHolders {
 				if (byName == null) continue;
 				// The wrapper holds the plain MappedRegistry; its holder map is named differently per version, so
 				// every Map field on the delegate that is keyed by ResourceLocation is considered.
-				Object delegate = null;
-				for (Field d : registry.getClass().getDeclaredFields()) {
-					if (Registry.class.isAssignableFrom(d.getType()) && d.getType() != registry.getClass().getSuperclass()) {
-						d.setAccessible(true);
-						Object v = d.get(registry);
-						if (v != null && v != registry) {
-							delegate = v;
-							break;
+				int before = byName.size();
+				copyFrom(registry, byName);
+				// Every field whose VALUE is a Registry is copied from, not one guessed by type. The previous version
+				// picked a single field whose declared type differed from the superclass, and the ATTRIBUTE wrapper
+				// was processed (+1611 holders landed somewhere) while neoforge:swim_speed still did not arrive --
+				// so the one field it chose was not the delegate holding the NeoForge entries.
+				java.util.List<String> sources = new java.util.ArrayList<>();
+				for (Class<?> c = registry.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+					for (Field d : c.getDeclaredFields()) {
+						try {
+							d.setAccessible(true);
+							Object v = d.get(registry);
+							if (v instanceof Registry<?> && v != registry) {
+								copyFrom(v, byName);
+								sources.add(c.getSimpleName() + "." + d.getName());
+							}
+						} catch (Throwable ignored) {
+							// not readable: nothing to copy from it
 						}
 					}
 				}
-				int before = byName.size();
-				copyFrom(registry, byName);
-				if (delegate != null && delegate != registry) copyFrom(delegate, byName);
 				int added = byName.size() - before;
 				if (added > 0) {
 					copied += added;
-					ForbricLog.info("[Forbric/RegistryHolders] %s: +%d holder(s) backfilled into the wrapper's map -- "
-							+ "get(ResourceLocation) could see them and getHolder(ResourceKey) could not", type, added);
+					ForbricLog.info("[Forbric/RegistryHolders] field=%s %s: +%d holder(s) copied (sources=%s) -- without the field "
+							+ "name this could not say whether ATTRIBUTE was among them", f.getName(), type, added, sources);
 				}
 			} catch (Throwable t) {
 				ForbricLog.debug("[Forbric/RegistryHolders] could not backfill " + type, t);
