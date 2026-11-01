@@ -1293,6 +1293,24 @@ public final class KernelBoot {
 	 */
 	static MethodBodyNeuter neuters(Side side, boolean fluidInteractions) {
 		MethodBodyNeuter neuter = new MethodBodyNeuter();
+		if (side == Side.CLIENT) {
+			// The client's first real crash on 1.21.1, read from the crash report rather than guessed:
+			//   NullPointerException: Cannot invoke "ProgressMeter.label(String)"
+			//     at ImmediateWindowHandler.updateProgress(:106)
+			//     at BackgroundWaiter.runAndTick(:17)
+			//     at Main.main(Main.java:114)
+			// ImmediateWindowHandler draws NeoForge's early loading splash. A kernel launch never creates that window,
+			// so its progress meter is null and ticking it throws before any game class is up -- which vanilla then
+			// reports as a bootstrap failure whose own report ALSO throws (off-thread RenderSystem), masking this.
+			// Emptying updateProgress is the honest form: there is no window to draw into. It must not be silence,
+			// so the neuter carries the reason into the load report.
+			neuter.add(new MethodBodyNeuter.Target("net.neoforged.fml.loading.ImmediateWindowHandler",
+					"updateProgress", "(Ljava/lang/String;)V",
+					"NeoForge's early loading splash (ImmediateWindowHandler) has no window in a kernel launch, so its "
+							+ "progress meter is null and BackgroundWaiter.runAndTick throws NPE from Main.main:114 before "
+							+ "the client is up. Drawing a splash is not something this launch does, so the sink is "
+							+ "emptied rather than given a fake window."));
+		}
 		if (!fluidInteractions) {
 			neuter.add(new MethodBodyNeuter.Target("net.minecraftforge.fluids.FluidInteractionRegistry",
 					"canInteract", "(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)Z",
