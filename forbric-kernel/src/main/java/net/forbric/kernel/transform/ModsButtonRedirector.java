@@ -205,8 +205,11 @@ public final class ModsButtonRedirector implements ClassTransformer {
 						|| !"translatable".equals(call.name) || !FACTORY_DESC.equals(call.desc)) {
 					continue;
 				}
-				ldc.cst = FORBRIC_LABEL;
-				call.name = "literal";
+				// LEFT AS THE GAME'S OWN TRANSLATION, deliberately. It used to be rewritten to
+				// Component.literal("Mods (Forbric)"), which is a hardcoded English string with no key --
+				// so a Chinese client showed English there, and no language file could fix it.
+				// Keeping Component.translatable("fml.menu.mods") means the carrier's own lang decides:
+				// zh_cn says "模组" and en_us says "Mods". Nothing has to be shipped or overridden.
 				renamed++;
 			}
 		}

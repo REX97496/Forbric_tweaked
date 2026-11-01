@@ -131,6 +131,44 @@ public final class KernelLifecycle {
 	 * <p>Parameters are Object because this is boot-side and cannot name net.minecraft types at compile time; the
 	 * injector rewrites the descriptor at the call site for exactly this reason.
 	 */
+	/**
+	 * Reports whether the NeoForge attributes NeoForgeMod declares actually resolve through the registry that
+	 * DeferredHolder looks them up in.
+	 *
+	 * <p>Purely diagnostic while the swim_speed failure is open, and it is here because the failure cannot be
+	 * reasoned about from the outside: the kernel's own count says 22 neoforge entries including attribute=3, while
+	 * DeferredHolder.value() reports the key unbound. DeferredHolder.getRegistry() is
+	 * BuiltInRegistries.REGISTRY.get(key.registry()) and then registry.getHolder(key), so either the key is not in
+	 * that registry or the registry is not the one NeoForge's DeferredRegister wrote to. This prints both facts
+	 * rather than guessing between them.
+	 */
+	public static void reportNeoForgeAttributes() {
+		try {
+			Class<?> builtIn = Class.forName("net.minecraft.core.registries.BuiltInRegistries", false, gameLoader);
+			Object root = builtIn.getField("REGISTRY").get(null);
+			Object attributeRegistry = root.getClass().getMethod("get", Class.forName(
+					"net.minecraft.resources.ResourceLocation", false, gameLoader))
+					.invoke(root, Class.forName("net.minecraft.resources.ResourceLocation", false, gameLoader)
+							.getMethod("parse", String.class).invoke(null, "minecraft:attribute"));
+			if (attributeRegistry == null) {
+				ForbricLog.warn("[Forbric/AttrCheck] no minecraft:attribute registry in BuiltInRegistries.REGISTRY");
+				return;
+			}
+			ForbricLog.info("[Forbric/AttrCheck] attribute registry is %s",
+					attributeRegistry.getClass().getName());
+			for (String name : new String[] {"swim_speed", "nametag_distance", "creative_flight"}) {
+				Object rl = Class.forName("net.minecraft.resources.ResourceLocation", false, gameLoader)
+						.getMethod("parse", String.class).invoke(null, "neoforge:" + name);
+				Object direct = attributeRegistry.getClass().getMethod("get", Class.forName(
+						"net.minecraft.resources.ResourceLocation", false, gameLoader))
+						.invoke(attributeRegistry, rl);
+				ForbricLog.info("[Forbric/AttrCheck] neoforge:%s direct get -> %s", name, direct == null ? "MISSING" : direct.getClass().getSimpleName());
+			}
+		} catch (Throwable t) {
+			ForbricLog.warn("[Forbric/AttrCheck] could not inspect the attribute registry", t);
+		}
+	}
+
 	public static void onClientBeginReached(Object minecraft, Object packRepository, Object resourceManager) {
 		// Logged at the top, before anything can throw: whether this hook runs at all is a different question from
 		// whether addTo then serves anything, and both were invisible at once.
@@ -139,6 +177,7 @@ public final class KernelLifecycle {
 				packRepository == null ? "null" : packRepository.getClass().getName(),
 				resourceManager == null ? "null" : resourceManager.getClass().getName());
 		onClientModLoading();
+		reportNeoForgeAttributes();
 		onClientResourcePacks(packRepository);
 	}
 

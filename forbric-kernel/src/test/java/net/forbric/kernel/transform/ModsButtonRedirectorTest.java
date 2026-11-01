@@ -138,37 +138,50 @@ class ModsButtonRedirectorTest {
 	 * and the same word. A working redirect on a button a player cannot pick out reads as "nothing happened" —
 	 * which is how it was reported before this existed.
 	 */
+	/**
+	 * The button keeps the game's own translation key, so the language file decides the word.
+	 *
+	 * <p>It used to be rewritten to a literal "Mods (Forbric)". That is untranslatable by construction: the string has
+	 * no key, so a zh_cn client showed English and no language file could reach it. The carrier's own
+	 * {@code assets/neoforge/lang/zh_cn.json} already says 模组 for exactly this key.
+	 *
+	 * <p>The counter-argument this test used to encode -- "the language is loaded long after this class, and a missing
+	 * key renders raw" -- is answered by measurement rather than by preference: the same run logs
+	 * {@code [Forbric/Lang] neoforge carrier: 7219 built-in translation(s) loaded; 'fml.menu.branding' resolves},
+	 * i.e. the carrier's translations are in place and a neighbouring key resolves through them.
+	 */
 	@Test
-	void theButtonSaysWhoseListItOpens() throws Exception {
+	void theButtonKeepsTheGamesOwnTranslationKey() throws Exception {
 		Map.Entry<String, byte[]> carrier = carrierCarrying(ModsButtonRedirector.FML_MODS_KEY);
 
 		ClassNode after = parse(transform(carrier.getKey(), carrier.getValue()));
-		assertTrue(constants(after).contains(ModsButtonRedirector.FORBRIC_LABEL),
-				"the new label must be there in " + carrier.getKey());
-		assertTrue(!constants(after).contains(ModsButtonRedirector.FML_MODS_KEY),
-				"and the old key must be gone, or both buttons still say the same word");
+		assertTrue(constants(after).contains(ModsButtonRedirector.FML_MODS_KEY),
+				"the key must survive so the language file can translate it, in " + carrier.getKey());
+		assertTrue(!constants(after).contains(ModsButtonRedirector.FORBRIC_LABEL),
+				"and the hardcoded English label must be gone, or zh_cn never shows 模组");
 	}
 
-	/** A literal, not a translation key: the language is loaded long after this class, and a missing key renders raw. */
+	/** The label must still be built through Component, and through translatable rather than literal. */
 	@Test
-	void theLabelIsBuiltAsALiteralAndNotAKey() throws Exception {
+	void theLabelIsBuiltAsATranslationAndNotALiteral() throws Exception {
 		Map.Entry<String, byte[]> carrier = carrierCarrying(ModsButtonRedirector.FML_MODS_KEY);
 		ClassNode node = parse(transform(carrier.getKey(), carrier.getValue()));
-		boolean sawLiteral = false;
+		boolean sawTranslatable = false;
 		for (MethodNode method : node.methods) {
 			if (method.instructions == null) continue;
 			AbstractInsnNode prev = null;
 			for (AbstractInsnNode insn : method.instructions) {
 				if (insn instanceof MethodInsnNode call && "net/minecraft/network/chat/Component".equals(call.owner)
 						&& prev instanceof org.objectweb.asm.tree.LdcInsnNode ldc
-						&& ModsButtonRedirector.FORBRIC_LABEL.equals(ldc.cst)) {
-					assertEquals("literal", call.name, "a key would render as the key itself");
-					sawLiteral = true;
+						&& ModsButtonRedirector.FML_MODS_KEY.equals(ldc.cst)) {
+					assertEquals("translatable", call.name,
+							"a literal here is a hardcoded English label with no key, which is what this changed from");
+					sawTranslatable = true;
 				}
 				if (insn.getOpcode() >= 0) prev = insn;
 			}
 		}
-		assertTrue(sawLiteral, "the label must still be built through Component");
+		assertTrue(sawTranslatable, "the label must still be built through Component.translatable");
 	}
 
 	/**
