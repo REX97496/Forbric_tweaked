@@ -1654,7 +1654,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		String owner = ForeignType.CLIENT_HOOKS.internal(Ecosystem.NEOFORGE);
 		String target = "net/forbric/kernel/runtime/KernelForgeClientInit";
 		String init = "(Lnet/minecraft/client/Minecraft;Lnet/minecraft/server/packs/resources/ReloadableResourceManager;)V";
-		String particles = "(Lnet/minecraft/client/particle/ParticleResources;)V";
+		String particles = "(Lnet/minecraft/client/particle/ParticleEngine;)V";
 		List<MethodInsnNode> matches = new java.util.ArrayList<>();
 		MethodNode constructor = null;
 		int initializers = 0, providers = 0;
