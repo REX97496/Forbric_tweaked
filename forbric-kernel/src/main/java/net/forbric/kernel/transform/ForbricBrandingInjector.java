@@ -49,6 +49,8 @@ public final class ForbricBrandingInjector implements ClassTransformer {
 	static final String DEBUG_VERSION = "net.minecraft.client.gui.components.debug.DebugEntryVersion";
 	static final String BRANDING = "net/forbric/kernel/util/ForbricBranding";
 	private static final String NEO_VERSION = "net/neoforged/neoforge/common/NeoForgeVersion";
+	/** The same class on the other mc line; accept both rather than swapping one for the other. */
+	private static final String NEO_VERSION_INTERNAL = "net/neoforged/neoforge/internal/versions/neoforge/NeoForgeVersion";
 
 	public static boolean enabled() {
 		return !"off".equalsIgnoreCase(System.getProperty(PROPERTY, "on"));
@@ -99,7 +101,8 @@ public final class ForbricBrandingInjector implements ClassTransformer {
 			if (insn instanceof MethodInsnNode call) {
 				if (call.owner.equals(modList) && call.name.equals("get")) get = call;
 				else if (call.owner.equals(modList) && call.name.equals("size") && call.getPrevious() == get) size = call;
-				else if (call.owner.equals(NEO_VERSION) && call.name.equals("getVersion")) version = call;
+				else if ((call.owner.equals(NEO_VERSION) || call.owner.equals(NEO_VERSION_INTERNAL))
+						&& call.name.equals("getVersion")) version = call;
 			} else if (insn instanceof InvokeDynamicInsnNode indy && version != null && indy.getPrevious() == version
 					&& indy.desc.equals("(Ljava/lang/String;)Ljava/lang/String;")) {
 				concat = indy;
