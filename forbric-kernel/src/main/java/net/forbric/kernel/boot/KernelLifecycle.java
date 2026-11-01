@@ -2986,9 +2986,34 @@ public final class KernelLifecycle {
 							bf.setAccessible(true);
 							bus = bf.get(null);
 							if (bus != null) {
-								ForbricLog.info("[Forbric/NeoRegisters] lastRegistrationBus was null; using NeoForge.%s", bf.getName());
-								break;
-							}
+	// register(IEventBus) throws IllegalStateException('Cannot register DeferredRegister to more than one event
+	// bus.') whenever registeredEventBus is already true -- which javap shows it does unconditionally at offset 4.
+	// So the attach pass could never succeed; read the two flags instead and let them say where the event went.
+	for (java.lang.reflect.Field f : neoMod.getDeclaredFields()) {
+		if (!drType.isAssignableFrom(f.getType())) continue;
+		try {
+			f.setAccessible(true);
+			Object dr = f.get(null);
+			if (dr == null) continue;
+			java.lang.reflect.Field reg = null; java.lang.reflect.Field seen = null;
+			for (Class<?> c = drType; c != null && c != Object.class; c = c.getSuperclass()) {
+				for (java.lang.reflect.Field df : c.getDeclaredFields()) {
+					if ("registeredEventBus".equals(df.getName())) { df.setAccessible(true); reg = df; }
+					if ("seenRegisterEvent".equals(df.getName())) { df.setAccessible(true); seen = df; }
+				}
+				if (reg != null && seen != null) break;
+			}
+			ForbricLog.info("[Forbric/NeoRegisters] %s registeredEventBus=%s seenRegisterEvent=%s entries=%s",
+					f.getName(), reg == null ? "?" : String.valueOf(reg.get(dr)),
+					seen == null ? "?" : String.valueOf(seen.get(dr)),
+					drType.getMethod("getEntries").invoke(dr) instanceof java.util.Collection ? "collection" : "?");
+		} catch (Throwable oneFailed) {
+			Throwable cause = oneFailed.getCause() == null ? oneFailed : oneFailed.getCause();
+			ForbricLog.warn("[Forbric/NeoRegisters] could not read %s: %s: %s", f.getName(),
+					cause.getClass().getName(), cause.getMessage());
+		}
+	}
+}
 						}
 					} catch (Throwable noBus) {
 						ForbricLog.warn("[Forbric/NeoRegisters] could not find an event bus: %s: %s",
@@ -3009,15 +3034,37 @@ public final class KernelLifecycle {
 							if (dr == null) continue;
 							drType.getMethod("register", Class.forName("net.neoforged.bus.api.IEventBus", false, gameLoader))
 									.invoke(dr, bus);
-							attached++;
 						} catch (Throwable oneFailed) {
 							ForbricLog.warn("[Forbric/NeoRegisters] could not attach %s: %s: %s", f.getName(),
 					oneFailed.getClass().getName(), oneFailed.getMessage());
 						}
 					}
 				}
-				ForbricLog.info("[Forbric/NeoRegisters] attached %d of NeoForgeMod's DeferredRegister(s) to the event bus",
-						attached);
+				ForbricLog.info("[Forbric/NeoRegisters] now attaching");
+				// measured: registeredEventBus=false and seenRegisterEvent=false on all eight, so register(bus) cannot
+				// hit the IllegalStateException and the event genuinely never reached them. Attach now.
+				try {
+					Class<?> busType = Class.forName("net.neoforged.bus.api.IEventBus", false, gameLoader);
+					int ok = 0;
+					for (java.lang.reflect.Field f : neoMod.getDeclaredFields()) {
+						if (!drType.isAssignableFrom(f.getType())) continue;
+						try {
+							f.setAccessible(true);
+							Object dr = f.get(null);
+							if (dr == null) continue;
+							drType.getMethod("register", busType).invoke(dr, bus);
+							ok++;
+						} catch (Throwable oneFailed) {
+							Throwable c = oneFailed.getCause() == null ? oneFailed : oneFailed.getCause();
+							ForbricLog.warn("[Forbric/NeoRegisters] attach failed on %s: %s: %s", f.getName(),
+									c.getClass().getName(), c.getMessage());
+						}
+					}
+					ForbricLog.info("[Forbric/NeoRegisters] attached %d DeferredRegister(s) of NeoForgeMod", ok);
+				} catch (Throwable attachPass) {
+					ForbricLog.warn("[Forbric/NeoRegisters] attach pass failed: %s: %s",
+							attachPass.getClass().getName(), attachPass.getMessage());
+				}
 			} catch (Throwable t) {
 				ForbricLog.warn("[Forbric/NeoRegisters] could not attach NeoForgeMod's registers: %s: %s",
 						t.getClass().getName(), t.getMessage());
