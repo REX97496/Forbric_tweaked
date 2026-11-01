@@ -4244,7 +4244,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				if (!"loadingOverlay".equals(call.name)) continue;
 				call.setOpcode(Opcodes.INVOKESTATIC);
 				call.owner = "net/forbric/kernel/runtime/ForbricLoadingOverlay";
-				call.name = "overlayOrFirst";
+				call.name = "buildOverlay";
 				call.desc = "(Lnet/neoforged/neoforgespi/earlywindow/ImmediateWindowProvider;Ljava/util/function/Supplier;"
 						+ "Ljava/util/function/Supplier;Ljava/util/function/Consumer;Z)Ljava/util/function/Supplier;";
 				call.itf = false;

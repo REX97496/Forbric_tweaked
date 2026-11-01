@@ -243,6 +243,42 @@ public final class PassiveSeeder {
 			ForbricLog.info("[Forbric/Seed] MinecraftForge LoadingModList seeded empty (zero mods) so ModLoader's "
 					+ "constructor can read FMLLoader.getLoadingModList() instead of throwing -- this family was never "
 					+ "seeded, only NeoForge's was");
+			// ModList is a DIFFERENT static from LoadingModList and is what Forge's event dispatch walks:
+			//   NullPointerException: ModList.forEachModInOrder(Consumer) because ModList.get() is null
+			//     at ModLoader.postEvent(:352) <- ForgeHooksClient.onTextureStitchedPost(:277)
+			//     <- TextureAtlas.upload(:91)          -- Description: Rendering overlay
+			// Forge fills it during its own mod-loading pass, which this process never runs. of(...) is public and
+			// sets INSTANCE; with zero mods both lists are empty.
+			Class<?> modListClass = Class.forName("net.minecraftforge.fml.ModList", false, gameLoader);
+			Object seededModList = modListClass.getMethod("get").invoke(null);
+			if (seededModList == null) {
+				seededModList = modListClass.getMethod("of", List.class, List.class).invoke(null, List.of(), List.of());
+			}
+			// of(...) builds the ModList but leaves three private lists null; Forge fills them in a later step of its
+			// own loading pass, which this process never runs:
+			//   NullPointerException: List.forEach(Consumer) because "this.sortedContainers" is null
+			//     at ModList.forEachModInOrder(:222) <- ModLoader.postEvent(:352)
+			//     <- ForgeHooksClient.onTextureStitchedPost(:277)  -- Description: Rendering overlay
+			// All three are ordinary private fields -- no setter, and none of them final -- so they are written
+			// directly. Empty, because there are no mods to contain.
+			int filled = 0;
+			for (String fieldName : new String[] {"sortedContainers", "mods", "modFileScanData"}) {
+				try {
+					Field f = modListClass.getDeclaredField(fieldName);
+					f.setAccessible(true);
+					if (f.get(seededModList) == null) {
+						f.set(seededModList, List.of());
+						filled++;
+					}
+				} catch (NoSuchFieldException absentOnThisLine) {
+					ForbricLog.debug("[Forbric/Seed] ModList has no " + fieldName + " on this line");
+				}
+			}
+			if (filled > 0) {
+				ForbricLog.info("[Forbric/Seed] MinecraftForge ModList filled %d null list(s) with empty ones -- Forge's "
+						+ "event dispatch walks sortedContainers and only its own loading pass fills it, which this "
+						+ "process never runs", filled);
+			}
 		} catch (ClassNotFoundException absent) {
 			ForbricLog.debug("[Forbric/Seed] MinecraftForge FMLLoader not present — skipping");
 		} catch (Throwable t) {
