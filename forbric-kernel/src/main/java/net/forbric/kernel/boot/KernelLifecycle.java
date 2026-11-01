@@ -2893,6 +2893,24 @@ public final class KernelLifecycle {
 	/** Re-closes after the client entrypoints and redoes the id bookkeeping their registrations invalidated. */
 	/** Copies holders the registration window created into the wrappers' own maps. See ForbricRegistryHolders. */
 	private static void backfillRegistryHolders() {
+		// WHICH FILE, not what the code does. Two things in this session are unexplained: this helper's second call
+		// prints neither its info line nor the catch, and at 21:07 two runtime classes worked while provably absent
+		// from the installed runtime jar. If the process is not reading the jars this loop copies into, that is one
+		// answer to both.
+		try {
+			Class<?> probe = Class.forName("net.forbric.kernel.runtime.ForbricRegistryHolders", false, gameLoader);
+			java.security.CodeSource src = probe.getProtectionDomain().getCodeSource();
+			ForbricLog.info("[Forbric/Provenance] ForbricRegistryHolders loaded from %s",
+					src == null ? "null" : String.valueOf(src.getLocation()));
+			try (java.io.InputStream in = probe.getResourceAsStream("ForbricRegistryHolders.class")) {
+				byte[] b = in == null ? new byte[0] : in.readAllBytes();
+				ForbricLog.info("[Forbric/Provenance] its own class bytes: %d, contains probe=%s", b.length,
+						new String(b, java.nio.charset.StandardCharsets.ISO_8859_1).contains("delegate probe"));
+			}
+		} catch (Throwable prov) {
+			ForbricLog.warn("[Forbric/Provenance] could not read its own provenance: %s: %s",
+					prov.getClass().getName(), prov.getMessage());
+		}
 		try {
 			Class<?> holders = Class.forName("net.forbric.kernel.runtime.ForbricRegistryHolders", true, gameLoader);
 			Object copied = holders.getMethod("backfill").invoke(null);
