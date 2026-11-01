@@ -177,6 +177,16 @@ public final class KernelLifecycle {
 				packRepository == null ? "null" : packRepository.getClass().getName(),
 				resourceManager == null ? "null" : resourceManager.getClass().getName());
 		onClientModLoading();
+		// Before anything freezes: the wrapper maps DeferredHolder reads are filled by the registration window only
+		// for Forge-side entries. Measured: the three NeoForge attributes resolve by ResourceLocation and miss by
+		// ResourceKey, because NamespacedWrapper.getHolder(ResourceKey) is holdersByName.get(key.location()).
+		try {
+			Class<?> holders = Class.forName("net.forbric.kernel.runtime.ForbricRegistryHolders", true, gameLoader);
+			Object copied = holders.getMethod("backfill").invoke(null);
+			ForbricLog.info("[Forbric/RegistryHolders] backfill finished: %s holder(s) copied", copied);
+		} catch (Throwable t) {
+			ForbricLog.warn("[Forbric/RegistryHolders] backfill did not run", t);
+		}
 		reportNeoForgeAttributes();
 		onClientResourcePacks(packRepository);
 	}
@@ -2878,11 +2888,27 @@ public final class KernelLifecycle {
 	}
 
 	/** Re-closes after the client entrypoints and redoes the id bookkeeping their registrations invalidated. */
+	/** Copies holders the registration window created into the wrappers' own maps. See ForbricRegistryHolders. */
+	private static void backfillRegistryHolders() {
+		try {
+			Class<?> holders = Class.forName("net.forbric.kernel.runtime.ForbricRegistryHolders", true, gameLoader);
+			Object copied = holders.getMethod("backfill").invoke(null);
+			ForbricLog.info("[Forbric/RegistryHolders] backfill finished: %s holder(s) copied", copied);
+		} catch (Throwable t) {
+			ForbricLog.warn("[Forbric/RegistryHolders] backfill did not run", t);
+		}
+	}
+
 	private static void closeClientEntrypointWindow(ClassLoader cl, ReopenedRegistries opened) {
 		try {
 			linkBlockItems(cl);
 			recloseForgeRegistries(cl, opened);
 			rootRegistry(cl, false);
+			// HERE, not in onClientBeginReached. The freeze below is what initialises DefaultAttributes, and that
+			// runs from Hooks.startClient at Minecraft.<init>:446 -- BEFORE the begin at :945 that the other call
+			// hangs off. Measured: with the backfill only at the later site it still ran (+1611 holders) and
+			// "unbound value" was still thrown four times, because the failure had already happened.
+			backfillRegistryHolders();
 			freeze(cl);
 			rebuildNeoForgeBlockStateIds(cl);
 		} catch (Throwable t) {
