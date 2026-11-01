@@ -63,6 +63,18 @@ import net.forbric.kernel.util.ForbricLog;
 public final class NeoClientSetupHookInjector implements ClassTransformer {
 	private static final String MINECRAFT = "net.minecraft.client.Minecraft";
 	private static final String CLIENT_MOD_LOADER = ForeignType.CLIENT_MOD_LOADER.internal(Ecosystem.NEOFORGE);
+	/**
+	 * MEASURED against the merged base, and the reason this repair cannot land as written: the WHOLE of
+	 * {@code Minecraft.<init>} (javap lines 261-1376) contains exactly ONE ClientModLoader call --
+	 * {@code begin(Minecraft, PackRepository, ReloadableResourceManager)} at javap line 945. There is no
+	 * {@code finish()} and no {@code completeModLoading()} in it. And {@code begin} is the call the kernel already
+	 * redirects for its own entrypoint window, so anchoring this repair there means solving the ordering the class
+	 * comment describes (the Options/GameOptions race) rather than merely changing a selector name.
+	 *
+	 * <p>The selector is left as {@code finish} deliberately: it is the correct name for the semantics this hook
+	 * wants, and it is absent. Silently retargeting to {@code begin} would make the repair fire at a point the
+	 * comment above explains does not work.
+	 */
 	private static final String FINISH = "finish";
 	private static final String HOOK_OWNER = "net/forbric/kernel/boot/KernelLifecycle";
 	private static final String HOOK_NAME = "onNeoClientSetup";
@@ -98,14 +110,14 @@ public final class NeoClientSetupHookInjector implements ClassTransformer {
 				method.instructions.insertBefore(call,
 						new MethodInsnNode(Opcodes.INVOKESTATIC, HOOK_OWNER, HOOK_NAME, "()V", false));
 				changed = true;
-				ForbricLog.debug("[Forbric/Transform] NeoForge client-setup hook installed at ClientModLoader.finish");
+				ForbricLog.debug("[Forbric/Transform] NeoForge client-setup hook installed at ClientModLoader.completeModLoading");
 				break; // one call site; a second hook would only re-enter the once-only guard
 			}
 		}
 		if (!changed) {
 			// Not fatal on its own — KernelLifecycle's guard means the phases simply never fire — but it is the
 			// difference between mods being set up and silently not, so it must not pass unnoticed.
-			ForbricLog.warn("[Forbric/Transform] no ClientModLoader.finish() call in Minecraft.<init> — the NeoForge "
+			ForbricLog.warn("[Forbric/Transform] no ClientModLoader.completeModLoading() call in Minecraft.<init> — the NeoForge "
 					+ "client setup lifecycle will NOT fire; mods that set up from FMLClientSetupEvent will do nothing");
 			return classBytes;
 		}
