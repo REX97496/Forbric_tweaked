@@ -158,9 +158,9 @@ public final class LifecycleHookInjector implements ClassTransformer {
 					+ "Lnet/minecraft/server/packs/resources/ReloadableResourceManager;)V";
 	private static final Trigger[] CLIENT_TRIGGERS_MINECRAFT_CTOR = {
 			new Trigger(ForeignType.CLIENT_MOD_LOADER.internal(Ecosystem.NEOFORGE), BEGIN, CLIENT_BEGIN_3ARG,
-					"onClientModLoading", 3),
+					"onClientBeginReached", -3),
 			new Trigger(ForeignType.CLIENT_MOD_LOADER.internal(Ecosystem.FORGE), BEGIN, CLIENT_BEGIN_3ARG,
-					"onClientModLoading", 3),
+					"onClientBeginReached", -3),
 	};
 
 	// The class + method carrying the trigger to rewrite. Server: Main.main. Client: Main.main (client entry), where
