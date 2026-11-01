@@ -118,6 +118,24 @@ public final class KernelLifecycle {
 	 * as the server — the ecosystems' baselines + content are side-independent; the Fabric ecosystem runs its
 	 * {@code client} entrypoints rather than {@code server} ones, driven by {@code KernelFabricLoader}'s env type.
 	 */
+	/**
+	 * The client's single 1.21.1 entry: NeoForge's {@code ClientModLoader.begin(Minecraft, PackRepository,
+	 * ReloadableResourceManager)} carries BOTH things the kernel needs from the client's first moment, so one hook takes
+	 * them together.
+	 *
+	 * <p>Two separate hooks cannot both live here. LifecycleHookInjector owns that call and, with the old no-arg
+	 * trigger, popped all three arguments -- including the PackRepository -- one frame before
+	 * {@link #onClientResourcePacks(Object)} would have used it. ClientPackHookInjector wants the same instruction and
+	 * matches nothing on this line, which its own comment already said.
+	 *
+	 * <p>Parameters are Object because this is boot-side and cannot name net.minecraft types at compile time; the
+	 * injector rewrites the descriptor at the call site for exactly this reason.
+	 */
+	public static void onClientBeginReached(Object minecraft, Object packRepository, Object resourceManager) {
+		onClientModLoading();
+		onClientResourcePacks(packRepository);
+	}
+
 	public static void onClientModLoading() {
 		driveNativeRegistration(Side.CLIENT);
 	}

@@ -248,7 +248,20 @@ public final class LifecycleHookInjector implements ClassTransformer {
 				Trigger t = matchTrigger(call);
 				if (t == null) continue;
 
-				if (t.popSlots() == 0) {
+				if (t.popSlots() < 0) {
+					// Keep the arguments AND rewrite the descriptor to that many Objects. The descriptors are still
+					// applied in order up the stack, and a game type is assignable to Object, so the call site verifies
+					// while the hook stays boot-side and names no net.minecraft type. Needed because 1.21.1's
+					// begin(Minecraft, PackRepository, ReloadableResourceManager) is the only place the live
+					// PackRepository reaches the kernel, and the old no-arg trigger POPped all three -- so
+					// KernelClientPacks.addTo was never called and every ecosystem asset stayed unreachable.
+					StringBuilder rewritten = new StringBuilder("(");
+					for (int slot = 0; slot < -t.popSlots(); slot++) rewritten.append("Ljava/lang/Object;");
+					rewritten.append(")V");
+					call.owner = KERNEL_HOOK_OWNER;
+					call.name = t.hookName();
+					call.desc = rewritten.toString();
+				} else if (t.popSlots() == 0) {
 					// Same descriptor: keep the argument on the stack, just retarget owner+name.
 					call.owner = KERNEL_HOOK_OWNER;
 					call.name = t.hookName();
