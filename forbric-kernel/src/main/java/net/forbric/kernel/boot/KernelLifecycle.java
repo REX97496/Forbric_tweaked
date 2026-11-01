@@ -2978,93 +2978,10 @@ public final class KernelLifecycle {
 				ForbricLog.warn("[Forbric/Attributes] could not hold validation: %s: %s",
 						holdFailed.getClass().getName(), holdFailed.getMessage());
 			}
-			// NeoForge's own DeferredRegisters are never attached to a mod bus on this base, so RegisterEvent reaches
-			// nobody that matters. DeferredRegister.register(IEventBus) DOES exist (javap -p: guarded by registeredEventBus,
-			// so calling it twice cannot double-add listeners) and NewRegistryEvent now reaches this bus (measured 0 -> 1),
-			// so the registries the listeners resolve already exist by here.
-			try {
-				Class<?> neoMod = Class.forName("net.neoforged.neoforge.common.NeoForgeMod", true, gameLoader);
-				Class<?> drType = Class.forName("net.neoforged.neoforge.registries.DeferredRegister", false, gameLoader);
-				// lastRegistrationBus, not null: the earlier edit that renamed this declaration replaced a comment
-				// instead of the assignment, so bus was hardcoded null and every attach pass skipped its own body.
-				Object bus = lastRegistrationBus;
-				if (bus == null) {
-					try {
-						Class<?> neo = Class.forName("net.neoforged.neoforge.common.NeoForge", true, gameLoader);
-						for (java.lang.reflect.Field bf : neo.getDeclaredFields()) {
-							if (!java.lang.reflect.Modifier.isStatic(bf.getModifiers())) continue;
-							if (!Class.forName("net.neoforged.bus.api.IEventBus", false, gameLoader).isAssignableFrom(bf.getType()))
-								continue;
-							bf.setAccessible(true);
-							bus = bf.get(null);
-							if (bus != null) {
-	// register(IEventBus) throws IllegalStateException('Cannot register DeferredRegister to more than one event
-	// bus.') whenever registeredEventBus is already true -- which javap shows it does unconditionally at offset 4.
-	// So the attach pass could never succeed; read the two flags instead and let them say where the event went.
-	for (java.lang.reflect.Field f : neoMod.getDeclaredFields()) {
-		if (!drType.isAssignableFrom(f.getType())) continue;
-		try {
-			f.setAccessible(true);
-			Object dr = f.get(null);
-			if (dr == null) continue;
-			java.lang.reflect.Field reg = null; java.lang.reflect.Field seen = null;
-			for (Class<?> c = drType; c != null && c != Object.class; c = c.getSuperclass()) {
-				for (java.lang.reflect.Field df : c.getDeclaredFields()) {
-					if ("registeredEventBus".equals(df.getName())) { df.setAccessible(true); reg = df; }
-					if ("seenRegisterEvent".equals(df.getName())) { df.setAccessible(true); seen = df; }
-				}
-				if (reg != null && seen != null) break;
-			}
-			ForbricLog.info("[Forbric/NeoRegisters] FLAGS %s @%d class=%s declaredIn=%s registeredEventBus=%s seenRegisterEvent=%s",
-					f.getName(), System.identityHashCode(dr), dr.getClass().getName(), reg == null ? "?" : reg.getDeclaringClass().getName(), reg == null ? "?" : String.valueOf(reg.get(dr)),
-					seen == null ? "?" : String.valueOf(seen.get(dr)),
-					"");
-		} catch (Throwable oneFailed) {
-			Throwable cause = oneFailed.getCause() == null ? oneFailed : oneFailed.getCause();
-			ForbricLog.warn("[Forbric/NeoRegisters] could not read %s: %s: %s", f.getName(),
-					cause.getClass().getName(), cause.getMessage());
-		}
-	}
-}
-						}
-					} catch (Throwable noBus) {
-						ForbricLog.warn("[Forbric/NeoRegisters] could not find an event bus: %s: %s",
-								noBus.getClass().getName(), noBus.getMessage());
-					}
-				}
-				ForbricLog.info("[Forbric/NeoRegisters] now attaching");
-				// measured: registeredEventBus=false and seenRegisterEvent=false on all eight, so register(bus) cannot
-				// hit the IllegalStateException and the event genuinely never reached them. Attach now.
-				try {
-					Class<?> busType = Class.forName("net.neoforged.bus.api.IEventBus", false, gameLoader);
-					int ok = 0;
-					for (java.lang.reflect.Field f : neoMod.getDeclaredFields()) {
-						if (!drType.isAssignableFrom(f.getType())) continue;
-						try {
-							f.setAccessible(true);
-							Object dr = f.get(null);
-							if (dr == null) continue;
-							java.lang.reflect.Method rm = drType.getMethod("register", busType);
-			ForbricLog.info("[Forbric/NeoRegisters] %s @%d -> %s(%s)", f.getName(),
-					System.identityHashCode(dr), rm.getDeclaringClass().getSimpleName(),
-					java.util.Arrays.toString(rm.getParameterTypes()));
-			rm.invoke(dr, bus);
-							ok++;
-						} catch (Throwable oneFailed) {
-							Throwable c = oneFailed.getCause() == null ? oneFailed : oneFailed.getCause();
-							ForbricLog.warn("[Forbric/NeoRegisters] attach failed on %s: %s: %s", f.getName(),
-									c.getClass().getName(), c.getMessage());
-						}
-					}
-					ForbricLog.info("[Forbric/NeoRegisters] attached %d DeferredRegister(s) of NeoForgeMod", ok);
-				} catch (Throwable attachPass) {
-					ForbricLog.warn("[Forbric/NeoRegisters] attach pass failed: %s: %s",
-							attachPass.getClass().getName(), attachPass.getMessage());
-				}
-			} catch (Throwable t) {
-				ForbricLog.warn("[Forbric/NeoRegisters] could not attach NeoForgeMod's registers: %s: %s",
-						t.getClass().getName(), t.getMessage());
-			}
+			// The attach pass that used to live here is gone. It existed only because driveNativeRegistration ran AFTER
+			// freeze (Minecraft.<init>:945 vs :446), so NeoForge's own DeferredRegisters had nothing to attach to by then.
+			// driveNativeRegistration now runs before the freeze (measured: log line 371 vs 763), which means
+			// registerNeoForgeContent does the attaching through NeoForge's own path and this workaround is not needed.
 			// MEASURED, and it is what fifty-eight rounds were chasing: driveNativeRegistration(CLIENT) was only
 			// reachable from onClientModLoading(), which runs at Minecraft.<init>:945, while this freeze runs at :446.
 			// DefaultAttributes therefore initialised before NeoForge's three attributes existed. Register first.
