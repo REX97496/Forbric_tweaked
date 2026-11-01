@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -305,6 +305,11 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		out.add(scanned("serveEveryNamespaceTheMergedBaseCarries",
 				"VanillaPackResources.getNamespaces returns a set naming only vanilla, so NeoForge's own shader "
 						+ "lookup cannot resolve assets/neoforge even though the merged base carries it"));
+		// scanned(), LAST. One GETSTATIC becomes an INVOKESTATIC: same stack, same instruction count, no frames.
+		out.add(scanned("resolveDeferredHoldersThroughTheWritableRoot",
+				"NeoForge's DeferredHolder resolves its registry through BuiltInRegistries.REGISTRY, which is "
+						+ "Forge-wrapped on this base while the registration window writes to the plain "
+						+ "WRITABLE_REGISTRY behind it, so a registered entry is not found by its key"));
 		return List.copyOf(out);
 	}
 
@@ -403,6 +408,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			changed |= claim(reporter, "runTheSplashTickOnlyWhenItExists", runTheSplashTickOnlyWhenItExists(node));
 			changed |= claim(reporter, "answerTheLoadingOverlayWhenNoEarlyWindowExists", answerTheLoadingOverlayWhenNoEarlyWindowExists(node));
 			changed |= claim(reporter, "serveEveryNamespaceTheMergedBaseCarries", serveEveryNamespaceTheMergedBaseCarries(node));
+			changed |= claim(reporter, "resolveDeferredHoldersThroughTheWritableRoot", resolveDeferredHoldersThroughTheWritableRoot(node));
 			changed |= namedOldLoader && adoptInteropHooksTheBaseStillNamesAfterTheOldLoader(node);
 
 			byte[] result = classBytes;
@@ -4285,6 +4291,38 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 					+ "-- its own set named only vanilla, so assets/neoforge could not be resolved and NeoForge's "
 					+ "shader registration died on a file that is present");
 			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Points NeoForge's DeferredHolder at the plain root registry the registration window actually wrote to.
+	 *
+	 * <p>DeferredHolder.getRegistry() is {@code BuiltInRegistries.REGISTRY.get(key.registry())} and bind() then asks
+	 * that registry {@code getHolder(key)}. On this base REGISTRY is the Forge-wrapped view (KernelLifecycle's own
+	 * comment says so) while everything registered lands in WRITABLE_REGISTRY, so a registered entry is present in
+	 * {@code BuiltInRegistries.ATTRIBUTE.keySet()} and simultaneously missing from the lookup.
+	 *
+	 * <p>One GETSTATIC replaced by one INVOKESTATIC: both push a single reference, the instruction count is unchanged,
+	 * and the helper decides at runtime whether WRITABLE_REGISTRY exists on this line.
+	 */
+	static boolean resolveDeferredHoldersThroughTheWritableRoot(ClassNode node) {
+		if (!"net/neoforged/neoforge/registries/DeferredHolder".equals(node.name)) return false;
+		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+			if (!"getRegistry".equals(method.name)) continue;
+			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+				if (!(insn instanceof FieldInsnNode read)) continue;
+				if (read.getOpcode() != Opcodes.GETSTATIC) continue;
+				if (!"net/minecraft/core/registries/BuiltInRegistries".equals(read.owner)) continue;
+				if (!"REGISTRY".equals(read.name)) continue;
+				org.objectweb.asm.tree.MethodInsnNode call = new org.objectweb.asm.tree.MethodInsnNode(
+						Opcodes.INVOKESTATIC, "net/forbric/kernel/runtime/ForbricRegistryRoot", "forLookup",
+						"()Lnet/minecraft/core/Registry;", false);
+				method.instructions.set(insn, call);
+				ForbricLog.info("[Forbric/MergedBaseCompat] DeferredHolder resolves through the writable root -- "
+						+ "REGISTRY is Forge-wrapped here and NeoForge's own attributes were registered behind it");
+				return true;
+			}
 		}
 		return false;
 	}
