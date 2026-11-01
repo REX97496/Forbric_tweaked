@@ -2912,6 +2912,43 @@ public final class KernelLifecycle {
 			// hangs off. Measured: with the backfill only at the later site it still ran (+1611 holders) and
 			// "unbound value" was still thrown four times, because the failure had already happened.
 			backfillRegistryHolders();
+			// DIAGNOSTIC ONLY, inline on purpose: the same report placed inside the backfill helper never printed,
+			// which means that helper is not reached on this path. Three identities settle whether the registry
+			// DeferredHolder resolves through is the one BuiltInRegistries.ATTRIBUTE holds.
+			try {
+				Class<?> bi = Class.forName("net.minecraft.core.registries.BuiltInRegistries", false, cl);
+				Object attrField = bi.getField("ATTRIBUTE").get(null);
+				Object root = bi.getField("REGISTRY").get(null);
+				Object rl = null;
+				try {
+					rl = Class.forName("net.minecraft.resources.ResourceLocation", false, cl)
+							.getMethod("parse", String.class).invoke(null, "minecraft:attribute");
+				} catch (ClassNotFoundException identifierInstead) {
+					rl = Class.forName("net.minecraft.resources.Identifier", false, cl)
+							.getMethod("parse", String.class).invoke(null, "minecraft:attribute");
+				}
+				// The erased parameter is the id class itself (Identifier on 1.21.1), not Object:
+				// MappedRegistry.get(Object) does not exist and asking for it threw NoSuchMethodException.
+				Object fromRoot = root.getClass().getMethod("get", rl.getClass()).invoke(root, rl);
+				Object holder = null;
+				if (fromRoot != null) {
+					try {
+						holder = fromRoot.getClass().getMethod("getHolder", Class.forName(
+								"net/minecraft/resources/ResourceKey".replace('/', '.'), false, cl));
+					} catch (NoSuchMethodException differentShape) {
+						holder = "no getHolder(ResourceKey)";
+					}
+				}
+				ForbricLog.info("[Forbric/Identity] ATTRIBUTE field=%s@%d  REGISTRY.get=%s@%d  same=%s",
+						attrField == null ? "null" : attrField.getClass().getSimpleName(),
+						System.identityHashCode(attrField),
+						fromRoot == null ? "null" : fromRoot.getClass().getSimpleName(),
+						System.identityHashCode(fromRoot),
+						attrField == fromRoot);
+			} catch (Throwable idFailure) {
+				ForbricLog.warn("[Forbric/Identity] check failed: %s: %s", idFailure.getClass().getName(),
+						idFailure.getMessage());
+			}
 			freeze(cl);
 			rebuildNeoForgeBlockStateIds(cl);
 		} catch (Throwable t) {
