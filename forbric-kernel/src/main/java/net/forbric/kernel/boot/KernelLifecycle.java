@@ -878,6 +878,11 @@ public final class KernelLifecycle {
 				// than this point (measured twice: delegate.getRaw and wrapper.get both return null at freeze), so the
 				// question is whether NeoForge's own DeferredRegisters are among what fires here.
 				try {
+					if (!buses.isEmpty()) {
+						lastRegistrationBus = buses.get(buses.size() - 1);
+						ForbricLog.info("[Forbric/Buses] captured %s from %d bus(es)",
+								lastRegistrationBus.getClass().getName(), buses.size());
+					}
 					for (int bi = 0; bi < buses.size(); bi++) {
 						ForbricLog.info("[Forbric/Buses] bus %d of %d: %s", bi, buses.size(),
 								buses.get(bi) == null ? "null" : buses.get(bi).getClass().getName());
@@ -887,6 +892,8 @@ public final class KernelLifecycle {
 							busProbe.getMessage());
 				}
 				lastRegistrationBus = buses.isEmpty() ? null : buses.get(buses.size() - 1);
+				ForbricLog.info("[Forbric/Buses] captured %s from %d bus(es) for the later attach pass",
+						lastRegistrationBus == null ? "null" : lastRegistrationBus.getClass().getName(), buses.size());
 				n = fireRegisterEvents(cl, buses);
 			} catch (Throwable t) {
 				ForbricLog.warn("[Forbric/Lifecycle] could not fire RegisterEvent — mods that register content "
