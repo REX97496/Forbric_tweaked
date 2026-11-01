@@ -2,6 +2,7 @@
 package net.forbric.kernel.runtime;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Map;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -118,7 +119,10 @@ public final class ForbricRegistryHolders {
 			rootField.setAccessible(true);
 			Object root = rootField.get(null);
 			if (!(root instanceof Registry<?> rootRegistry)) return 0;
-			for (Object value : rootRegistry) {
+			ForbricLog.warn("[Forbric/RegistryHolders] root pass is disabled: iterating the root registry deadlocks "
+					+ "during registration, so this is the identity report only");
+			if (rootRegistry == null) return 0;
+			for (Object value : new Object[0]) {
 				if (!(value instanceof Registry<?> inner)) continue;
 				Field mapField = findField(inner.getClass(), "holdersByName");
 				if (mapField == null) continue;
@@ -148,9 +152,42 @@ public final class ForbricRegistryHolders {
 				}
 			}
 		} catch (Throwable t) {
-			ForbricLog.warn("[Forbric/RegistryHolders] root pass did not run", t);
+			ForbricLog.warn("[Forbric/RegistryHolders] root pass did not run: %s: %s", t.getClass().getName(),
+					t.getMessage());
 		}
+		reportIdentity();
 		return copied;
+	}
+
+	/** Prints whether the root registry hands back the same attribute registry the field holds. */
+	private static void reportIdentity() {
+		try {
+			Field rootField = BuiltInRegistries.class.getDeclaredField("REGISTRY");
+			rootField.setAccessible(true);
+			Object root = rootField.get(null);
+			Field attrField = BuiltInRegistries.class.getDeclaredField("ATTRIBUTE");
+			attrField.setAccessible(true);
+			Object attrFieldValue = attrField.get(null);
+			Object fromRoot = null;
+			try {
+				Method get = root.getClass().getMethod("get", Class.forName("net.minecraft.resources.Identifier"));
+				fromRoot = get.invoke(root, Class.forName("net.minecraft.resources.Identifier")
+						.getMethod("parse", String.class).invoke(null, "minecraft:attribute"));
+			} catch (Throwable noIdentifier) {
+				Method get = root.getClass().getMethod("get", Class.forName("net.minecraft.resources.ResourceLocation"));
+				fromRoot = get.invoke(root, Class.forName("net.minecraft.resources.ResourceLocation")
+						.getMethod("parse", String.class).invoke(null, "minecraft:attribute"));
+			}
+			ForbricLog.info("[Forbric/RegistryHolders] identity: ATTRIBUTE field=%s (%d)  REGISTRY.get=%s (%d)  same=%s",
+					attrFieldValue == null ? "null" : attrFieldValue.getClass().getSimpleName(),
+					System.identityHashCode(attrFieldValue),
+					fromRoot == null ? "null" : fromRoot.getClass().getSimpleName(),
+					System.identityHashCode(fromRoot),
+					attrFieldValue == fromRoot);
+		} catch (Throwable t) {
+			ForbricLog.warn("[Forbric/RegistryHolders] identity check failed: %s: %s", t.getClass().getName(),
+					t.getMessage());
+		}
 	}
 
 	/** Copies every ResourceLocation-keyed Holder map on {@code source} into {@code byName}, never overwriting. */
