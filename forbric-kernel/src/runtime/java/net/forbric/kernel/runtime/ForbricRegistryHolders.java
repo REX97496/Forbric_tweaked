@@ -53,6 +53,7 @@ public final class ForbricRegistryHolders {
 			try {
 				registry = f.get(null);
 			} catch (Throwable t) {
+				ForbricLog.debug("[Forbric/RegistryHolders] could not read built-in registry field", t);
 				continue;
 			}
 			if (registry == null) continue;
@@ -82,8 +83,9 @@ public final class ForbricRegistryHolders {
 								copyFrom(v, byName);
 								sources.add(c.getSimpleName() + "." + d.getName());
 							}
-						} catch (Throwable ignored) {
-							// not readable: nothing to copy from it
+						} catch (Throwable notReadable) {
+							ForbricLog.debug("[Forbric/RegistryHolders] could not read a holder map on "
+									+ registry.getClass().getName(), notReadable);
 						}
 					}
 				}
@@ -119,8 +121,8 @@ public final class ForbricRegistryHolders {
 							byName.putIfAbsent(key, holder);
 						}
 					}
-				} catch (Throwable ignored) {
-					// a map that is not ResourceLocation-keyed: nothing to copy
+				} catch (Throwable notAMap) {
+					ForbricLog.debug("[Forbric/RegistryHolders] a map field could not be read or iterated", notAMap);
 				}
 			}
 		}
@@ -131,7 +133,7 @@ public final class ForbricRegistryHolders {
 			try {
 				return c.getDeclaredField(name);
 			} catch (NoSuchFieldException next) {
-				// keep walking
+				ForbricLog.debug("[Forbric/RegistryHolders] " + c.getName() + " has no " + name + " -- walking up");
 			}
 		}
 		return null;
