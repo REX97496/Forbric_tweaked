@@ -244,8 +244,15 @@ public final class ForbricRegistryHolders {
 					if (byName.containsKey(id)) continue;
 					Object raw = getRaw.invoke(delegate, id);
 					Object holder = raw == null ? null : wrap.invoke(registry, raw);
-					ForbricLog.info("[Forbric/RegistryHolders] neoforge:%s raw=%s holder=%s", name,
-							raw == null ? "null" : raw.getClass().getSimpleName(),
+					Object viaWrapper;
+					try {
+						viaWrapper = registry.getClass().getMethod("get", idType).invoke(registry, id);
+					} catch (Throwable noGet) {
+						viaWrapper = null;
+					}
+					ForbricLog.info("[Forbric/RegistryHolders] neoforge:%s delegate.getRaw=%s wrapper.get=%s holder=%s",
+							name, raw == null ? "null" : raw.getClass().getSimpleName(),
+							viaWrapper == null ? "null" : viaWrapper.getClass().getSimpleName(),
 							holder == null ? "null" : holder.getClass().getSimpleName());
 					if (holder != null) {
 						byName.put(id, holder);
