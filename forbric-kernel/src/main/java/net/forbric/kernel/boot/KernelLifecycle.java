@@ -3003,10 +3003,10 @@ public final class KernelLifecycle {
 				}
 				if (reg != null && seen != null) break;
 			}
-			ForbricLog.info("[Forbric/NeoRegisters] FLAGS %s @%d registeredEventBus=%s seenRegisterEvent=%s entries=%s",
-					f.getName(), System.identityHashCode(dr), reg == null ? "?" : String.valueOf(reg.get(dr)),
+			ForbricLog.info("[Forbric/NeoRegisters] FLAGS %s @%d class=%s declaredIn=%s registeredEventBus=%s seenRegisterEvent=%s",
+					f.getName(), System.identityHashCode(dr), dr.getClass().getName(), reg == null ? "?" : reg.getDeclaringClass().getName(), reg == null ? "?" : String.valueOf(reg.get(dr)),
 					seen == null ? "?" : String.valueOf(seen.get(dr)),
-					drType.getMethod("getEntries").invoke(dr) instanceof java.util.Collection ? "collection" : "?");
+					"");
 		} catch (Throwable oneFailed) {
 			Throwable cause = oneFailed.getCause() == null ? oneFailed : oneFailed.getCause();
 			ForbricLog.warn("[Forbric/NeoRegisters] could not read %s: %s: %s", f.getName(),
