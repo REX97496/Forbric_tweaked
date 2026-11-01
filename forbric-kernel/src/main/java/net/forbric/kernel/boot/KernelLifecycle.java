@@ -183,7 +183,8 @@ public final class KernelLifecycle {
 		try {
 			Class<?> holders = Class.forName("net.forbric.kernel.runtime.ForbricRegistryHolders", true, gameLoader);
 			Object copied = holders.getMethod("backfill").invoke(null);
-			ForbricLog.info("[Forbric/RegistryHolders] backfill finished: %s holder(s) copied", copied);
+			Object fromRoot = holders.getMethod("backfillFromRoot").invoke(null);
+			ForbricLog.info("[Forbric/RegistryHolders] backfill finished: %s from fields, %s from the root registry", copied, fromRoot);
 		} catch (Throwable t) {
 			ForbricLog.warn("[Forbric/RegistryHolders] backfill did not run", t);
 		}
@@ -2893,7 +2894,9 @@ public final class KernelLifecycle {
 		try {
 			Class<?> holders = Class.forName("net.forbric.kernel.runtime.ForbricRegistryHolders", true, gameLoader);
 			Object copied = holders.getMethod("backfill").invoke(null);
-			ForbricLog.info("[Forbric/RegistryHolders] backfill finished: %s holder(s) copied", copied);
+			Object fromRoot = holders.getMethod("backfillFromRoot").invoke(null);
+			ForbricLog.info("[Forbric/RegistryHolders] backfill finished: %s from fields, %s from the root registry",
+					copied, fromRoot);
 		} catch (Throwable t) {
 			ForbricLog.warn("[Forbric/RegistryHolders] backfill did not run", t);
 		}

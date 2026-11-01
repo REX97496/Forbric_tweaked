@@ -102,6 +102,57 @@ public final class ForbricRegistryHolders {
 		return copied;
 	}
 
+	/**
+	 * Backfills the registries reached through the ROOT registry, which are not the same objects as the fields.
+	 *
+	 * <p>Measured: [Forbric/AttrCheck] reports that {@code BuiltInRegistries.REGISTRY.get(minecraft:attribute)} is a
+	 * NamespacedWrapper, and backfilling {@code BuiltInRegistries.ATTRIBUTE}'s wrapper copied three holders -- yet
+	 * the lookup DeferredHolder performs still missed. The two ATTRIBUTE lines in the log (+31 then +3) are two
+	 * DIFFERENT wrappers reporting the same field name, so the entries went into the one the field holds while the
+	 * root hands back another. This walks the root's own entries as well.
+	 */
+	static int backfillFromRoot() {
+		int copied = 0;
+		try {
+			Field rootField = BuiltInRegistries.class.getDeclaredField("REGISTRY");
+			rootField.setAccessible(true);
+			Object root = rootField.get(null);
+			if (!(root instanceof Registry<?> rootRegistry)) return 0;
+			for (Object value : rootRegistry) {
+				if (!(value instanceof Registry<?> inner)) continue;
+				Field mapField = findField(inner.getClass(), "holdersByName");
+				if (mapField == null) continue;
+				mapField.setAccessible(true);
+				@SuppressWarnings("unchecked")
+				Map<Object, Object> byName = (Map<Object, Object>) mapField.get(inner);
+				if (byName == null) continue;
+				int before = byName.size();
+				copyFrom(inner, byName);
+				for (Class<?> c = inner.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+					for (Field d : c.getDeclaredFields()) {
+						try {
+							d.setAccessible(true);
+							Object v = d.get(inner);
+							if (v instanceof Registry<?> && v != inner) copyFrom(v, byName);
+						} catch (Throwable notReadable) {
+							ForbricLog.debug("[Forbric/RegistryHolders] root pass: a registry field was unreadable", notReadable);
+						}
+					}
+				}
+				int added = byName.size() - before;
+				if (added > 0) {
+					copied += added;
+					ForbricLog.info("[Forbric/RegistryHolders] ROOT-pass %s: +%d holder(s) -- these are the wrappers the "
+							+ "root registry hands out, which are not the ones the BuiltInRegistries fields hold",
+							inner.getClass().getName(), added);
+				}
+			}
+		} catch (Throwable t) {
+			ForbricLog.warn("[Forbric/RegistryHolders] root pass did not run", t);
+		}
+		return copied;
+	}
+
 	/** Copies every ResourceLocation-keyed Holder map on {@code source} into {@code byName}, never overwriting. */
 	private static void copyFrom(Object source, Map<Object, Object> byName) {
 		for (Class<?> c = source.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
