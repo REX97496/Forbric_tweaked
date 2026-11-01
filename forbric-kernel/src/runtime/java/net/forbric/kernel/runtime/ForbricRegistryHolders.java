@@ -140,9 +140,13 @@ public final class ForbricRegistryHolders {
 			}
 			if (registry == null) continue;
 			Field mapField = findField(registry.getClass(), "holdersByName");
-			if (mapField == null) continue;
 			Field delegateField = findField(registry.getClass(), "delegate");
-			if (delegateField == null) continue;
+			// Unconditional, because two rounds produced no output at all and there was no way to tell a skipped
+			// registry from an uncalled method.
+			ForbricLog.info("[Forbric/RegistryHolders] delegate probe %s (%s): holdersByName=%s delegate=%s",
+					f.getName(), registry.getClass().getSimpleName(),
+					mapField == null ? "absent" : "found", delegateField == null ? "absent" : "found");
+			if (mapField == null || delegateField == null) continue;
 			try {
 				mapField.setAccessible(true);
 				@SuppressWarnings("unchecked")
