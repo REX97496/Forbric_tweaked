@@ -2987,7 +2987,8 @@ public final class KernelLifecycle {
 									.invoke(dr, bus);
 							attached++;
 						} catch (Throwable oneFailed) {
-							ForbricLog.debug("[Forbric/NeoRegisters] could not attach " + f.getName(), oneFailed);
+							ForbricLog.warn("[Forbric/NeoRegisters] could not attach %s: %s: %s", f.getName(),
+					oneFailed.getClass().getName(), oneFailed.getMessage());
 						}
 					}
 				}
