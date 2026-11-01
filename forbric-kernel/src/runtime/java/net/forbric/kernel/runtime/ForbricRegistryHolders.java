@@ -248,6 +248,7 @@ public final class ForbricRegistryHolders {
 					try {
 						viaWrapper = registry.getClass().getMethod("get", idType).invoke(registry, id);
 					} catch (Throwable noGet) {
+						ForbricLog.debug("[Forbric/RegistryHolders] the wrapper has no get(id) for this id type", noGet);
 						viaWrapper = null;
 					}
 					ForbricLog.info("[Forbric/RegistryHolders] neoforge:%s delegate.getRaw=%s wrapper.get=%s holder=%s",
@@ -338,6 +339,7 @@ public final class ForbricRegistryHolders {
 				fromRoot = get.invoke(root, Class.forName("net.minecraft.resources.Identifier")
 						.getMethod("parse", String.class).invoke(null, "minecraft:attribute"));
 			} catch (Throwable noIdentifier) {
+				ForbricLog.debug("[Forbric/RegistryHolders] noIdentifier while reading the registry", noIdentifier);
 				Method get = root.getClass().getMethod("get", Class.forName("net.minecraft.resources.ResourceLocation"));
 				fromRoot = get.invoke(root, Class.forName("net.minecraft.resources.ResourceLocation")
 						.getMethod("parse", String.class).invoke(null, "minecraft:attribute"));
