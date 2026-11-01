@@ -194,7 +194,12 @@ public final class KernelLifecycle {
 		onClientResourcePacks(packRepository);
 	}
 
+	/** Set once driveNativeRegistration has run for the client, whichever call site got there first. */
+	private static boolean nativeRegistrationDriven;
+
 	public static void onClientModLoading() {
+		if (nativeRegistrationDriven) return;
+		nativeRegistrationDriven = true;
 		driveNativeRegistration(Side.CLIENT);
 	}
 
@@ -3059,6 +3064,13 @@ public final class KernelLifecycle {
 			} catch (Throwable t) {
 				ForbricLog.warn("[Forbric/NeoRegisters] could not attach NeoForgeMod's registers: %s: %s",
 						t.getClass().getName(), t.getMessage());
+			}
+			// MEASURED, and it is what fifty-eight rounds were chasing: driveNativeRegistration(CLIENT) was only
+			// reachable from onClientModLoading(), which runs at Minecraft.<init>:945, while this freeze runs at :446.
+			// DefaultAttributes therefore initialised before NeoForge's three attributes existed. Register first.
+			if (!nativeRegistrationDriven) {
+				nativeRegistrationDriven = true;
+				driveNativeRegistration(Side.CLIENT);
 			}
 			backfillRegistryHolders();
 			// DIAGNOSTIC ONLY, inline on purpose: the same report placed inside the backfill helper never printed,
