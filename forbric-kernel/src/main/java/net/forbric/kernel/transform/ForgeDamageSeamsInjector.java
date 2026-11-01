@@ -134,13 +134,16 @@ public final class ForgeDamageSeamsInjector implements ClassTransformer {
 				stores++;
 			}
 		}
+		// One measurement instead of another adjusted guard: say whether the narrowed shape was accepted and, when it
+		// is not, which count is off. A silent return false here is what four rounds of edits kept walking into.
+		ForbricLog.info("[Forbric/DamageNarrow] prologue=%d stores=%d pre=%s", code.size(), stores, pre != null);
 		if (stores != 1) return false;
 
 		LabelNode end = new LabelNode(), go = new LabelNode();
 		InsnList hurt = new InsnList();
 		hurt.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		container(hurt);
-		hurt.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		hurt.add(new VarInsnNode(Opcodes.ALOAD, 1));
 		hurt.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "hurt",
 				"(L" + LIVING + ";L" + CONTAINER + ";" + SOURCE + ")Z", false));
 		hurt.add(new JumpInsnNode(Opcodes.IFNE, end));
