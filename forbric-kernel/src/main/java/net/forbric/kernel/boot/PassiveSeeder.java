@@ -115,6 +115,7 @@ public final class PassiveSeeder {
 	public static void seedAll(ClassLoader gameLoader, Path gameDir, Side side) {
 		seedNeoForgeLoader(gameLoader, gameDir, side);
 		seedForgeLoader(gameLoader, gameDir, side);
+		seedEarlyWindowProvider(gameLoader, side);
 		seedNeoForgeModList(gameLoader);
 		seedNeoForgePaths(gameLoader, gameDir);
 		// Normally a no-op by now: KernelBoot seeds the MinecraftForge identity pre-Mixin, because its
@@ -208,7 +209,7 @@ public final class PassiveSeeder {
 	 */
 	private static void seedForgeLoader(ClassLoader gameLoader, Path gameDir, Side side) {
 		try {
-			Class<?> fmlLoader = Class.forName("net.minecraftforge.fml.loading.FMLLoader", false, gameLoader);
+			Class<?> fmlLoader = Class.forName(ForeignType.FML_LOADER.binary(Ecosystem.FORGE), false, gameLoader);
 			Field field = fmlLoader.getDeclaredField("loadingModList");
 			field.setAccessible(true);
 			if (field.get(null) != null) {
@@ -230,7 +231,7 @@ public final class PassiveSeeder {
 			// modlauncher types on its classpath (no src/main class mentions cpw.mods.modlauncher).
 			Class<?> layerMgr = Class.forName("net.forbric.kernel.runtime.ForbricModuleLayerManager", true, gameLoader);
 			Object layerMgrInstance = layerMgr.getConstructor().newInstance();
-			Field layerField = Class.forName("net.minecraftforge.fml.loading.FMLLoader", false, gameLoader)
+			Field layerField = Class.forName(ForeignType.FML_LOADER.binary(Ecosystem.FORGE), false, gameLoader)
 					.getDeclaredField("moduleLayerManager");
 			layerField.setAccessible(true);
 			if (layerField.get(null) == null) {
@@ -246,6 +247,116 @@ public final class PassiveSeeder {
 			ForbricLog.debug("[Forbric/Seed] MinecraftForge FMLLoader not present — skipping");
 		} catch (Throwable t) {
 			ForbricLog.warn("[Forbric/Seed] could not seed MinecraftForge LoadingModList", unwrap(t));
+		}
+	}
+
+	/**
+	 * Gives NeoForge's immediate-window handler a provider on a line where nothing loaded one.
+	 *
+	 * <p>Measured from the crash report of the first client launch that got past Bootstrap:
+	 *
+	 * <pre>
+	 *   NullPointerException: ImmediateWindowProvider.setupMinecraftWindow(IntSupplier, IntSupplier, String, LongSupplier)
+	 *     at ImmediateWindowHandler.setupMinecraftWindow(:77)
+	 *     at com.mojang.blaze3d.platform.Window.&lt;init&gt;(Window.java:89)
+	 *     at Minecraft.&lt;init&gt;(Minecraft.java:467)   -- Description: Initializing game
+	 * </pre>
+	 *
+	 * <p>NeoForge patches Window's constructor to delegate to ImmediateWindowHandler, which forwards to
+	 * {@code private static ImmediateWindowProvider provider}. That field is only assigned by
+	 * {@code ImmediateWindowHandler.load(String, String[])}, which a kernel launch never calls -- so it is null and the
+	 * client dies creating its window.
+	 *
+	 * <p>NeoForge ships the right answer for exactly this case: {@code ImmediateWindowHandler$DummyProvider}, a
+	 * package-private final record whose setupMinecraftWindow hands the window straight back to vanilla. This installs
+	 * one when none is present.
+	 *
+	 * <p>WHAT THIS DOES NOT DO: it does not give this line a real early-loading splash window. DummyProvider draws
+	 * nothing, which is what a kernel launch wants and what updateProgress is already neutered for.
+	 */
+	private static void seedEarlyWindowProvider(ClassLoader gameLoader, Side side) {
+		try {
+			Class<?> handler = Class.forName("net.neoforged.fml.loading.ImmediateWindowHandler", false, gameLoader);
+			Field provider = handler.getDeclaredField("provider");
+			provider.setAccessible(true);
+			if (provider.get(null) != null) {
+				return;
+			}
+			// DummyProvider is NOT "no early window" -- it is a sentinel whose setupMinecraftWindow throws
+			// IllegalStateException("How did you get here?"). Measured by trying it: seeding it moved the failure
+			// from a NullPointerException to that IllegalStateException, from the same frame.
+			//
+			// DisplayWindow is the real implementation and is public. Its normal entry point,
+			// ImmediateWindowHandler.load(String, String[]), is unusable here: its first instructions are
+			// Launcher.INSTANCE.findLayerManager().orElseThrow(), i.e. ModLauncher's layer manager, which this
+			// process does not have. So the provider is constructed and initialized directly instead.
+			Class<?> providerClass = Class.forName("net.neoforged.fml.earlydisplay.DisplayWindow", true, gameLoader);
+			Object instance = providerClass.getConstructor().newInstance();
+			// The args MUST go here. DisplayWindow builds its own OptionParser over what initialize receives, and
+			// calling it with an empty array is why the first attempt still failed: the two options were on the game
+			// command line (vanilla logged "Completely ignored arguments: [--fml.mcVersion, 1.21.1,
+			// --fml.neoForgeVersion, 21.1.249]") but this call never saw them, so forgeVersion parsed to null and
+			// setupMinecraftWindow died splitting it at :535.
+			java.lang.reflect.Method initialize = providerClass.getMethod("initialize", String[].class);
+			String mc = versionInfoField(gameLoader, "mcVersion");
+			String neo = versionInfoField(gameLoader, "neoForgeVersion");
+			if (mc == null || neo == null) {
+				ForbricLog.warn("[Forbric/Seed] could not read the seeded MC/NeoForge versions, so DisplayWindow will "
+						+ "receive no --fml.* options and will fail splitting a null forgeVersion");
+				initialize.invoke(instance, (Object) new String[0]);
+			} else {
+				initialize.invoke(instance, (Object) new String[] {"--fml.mcVersion", mc,
+						"--fml.neoForgeVersion", neo});
+				ForbricLog.info("[Forbric/Seed] DisplayWindow initialized with --fml.mcVersion %s and "
+						+ "--fml.neoForgeVersion %s — it parses its own copy of the command line, so these have to be "
+						+ "handed to initialize() rather than only put on the game command line", mc, neo);
+			}
+			provider.set(null, instance);
+			ForbricLog.info("[Forbric/Seed] ImmediateWindowHandler.provider seeded with NeoForge's real DisplayWindow "
+					+ "(--> and initialized) because load() begins with ModLauncher's layer manager and this process "
+					+ "has none; DummyProvider was tried first and refuses by design");
+			// earlyProgress is the ProgressMeter the loading overlay ticks. load() normally creates it; this process
+			// never calls load(), so it stays null and the next client frame dies on it:
+			//   NullPointerException: ProgressMeter.complete() because earlyProgress is null
+			//     at ImmediateWindowHandler.loadingOverlay(:89) <- Minecraft.<init>(Minecraft.java:622)
+			// One meter with one step, already at 0, so a complete() is meaningful rather than a no-op on nothing.
+			Field progress = handler.getDeclaredField("earlyProgress");
+			progress.setAccessible(true);
+			if (progress.get(null) == null) {
+				Class<?> meterClass = Class.forName("net.neoforged.fml.loading.progress.ProgressMeter", true,
+						gameLoader);
+				Class<?> messageClass = Class.forName("net.neoforged.fml.loading.progress.Message", true, gameLoader);
+				Class<?> typeClass = Class.forName("net.neoforged.fml.loading.progress.Message$MessageType", true,
+						gameLoader);
+				Object type = typeClass.getEnumConstants()[0];
+				Object message = messageClass.getConstructor(String.class, typeClass).newInstance("startup", type);
+				Object meter = meterClass
+						.getConstructor(String.class, int.class, int.class, messageClass)
+						.newInstance("forbric", 1, 0, message);
+				progress.set(null, meter);
+				ForbricLog.info("[Forbric/Seed] ImmediateWindowHandler.earlyProgress seeded with a one-step meter — "
+						+ "load() normally creates it and this process never calls load(), so the loading overlay was "
+						+ "ticking nothing and NPE'd from Minecraft.<init>:622");
+			}
+		} catch (ClassNotFoundException absent) {
+			ForbricLog.debug("[Forbric/Seed] no ImmediateWindowHandler on this line — nothing to seed");
+		} catch (Throwable t) {
+			ForbricLog.warn("[Forbric/Seed] could not seed the immediate-window provider", unwrap(t));
+		}
+	}
+
+	/** One component of the seeded NeoForge VersionInfo, by accessor name, or null. */
+	private static String versionInfoField(ClassLoader loader, String accessor) {
+		try {
+			Class<?> fml = Class.forName(ForeignType.FML_LOADER.binary(Ecosystem.NEOFORGE), false, loader);
+			Object info = fml.getMethod("versionInfo").invoke(null);
+			if (info == null) {
+				return null;
+			}
+			return String.valueOf(info.getClass().getMethod(accessor).invoke(info));
+		} catch (Throwable t) {
+			ForbricLog.debug("[Forbric/Seed] could not read VersionInfo." + accessor + " reflectively", unwrap(t));
+			return null;
 		}
 	}
 

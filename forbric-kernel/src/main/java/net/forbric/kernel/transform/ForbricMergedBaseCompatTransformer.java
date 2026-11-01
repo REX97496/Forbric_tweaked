@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -292,6 +292,15 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		out.add(scanned("delegateAProbedEventsNoArgConstructorToItsOwnShortestOne",
 				"FML lifecycle events are probed for a no-arg constructor too, and their chain is "
 						+ "Event <- ModLifecycleEvent <- the event, one level deeper than the first strategy reaches"));
+		// scanned(), LAST. Narrower than emptying BackgroundWaiter.runAndTick, which would also drop the
+		// ExecutorService.submit that carries the bootstrap TASK itself.
+		out.add(scanned("runTheSplashTickOnlyWhenItExists",
+				"NeoForge's bootstrap loop calls a tick Runnable that is null when no early loading window is "
+						+ "running, which is every kernel launch, so the client dies in Bootstrap at Main.main:114"));
+		// scanned(), LAST. The same retarget recipe as the row above, one frame further into the client boot.
+		out.add(scanned("answerTheLoadingOverlayWhenNoEarlyWindowExists",
+				"DisplayWindow.loadingOverlay answers with a sentinel (\"How did you get here?\"), so the overlay "
+						+ "handoff from Minecraft.<init> dies on a line this subsystem supports elsewhere"));
 		return List.copyOf(out);
 	}
 
@@ -387,6 +396,8 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			changed |= claim(reporter, "answerTheForgeVersionForgeCannotRead", answerTheForgeVersionForgeCannotRead(node));
 			changed |= claim(reporter, "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith(node));
 			changed |= claim(reporter, "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", delegateAProbedEventsNoArgConstructorToItsOwnShortestOne(node));
+			changed |= claim(reporter, "runTheSplashTickOnlyWhenItExists", runTheSplashTickOnlyWhenItExists(node));
+			changed |= claim(reporter, "answerTheLoadingOverlayWhenNoEarlyWindowExists", answerTheLoadingOverlayWhenNoEarlyWindowExists(node));
 			changed |= namedOldLoader && adoptInteropHooksTheBaseStillNamesAfterTheOldLoader(node);
 
 			byte[] result = classBytes;
@@ -4179,5 +4190,69 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				+ " -- FML's lifecycle events are probed for a no-arg ctor to read a ListenerList, and their chain "
 				+ "(Event <- ModLifecycleEvent <- event) is one level deeper than the superclass-based strategy reaches");
 		return true;
+	}
+
+	/**
+	 * Makes NeoForge's bootstrap loop tolerate a null tick instead of calling it.
+	 *
+	 * <p>One opcode swap, at the only {@code Runnable.run()} in the loop: INVOKEINTERFACE becomes an INVOKESTATIC into
+	 * the runtime set. The receiver is popped either way, the instruction count is unchanged, and no StackMapTable is
+	 * needed -- which matters because this kernel can only use COMPUTE_MAXS.
+	 *
+	 * <p>NOT done by emptying the method: offset 9 submits the bootstrap TASK to the executor, so a neuter here would
+	 * stop the boot from running at all rather than from crashing.
+	 */
+	static boolean runTheSplashTickOnlyWhenItExists(ClassNode node) {
+		if (!"net/neoforged/fml/loading/BackgroundWaiter".equals(node.name)) return false;
+		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+			if (!"runAndTick".equals(method.name)) continue;
+			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+				if (!(insn instanceof org.objectweb.asm.tree.MethodInsnNode call)) continue;
+				if (call.getOpcode() != Opcodes.INVOKEINTERFACE) continue;
+				if (!"java/lang/Runnable".equals(call.owner)) continue;
+				if (!"run".equals(call.name) || !"()V".equals(call.desc)) continue;
+				call.setOpcode(Opcodes.INVOKESTATIC);
+				call.owner = "net/forbric/kernel/runtime/ForbricNullSafe";
+				call.name = "runOrSkip";
+				call.desc = "(Ljava/lang/Runnable;)V";
+				call.itf = false;
+				ForbricLog.info("[Forbric/MergedBaseCompat] BackgroundWaiter.runAndTick calls its splash tick through "
+						+ "the null-safe wrapper -- NeoForge passes null when no early window is running, which is every "
+						+ "kernel launch, and the loop called it anyway from Main.main:114");
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Answers the loading-overlay handoff without asking a provider that refuses it.
+	 *
+	 * <p>ImmediateWindowHandler.loadingOverlay is completeProgress then provider.loadingOverlay(...) then areturn. The
+	 * provider call is offset 13; DisplayWindow answers it with IllegalStateException("How did you get here?"). One
+	 * opcode swap to a static that returns the caller's first Supplier keeps the stack shape and the instruction count,
+	 * so no frames are needed.
+	 */
+	static boolean answerTheLoadingOverlayWhenNoEarlyWindowExists(ClassNode node) {
+		if (!"net/neoforged/fml/loading/ImmediateWindowHandler".equals(node.name)) return false;
+		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+			if (!"loadingOverlay".equals(method.name)) continue;
+			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+				if (!(insn instanceof org.objectweb.asm.tree.MethodInsnNode call)) continue;
+				if (call.getOpcode() != Opcodes.INVOKEINTERFACE) continue;
+				if (!"net/neoforged/neoforgespi/earlywindow/ImmediateWindowProvider".equals(call.owner)) continue;
+				if (!"loadingOverlay".equals(call.name)) continue;
+				call.setOpcode(Opcodes.INVOKESTATIC);
+				call.owner = "net/forbric/kernel/runtime/ForbricLoadingOverlay";
+				call.name = "overlayOrFirst";
+				call.desc = "(Lnet/neoforged/neoforgespi/earlywindow/ImmediateWindowProvider;Ljava/util/function/Supplier;"
+						+ "Ljava/util/function/Supplier;Ljava/util/function/Consumer;Z)Ljava/util/function/Supplier;";
+				call.itf = false;
+				ForbricLog.info("[Forbric/MergedBaseCompat] the loading overlay comes from the caller instead of the "
+						+ "early-window provider -- DisplayWindow answers that handoff with a sentinel");
+				return true;
+			}
+		}
+		return false;
 	}
 }

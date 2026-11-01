@@ -1281,6 +1281,26 @@ public final class KernelBoot {
 		ForbricLog.info("[Forbric/Boot] merged base %s entry loaded through kernel loader; lifecycle redirected to "
 				+ "the kernel — handing to vanilla boot", side.name().toLowerCase());
 
+		// NeoForge's early-display window parses two command-line options of its own, and nothing on this path supplies
+		// them. Measured from the crash report of the first launch that got as far as creating the window:
+		//   RuntimeException: ExecutionException: NullPointerException: "forgeVersion" is null -> String.split
+		//     at DisplayWindow.setupMinecraftWindow(:535)
+		// javap on DisplayWindow shows exactly two fml.* options in its OptionParser: fml.mcVersion and
+		// fml.neoForgeVersion. FML normally passes them; a kernel launch does not, so the option parses to null and the
+		// version banner splits it.
+		if (side.api().isClient()) {
+			gameArgs.add("--fml.mcVersion");
+			gameArgs.add(gameVersion);
+			String neoForgeVersion = seededNeoForgeVersion(loader);
+			if (neoForgeVersion != null) {
+				gameArgs.add("--fml.neoForgeVersion");
+				gameArgs.add(neoForgeVersion);
+			} else {
+				ForbricLog.warn("[Forbric/Boot] could not read the seeded NeoForge version, so --fml.neoForgeVersion "
+						+ "is NOT on the client command line and DisplayWindow will fail splitting a null version");
+			}
+		}
+
 		Method main = mainClass.getMethod("main", String[].class);
 		main.invoke(null, (Object) gameArgs.toArray(new String[0]));
 	}
@@ -1291,6 +1311,24 @@ public final class KernelBoot {
 	 * {@code -Dforbric.fluidInteractions=off} ({@code fluidInteractions} false): with the repair on, a MinecraftForge
 	 * mod's fluid rules run through exactly that method, and a neuter there silences them with every test still green.
 	 */
+	/**
+	 * The NeoForge version the seeder wrote into FMLLoader's VersionInfo, or null if it cannot be read.
+	 *
+	 * <p>Read reflectively because the boot half has no NeoForge types at compile time, and read AFTER seeding rather
+	 * than guessed, so the value on the client command line is the same one the rest of the boot reports.
+	 */
+	private static String seededNeoForgeVersion(ClassLoader loader) {
+		try {
+			Class<?> fmlLoader = Class.forName(ForeignType.FML_LOADER.binary(Ecosystem.NEOFORGE), false, loader);
+			Object info = fmlLoader.getMethod("versionInfo").invoke(null);
+			if (info == null) return null;
+			return String.valueOf(info.getClass().getMethod("neoForgeVersion").invoke(info));
+		} catch (Throwable t) {
+			ForbricLog.debug("[Forbric/Boot] could not read the seeded NeoForge version reflectively", t);
+			return null;
+		}
+	}
+
 	static MethodBodyNeuter neuters(Side side, boolean fluidInteractions) {
 		MethodBodyNeuter neuter = new MethodBodyNeuter();
 		if (side == Side.CLIENT) {
