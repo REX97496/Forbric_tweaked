@@ -2973,8 +2973,28 @@ public final class KernelLifecycle {
 			try {
 				Class<?> neoMod = Class.forName("net.neoforged.neoforge.common.NeoForgeMod", true, gameLoader);
 				Class<?> drType = Class.forName("net.neoforged.neoforge.registries.DeferredRegister", false, gameLoader);
-				Object bus = null;
-				// bus comes from lastRegistrationBus, set where RegisterEvent is fired
+				// lastRegistrationBus, not null: the earlier edit that renamed this declaration replaced a comment
+				// instead of the assignment, so bus was hardcoded null and every attach pass skipped its own body.
+				Object bus = lastRegistrationBus;
+				if (bus == null) {
+					try {
+						Class<?> neo = Class.forName("net.neoforged.neoforge.common.NeoForge", true, gameLoader);
+						for (java.lang.reflect.Field bf : neo.getDeclaredFields()) {
+							if (!java.lang.reflect.Modifier.isStatic(bf.getModifiers())) continue;
+							if (!Class.forName("net.neoforged.bus.api.IEventBus", false, gameLoader).isAssignableFrom(bf.getType()))
+								continue;
+							bf.setAccessible(true);
+							bus = bf.get(null);
+							if (bus != null) {
+								ForbricLog.info("[Forbric/NeoRegisters] lastRegistrationBus was null; using NeoForge.%s", bf.getName());
+								break;
+							}
+						}
+					} catch (Throwable noBus) {
+						ForbricLog.warn("[Forbric/NeoRegisters] could not find an event bus: %s: %s",
+								noBus.getClass().getName(), noBus.getMessage());
+					}
+				}
 				int attached = 0;
 		// "attached 0" with no per-field warning cannot distinguish a null bus (whole block skipped) from six
 		// fields that matched none of them. This line is the difference.
