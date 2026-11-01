@@ -145,6 +145,24 @@ public final class LifecycleHookInjector implements ClassTransformer {
 			new Trigger(ForeignType.CLIENT_MOD_LOADER.internal(Ecosystem.FORGE), BEGIN, "()V", "onClientModLoading", 0),
 	};
 
+	// 1.21.1's shape, and it is not the same call at a different offset -- it is a DIFFERENT SIGNATURE IN A DIFFERENT
+	// CLASS. Measured: Main.main there (797 javap lines) contains no ClientModLoader call at all, while
+	// net.minecraft.client.Minecraft.<init> calls begin with three arguments at bytecode 945. So the trigger AND the
+	// class to transform both move, which is why this is a second table plus a second transformClass rather than one
+	// more row.
+	//
+	// popSlots is 3: the three arguments are on the stack when the call is reached and the hook takes none.
+	private static final String CLIENT_MINECRAFT = "net.minecraft.client.Minecraft";
+	private static final String CLIENT_BEGIN_3ARG =
+			"(Lnet/minecraft/client/Minecraft;Lnet/minecraft/server/packs/repository/PackRepository;"
+					+ "Lnet/minecraft/server/packs/resources/ReloadableResourceManager;)V";
+	private static final Trigger[] CLIENT_TRIGGERS_MINECRAFT_CTOR = {
+			new Trigger(ForeignType.CLIENT_MOD_LOADER.internal(Ecosystem.NEOFORGE), BEGIN, CLIENT_BEGIN_3ARG,
+					"onClientModLoading", 3),
+			new Trigger(ForeignType.CLIENT_MOD_LOADER.internal(Ecosystem.FORGE), BEGIN, CLIENT_BEGIN_3ARG,
+					"onClientModLoading", 3),
+	};
+
 	// The class + method carrying the trigger to rewrite. Server: Main.main. Client: Main.main (client entry), where
 	// ClientModLoader.begin() is woven — the exact analogue of the server's ServerModLoader.load site.
 	private final String transformClass;
@@ -177,6 +195,29 @@ public final class LifecycleHookInjector implements ClassTransformer {
 	}
 
 	/** The injector for the client ({@code net.minecraft.client.main.Main.main}). */
+	/**
+	 * The client injector for a specific line.
+	 *
+	 * <p>Two shapes exist and they differ in more than an offset:
+	 *
+	 * <pre>
+	 *   26.2 and earlier  net.minecraft.client.main.Main.main   ClientModLoader.begin()V            (no args)
+	 *   1.21.1            net.minecraft.client.Minecraft.&lt;init&gt;  ClientModLoader.begin(Minecraft,
+	 *                                                              PackRepository,
+	 *                                                              ReloadableResourceManager)
+	 * </pre>
+	 *
+	 * <p>Measured with javap against both staged merged bases: 1.21.1's Main.main has no ClientModLoader call at all,
+	 * so handing it to the Main-shaped injector produces "its anchor is gone" and the boot is refused -- which is what
+	 * the first client launch through PCL CE did.
+	 */
+	public static LifecycleHookInjector forClient(String gameVersion) {
+		if (gameVersion != null && gameVersion.startsWith("1.21.1")) {
+			return new LifecycleHookInjector(CLIENT_MINECRAFT, "<init>", CLIENT_TRIGGERS_MINECRAFT_CTOR, false, false);
+		}
+		return forClient();
+	}
+
 	public static LifecycleHookInjector forClient() {
 		return new LifecycleHookInjector(CLIENT_MAIN, "main", CLIENT_TRIGGERS, false, true);
 	}

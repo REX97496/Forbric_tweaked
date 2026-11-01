@@ -482,7 +482,11 @@ public final class KernelBoot {
 			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.HopperFabricStorageInjector());
 		}
 
-		LifecycleHookInjector lifecycleHook = side.injector();
+		// The client injector depends on the LINE, not just on the side: 26.2 weaves Main.main, 1.21.1 weaves
+		// Minecraft.<init>, and a Main-shaped injector on 1.21.1 finds no anchor and refuses the boot.
+		LifecycleHookInjector lifecycleHook = side == Side.SERVER
+				? LifecycleHookInjector.forServer()
+				: LifecycleHookInjector.forClient(gameVersion);
 		chain.register(TransformPhase.COREMOD, lifecycleHook);
 
 		// Repairs class-local invariants the 3-ABI byte-merge breaks. It was written but never wired — without it the
