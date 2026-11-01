@@ -104,6 +104,79 @@ public final class ForbricRegistryHolders {
 	}
 
 	/**
+	 * THE ONE THAT MATTERS: fills the wrapper's holdersByName from its ForgeRegistry delegate.
+	 *
+	 * <p>Measured with javap, and this is the whole answer to the swim_speed failure:
+	 *
+	 * <pre>
+	 *   NamespacedWrapper.get(ResourceLocation)        -&gt; delegate.getRaw(id)      (a ForgeRegistry)
+	 *   NamespacedWrapper.getHolder(ResourceKey)      -&gt; holdersByName.get(key.location())
+	 * </pre>
+	 *
+	 * <p>Two different stores on the same object. The NeoForge attributes live in the delegate -- which is why
+	 * get(ResourceLocation) finds them, and why a whole round of AttrCheck printed PercentageAttribute / RangedAttribute
+	 * / BooleanAttribute -- and holdersByName, which getHolder reads, is a separate map the ForgeRegistry path never
+	 * fills.
+	 *
+	 * <p>And the earlier backfills could not have worked: copyFrom copies from fields whose value is a
+	 * net.minecraft.core.Registry, and the delegate is a net.minecraftforge.registries.ForgeRegistry, which is NOT one.
+	 * So the only source that actually holds the NeoForge entries was the only source being skipped.
+	 *
+	 * <p>ForgeRegistry exposes getKeys() and getRaw(id), and the wrapper exposes wrapAsHolder(value), so every id the
+	 * delegate knows becomes a Holder.Reference in holdersByName under the same ResourceLocation.
+	 *
+	 * @return how many entries were added
+	 */
+	static int backfillFromTheForgeDelegate() {
+		int copied = 0;
+		for (Field f : BuiltInRegistries.class.getFields()) {
+			if (!Registry.class.isAssignableFrom(f.getType())) continue;
+			Object registry;
+			try {
+				registry = f.get(null);
+			} catch (Throwable notReadable) {
+				ForbricLog.debug("[Forbric/RegistryHolders] a built-in registry field was unreadable", notReadable);
+				continue;
+			}
+			if (registry == null) continue;
+			Field mapField = findField(registry.getClass(), "holdersByName");
+			if (mapField == null) continue;
+			Field delegateField = findField(registry.getClass(), "delegate");
+			if (delegateField == null) continue;
+			try {
+				mapField.setAccessible(true);
+				@SuppressWarnings("unchecked")
+				Map<Object, Object> byName = (Map<Object, Object>) mapField.get(registry);
+				delegateField.setAccessible(true);
+				Object delegate = delegateField.get(registry);
+				if (byName == null || delegate == null) continue;
+				java.util.Set<?> keys = (java.util.Set<?>) delegate.getClass().getMethod("getKeys").invoke(delegate);
+				Method getRaw = delegate.getClass().getMethod("getRaw", keys.isEmpty() ? Object.class
+						: keys.iterator().next().getClass());
+				Method wrap = registry.getClass().getMethod("wrapAsHolder", Object.class);
+				int before = byName.size();
+				for (Object key : keys) {
+					if (byName.containsKey(key)) continue;
+					Object raw = getRaw.invoke(delegate, key);
+					if (raw == null) continue;
+					Object holder = wrap.invoke(registry, raw);
+					if (holder != null) byName.put(key, holder);
+				}
+				int added = byName.size() - before;
+				if (added > 0) {
+					copied += added;
+					ForbricLog.info("[Forbric/RegistryHolders] DELEGATE-pass %s: +%d holder(s) came from the "
+							+ "ForgeRegistry, which get() reads and getHolder() does not", f.getName(), added);
+				}
+			} catch (Throwable t) {
+				ForbricLog.warn("[Forbric/RegistryHolders] delegate pass failed on %s: %s: %s", f.getName(),
+						t.getClass().getName(), t.getMessage());
+			}
+		}
+		return copied;
+	}
+
+	/**
 	 * Backfills the registries reached through the ROOT registry, which are not the same objects as the fields.
 	 *
 	 * <p>Measured: [Forbric/AttrCheck] reports that {@code BuiltInRegistries.REGISTRY.get(minecraft:attribute)} is a

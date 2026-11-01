@@ -183,6 +183,8 @@ public final class KernelLifecycle {
 		try {
 			Class<?> holders = Class.forName("net.forbric.kernel.runtime.ForbricRegistryHolders", true, gameLoader);
 			Object copied = holders.getMethod("backfill").invoke(null);
+			Object fromDelegate = holders.getMethod("backfillFromTheForgeDelegate").invoke(null);
+			ForbricLog.info("[Forbric/RegistryHolders] delegate pass copied %s holder(s) from the ForgeRegistry", fromDelegate);
 			Object fromRoot = holders.getMethod("backfillFromRoot").invoke(null);
 			ForbricLog.info("[Forbric/RegistryHolders] backfill finished: %s from fields, %s from the root registry", copied, fromRoot);
 		} catch (Throwable t) {
