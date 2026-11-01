@@ -123,9 +123,13 @@ public final class ForgeDamageSeamsInjector implements ClassTransformer {
 		int stores = 0;
 		for (AbstractInsnNode insn : code) {
 			if (insn instanceof MethodInsnNode call && call.name.equals("onLivingDamagePre")) pre = insn;
+			// 1.21.1: onLivingDamagePre returns the float itself and the FSTORE follows it directly (measured:
+			// offset 86 onLivingDamagePre -> 89 fstore_3). The 26.2 shape has getNewDamage() in between, so the
+			// narrowed form accepts either predecessor.
 			if (pre != null && insn instanceof VarInsnNode v && v.getOpcode() == Opcodes.FSTORE && v.var == 3
-					&& v.getPrevious() instanceof MethodInsnNode read && read.owner.equals(CONTAINER)
-					&& read.name.equals("getNewDamage")) {
+					&& (v.getPrevious() instanceof MethodInsnNode read
+							&& ((read.owner.equals(CONTAINER) && read.name.equals("getNewDamage"))
+									|| read.name.equals("onLivingDamagePre")))) {
 				store = insn;
 				stores++;
 			}
