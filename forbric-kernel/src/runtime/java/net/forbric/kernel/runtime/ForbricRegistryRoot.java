@@ -42,7 +42,16 @@ public final class ForbricRegistryRoot {
 	}
 
 	/** The plain root registry if this line has one, else the public view. */
+	/**
+	 * Off by default. This redirect was written on the hypothesis that DeferredHolder resolved through the wrong root;
+	 * AttrCheck then showed BuiltInRegistries.REGISTRY.get(minecraft:attribute) reaches the attributes fine, so the
+	 * redirect may be the interference rather than the cure. It now returns exactly what the original bytecode returned
+	 * unless -Dforbric.registryRoot=writable asks for the A/B test.
+	 */
 	public static Registry<?> forLookup() {
+		if (!"writable".equals(System.getProperty("forbric.registryRoot", "off"))) {
+			return BuiltInRegistries.REGISTRY;
+		}
 		if (writableExists == null) {
 			try {
 				Field f = BuiltInRegistries.class.getDeclaredField("WRITABLE_REGISTRY");
