@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -301,6 +301,10 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		out.add(scanned("answerTheLoadingOverlayWhenNoEarlyWindowExists",
 				"DisplayWindow.loadingOverlay answers with a sentinel (\"How did you get here?\"), so the overlay "
 						+ "handoff from Minecraft.<init> dies on a line this subsystem supports elsewhere"));
+		// scanned(), LAST. Two instructions replaced, no branch introduced, so no StackMapTable.
+		out.add(scanned("serveEveryNamespaceTheMergedBaseCarries",
+				"VanillaPackResources.getNamespaces returns a set naming only vanilla, so NeoForge's own shader "
+						+ "lookup cannot resolve assets/neoforge even though the merged base carries it"));
 		return List.copyOf(out);
 	}
 
@@ -398,6 +402,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			changed |= claim(reporter, "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", delegateAProbedEventsNoArgConstructorToItsOwnShortestOne(node));
 			changed |= claim(reporter, "runTheSplashTickOnlyWhenItExists", runTheSplashTickOnlyWhenItExists(node));
 			changed |= claim(reporter, "answerTheLoadingOverlayWhenNoEarlyWindowExists", answerTheLoadingOverlayWhenNoEarlyWindowExists(node));
+			changed |= claim(reporter, "serveEveryNamespaceTheMergedBaseCarries", serveEveryNamespaceTheMergedBaseCarries(node));
 			changed |= namedOldLoader && adoptInteropHooksTheBaseStillNamesAfterTheOldLoader(node);
 
 			byte[] result = classBytes;
@@ -4252,6 +4257,34 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 						+ "early-window provider -- DisplayWindow answers that handoff with a sentinel");
 				return true;
 			}
+		}
+		return false;
+	}
+
+	/**
+	 * Makes the client's own pack serve every namespace the merged base carries.
+	 *
+	 * <p>VanillaPackResources.getNamespaces is two instructions and a return; the load and the field read are replaced
+	 * by one static call and one NOP. Instruction count unchanged, no branch added, so no frames are needed.
+	 */
+	static boolean serveEveryNamespaceTheMergedBaseCarries(ClassNode node) {
+		if (!"net/minecraft/server/packs/VanillaPackResources".equals(node.name)) return false;
+		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+			if (!"getNamespaces".equals(method.name)) continue;
+			AbstractInsnNode first = method.instructions.getFirst();
+			String expected = "(Lnet/minecraft/server/packs/PackType;)Ljava/util/Set;";
+			if (!expected.equals(method.desc)) continue;
+			if (!(first instanceof VarInsnNode load) || load.getOpcode() != Opcodes.ALOAD) continue;
+			AbstractInsnNode second = first.getNext();
+			if (!(second instanceof FieldInsnNode read) || read.getOpcode() != Opcodes.GETFIELD) continue;
+			org.objectweb.asm.tree.MethodInsnNode call = new org.objectweb.asm.tree.MethodInsnNode(Opcodes.INVOKESTATIC,
+					"net/forbric/kernel/runtime/ForbricVanillaNamespaces", "all", "()Ljava/util/Set;", false);
+			method.instructions.set(first, call);
+			method.instructions.set(second, new InsnNode(Opcodes.NOP));
+			ForbricLog.info("[Forbric/MergedBaseCompat] the client pack serves every namespace the merged base carries "
+					+ "-- its own set named only vanilla, so assets/neoforge could not be resolved and NeoForge's "
+					+ "shader registration died on a file that is present");
+			return true;
 		}
 		return false;
 	}
