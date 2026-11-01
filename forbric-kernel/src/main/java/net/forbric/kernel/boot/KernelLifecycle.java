@@ -735,6 +735,9 @@ public final class KernelLifecycle {
 	 * window surrounds the registration; because the kernel drives ONE pass (no dual-ecosystem refreeze), the
 	 * "Tags not bound" wall of the old weld does not arise.
 	 */
+	/** The bus RegisterEvent was last fired on, for the later passes that need to attach to the same one. */
+	private static Object lastRegistrationBus;
+
 	private static void registerNeoForgeContent(ClassLoader cl, Side side) {
 		// Whether the registration window was opened, and so whether the finally below owes it a close.
 		boolean closeWindow = false;
@@ -883,6 +886,7 @@ public final class KernelLifecycle {
 					ForbricLog.warn("[Forbric/Buses] could not enumerate: %s: %s", busProbe.getClass().getName(),
 							busProbe.getMessage());
 				}
+				lastRegistrationBus = buses.isEmpty() ? null : buses.get(buses.size() - 1);
 				n = fireRegisterEvents(cl, buses);
 			} catch (Throwable t) {
 				ForbricLog.warn("[Forbric/Lifecycle] could not fire RegisterEvent — mods that register content "
@@ -2961,6 +2965,37 @@ public final class KernelLifecycle {
 			} catch (Throwable holdFailed) {
 				ForbricLog.warn("[Forbric/Attributes] could not hold validation: %s: %s",
 						holdFailed.getClass().getName(), holdFailed.getMessage());
+			}
+			// NeoForge's own DeferredRegisters are never attached to a mod bus on this base, so RegisterEvent reaches
+			// nobody that matters. DeferredRegister.register(IEventBus) DOES exist (javap -p: guarded by registeredEventBus,
+			// so calling it twice cannot double-add listeners) and NewRegistryEvent now reaches this bus (measured 0 -> 1),
+			// so the registries the listeners resolve already exist by here.
+			try {
+				Class<?> neoMod = Class.forName("net.neoforged.neoforge.common.NeoForgeMod", false, gameLoader);
+				Class<?> drType = Class.forName("net.neoforged.neoforge.registries.DeferredRegister", false, gameLoader);
+				Object bus = null;
+				// bus comes from lastRegistrationBus, set where RegisterEvent is fired
+				int attached = 0;
+				if (bus != null) {
+					for (java.lang.reflect.Field f : neoMod.getDeclaredFields()) {
+						if (!drType.isAssignableFrom(f.getType())) continue;
+						try {
+							f.setAccessible(true);
+							Object dr = f.get(null);
+							if (dr == null) continue;
+							drType.getMethod("register", Class.forName("net.neoforged.bus.api.IEventBus", false, gameLoader))
+									.invoke(dr, bus);
+							attached++;
+						} catch (Throwable oneFailed) {
+							ForbricLog.debug("[Forbric/NeoRegisters] could not attach " + f.getName(), oneFailed);
+						}
+					}
+				}
+				ForbricLog.info("[Forbric/NeoRegisters] attached %d of NeoForgeMod's DeferredRegister(s) to the event bus",
+						attached);
+			} catch (Throwable t) {
+				ForbricLog.warn("[Forbric/NeoRegisters] could not attach NeoForgeMod's registers: %s: %s",
+						t.getClass().getName(), t.getMessage());
 			}
 			backfillRegistryHolders();
 			// DIAGNOSTIC ONLY, inline on purpose: the same report placed inside the backfill helper never printed,
