@@ -2947,6 +2947,21 @@ public final class KernelLifecycle {
 			// runs from Hooks.startClient at Minecraft.<init>:446 -- BEFORE the begin at :945 that the other call
 			// hangs off. Measured: with the backfill only at the later site it still ran (+1611 holders) and
 			// "unbound value" was still thrown four times, because the failure had already happened.
+			// ROOT CAUSE of swim_speed, measured from the stack: GameData.freezeData -> AttributeCallbacks.onValidate
+			// -> KernelForgeAttributes.validate(:81) -> DefaultAttributes.validate() -> DefaultAttributes.<clinit>
+			// -> DeferredHolder.value(neoforge:swim_speed) -> ExceptionInInitializerError. The kernel's OWN freeze-time
+			// callback forces DefaultAttributes to initialise at a point where NeoForge has not registered its three
+			// attributes yet, so the class fails to initialise and every later LivingEntity dies on it. The mechanism to
+			// suppress exactly this already exists -- holdValidation()/releaseValidation() -- and the client's entrypoint
+			// freeze is precisely a moment when it must be held.
+			try {
+				Class<?> attrs = Class.forName("net.forbric.kernel.runtime.KernelForgeAttributes", true, gameLoader);
+				attrs.getMethod("holdValidation").invoke(null);
+				ForbricLog.info("[Forbric/Attributes] validation held across the client entrypoint freeze -- it would otherwise initialise DefaultAttributes before NeoForge registers neoforge:swim_speed");
+			} catch (Throwable holdFailed) {
+				ForbricLog.warn("[Forbric/Attributes] could not hold validation: %s: %s",
+						holdFailed.getClass().getName(), holdFailed.getMessage());
+			}
 			backfillRegistryHolders();
 			// DIAGNOSTIC ONLY, inline on purpose: the same report placed inside the backfill helper never printed,
 			// which means that helper is not reached on this path. Three identities settle whether the registry
