@@ -53,8 +53,6 @@ public final class ForgeDamageSeamsInjector implements ClassTransformer {
 	static final String RUNTIME = "net/forbric/kernel/runtime/KernelLivingDamage";
 	static final String SOURCE = "Lnet/minecraft/world/damagesource/DamageSource;";
 	static final String HURT_DESC = "(Lnet/minecraft/server/level/ServerLevel;" + SOURCE + "F)V";
-	/** 1.21.1's form: no ServerLevel parameter, so every local slot is one lower. */
-	static final String HURT_DESC_2 = "(" + SOURCE + "F)V";
 	static final String SERVER_DESC = "(Lnet/minecraft/server/level/ServerLevel;" + SOURCE + "F)Z";
 
 	static boolean enabled() {
@@ -92,11 +90,6 @@ public final class ForgeDamageSeamsInjector implements ClassTransformer {
 		List<String> placed = new ArrayList<>();
 		MethodNode hurt = own(node, "actuallyHurt", HURT_DESC);
 		if (hurt != null && hurtSeams(hurt)) placed.add("Hurt and Damage in actuallyHurt");
-		else {
-			// 1.21.1 has actuallyHurt(DamageSource, float): no ServerLevel argument, so slots are one lower.
-			MethodNode narrow = own(node, "actuallyHurt", HURT_DESC_2);
-			if (narrow != null && hurtSeamsNarrow(narrow)) placed.add("Hurt and Damage in actuallyHurt (2-arg)");
-		}
 		if (node.name.equals(PLAYER)) {
 			MethodNode server = own(node, "hurtServer", SERVER_DESC);
 			if (server != null && attackSeam(server) && noteSeam(node)) placed.add("player Attack in hurtServer");
@@ -123,27 +116,20 @@ public final class ForgeDamageSeamsInjector implements ClassTransformer {
 		int stores = 0;
 		for (AbstractInsnNode insn : code) {
 			if (insn instanceof MethodInsnNode call && call.name.equals("onLivingDamagePre")) pre = insn;
-			// 1.21.1: onLivingDamagePre returns the float itself and the FSTORE follows it directly (measured:
-			// offset 86 onLivingDamagePre -> 89 fstore_3). The 26.2 shape has getNewDamage() in between, so the
-			// narrowed form accepts either predecessor.
 			if (pre != null && insn instanceof VarInsnNode v && v.getOpcode() == Opcodes.FSTORE && v.var == 3
-					&& (v.getPrevious() instanceof MethodInsnNode read
-							&& ((read.owner.equals(CONTAINER) && read.name.equals("getNewDamage"))
-									|| read.name.equals("onLivingDamagePre")))) {
+					&& v.getPrevious() instanceof MethodInsnNode read && read.owner.equals(CONTAINER)
+					&& read.name.equals("getNewDamage")) {
 				store = insn;
 				stores++;
 			}
 		}
-		// One measurement instead of another adjusted guard: say whether the narrowed shape was accepted and, when it
-		// is not, which count is off. A silent return false here is what four rounds of edits kept walking into.
-		ForbricLog.info("[Forbric/DamageNarrow] prologue=%d stores=%d pre=%s", code.size(), stores, pre != null);
 		if (stores != 1) return false;
 
 		LabelNode end = new LabelNode(), go = new LabelNode();
 		InsnList hurt = new InsnList();
 		hurt.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		container(hurt);
-		hurt.add(new VarInsnNode(Opcodes.ALOAD, 1));
+		hurt.add(new VarInsnNode(Opcodes.ALOAD, 2));
 		hurt.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "hurt",
 				"(L" + LIVING + ";L" + CONTAINER + ";" + SOURCE + ")Z", false));
 		hurt.add(new JumpInsnNode(Opcodes.IFNE, end));
@@ -161,73 +147,6 @@ public final class ForgeDamageSeamsInjector implements ClassTransformer {
 		damage.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		container(damage);
 		damage.add(new VarInsnNode(Opcodes.ALOAD, 2));
-		damage.add(new VarInsnNode(Opcodes.FLOAD, 3));
-		damage.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "damage",
-				"(L" + LIVING + ";L" + CONTAINER + ";" + SOURCE + "F)F", false));
-		damage.add(new VarInsnNode(Opcodes.FSTORE, 3));
-		method.instructions.insert(store, damage);
-		return true;
-	}
-
-	/**
-	 * The same two seams for 1.21.1's {@code actuallyHurt(DamageSource, float)}.
-	 *
-	 * <p>Identical in shape to {@link #hurtSeams} except that there is no {@code ServerLevel} parameter, so every local
-	 * slot is one lower: this=0, source=1, amount=2, and the prologue is four instructions instead of five. Kept as a
-	 * separate method rather than parameterising {@code hurtSeams} so that the 26.2 path stays byte-for-byte unchanged --
-	 * the last time a shared repair was edited for one line only, 26.2 went from 78 to 82 failures.
-	 *
-	 * <p>WHAT THIS DOES NOT DO: it does not fire the seams if the method's shape differs from what is described above; it
-	 * returns false and the caller leaves the class untouched, which is exactly what happened before this method existed.
-	 */
-	static boolean hurtSeamsNarrow(MethodNode method) {
-		if ((method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_ABSTRACT)) != 0) return false;
-		if (calls(method, "net/minecraftforge/common/ForgeHooks", "onLivingHurt") != 0
-				|| calls(method, "net/minecraftforge/common/ForgeHooks", "onLivingDamage") != 0
-				|| calls(method, RUNTIME, "hurt") != 0) return false;
-		List<AbstractInsnNode> code = code(method);
-		// aload0 aload1 invokevirtual isInvulnerableTo; ifne <end>
-		if (code.size() < 4 || !load(code.get(0), Opcodes.ALOAD, 0) || !load(code.get(1), Opcodes.ALOAD, 1)
-				|| !(code.get(2) instanceof MethodInsnNode invulnerable) || !invulnerable.name.equals("isInvulnerableTo")
-				|| code.get(3).getOpcode() != Opcodes.IFNE) return false;
-		// 1.21.1 does not call Preconditions.checkArgument here (measured: 0 against 26.2's 1), so only the
-		// onLivingDamagePre count is required.
-		if (calls(method, "net/neoforged/neoforge/common/CommonHooks", "onLivingDamagePre") != 1) return false;
-		AbstractInsnNode pre = null, store = null;
-		int stores = 0;
-		for (AbstractInsnNode insn : code) {
-			if (insn instanceof MethodInsnNode call && call.name.equals("onLivingDamagePre")) pre = insn;
-			if (pre != null && insn instanceof VarInsnNode v && v.getOpcode() == Opcodes.FSTORE && v.var == 3
-					&& v.getPrevious() instanceof MethodInsnNode read && read.owner.equals(CONTAINER)
-					&& read.name.equals("getNewDamage")) {
-				store = insn;
-				stores++;
-			}
-		}
-		if (stores != 1) return false;
-
-		LabelNode end = new LabelNode(), go = new LabelNode();
-		InsnList hurt = new InsnList();
-		hurt.add(new VarInsnNode(Opcodes.ALOAD, 0));
-		container(hurt);
-		hurt.add(new VarInsnNode(Opcodes.ALOAD, 1));
-		hurt.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "hurt",
-				"(L" + LIVING + ";L" + CONTAINER + ";" + SOURCE + ")Z", false));
-		hurt.add(new JumpInsnNode(Opcodes.IFNE, end));
-		hurt.add(new VarInsnNode(Opcodes.ALOAD, 0));
-		hurt.add(new FieldInsnNode(Opcodes.GETFIELD, LIVING, "dead", "Z"));
-		hurt.add(new JumpInsnNode(Opcodes.IFEQ, go));
-		hurt.add(end);
-		hurt.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
-		hurt.add(new InsnNode(Opcodes.RETURN));
-		hurt.add(go);
-		hurt.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
-		method.instructions.insert(code.get(3), hurt);
-
-		InsnList damage = new InsnList();
-		damage.add(new VarInsnNode(Opcodes.ALOAD, 0));
-		container(damage);
-		damage.add(new VarInsnNode(Opcodes.ALOAD, 1));
 		damage.add(new VarInsnNode(Opcodes.FLOAD, 3));
 		damage.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "damage",
 				"(L" + LIVING + ";L" + CONTAINER + ";" + SOURCE + "F)F", false));
