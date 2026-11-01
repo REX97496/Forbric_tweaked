@@ -1654,7 +1654,10 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		String owner = ForeignType.CLIENT_HOOKS.internal(Ecosystem.NEOFORGE);
 		String target = "net/forbric/kernel/runtime/KernelForgeClientInit";
 		String init = "(Lnet/minecraft/client/Minecraft;Lnet/minecraft/server/packs/resources/ReloadableResourceManager;)V";
-		String particles = "(Lnet/minecraft/client/particle/ParticleEngine;)V";
+		// Line-specific: 1.21.1 calls onRegisterParticleProviders(ParticleEngine), 26.2 calls it with
+		// ParticleResources. Accepting only one regressed the other line, so both are allowed.
+		String particlesEngine = "(Lnet/minecraft/client/particle/ParticleEngine;)V";
+		String particlesResources = "(Lnet/minecraft/client/particle/ParticleResources;)V";
 		List<MethodInsnNode> matches = new java.util.ArrayList<>();
 		MethodNode constructor = null;
 		int initializers = 0, providers = 0;
@@ -1667,7 +1670,8 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				if (!owner.equals(call.owner)) continue;
 				if (call.getOpcode() != Opcodes.INVOKESTATIC || call.itf) return false;
 				if ("initClientHooks".equals(call.name) && init.equals(call.desc)) initializers++;
-				else if ("onRegisterParticleProviders".equals(call.name) && particles.equals(call.desc)) providers++;
+				else if ("onRegisterParticleProviders".equals(call.name)
+						&& (particlesEngine.equals(call.desc) || particlesResources.equals(call.desc))) providers++;
 				else return false;
 				if (constructor != null && constructor != method) return false;
 				constructor = method;
