@@ -2971,7 +2971,7 @@ public final class KernelLifecycle {
 			// so calling it twice cannot double-add listeners) and NewRegistryEvent now reaches this bus (measured 0 -> 1),
 			// so the registries the listeners resolve already exist by here.
 			try {
-				Class<?> neoMod = Class.forName("net.neoforged.neoforge.common.NeoForgeMod", false, gameLoader);
+				Class<?> neoMod = Class.forName("net.neoforged.neoforge.common.NeoForgeMod", true, gameLoader);
 				Class<?> drType = Class.forName("net.neoforged.neoforge.registries.DeferredRegister", false, gameLoader);
 				Object bus = null;
 				// bus comes from lastRegistrationBus, set where RegisterEvent is fired
