@@ -127,7 +127,7 @@ public final class ForbricRegistryHolders {
 	 *
 	 * @return how many entries were added
 	 */
-	static int backfillFromTheForgeDelegate() {
+	public static int backfillFromTheForgeDelegate() {
 		int copied = 0;
 		for (Field f : BuiltInRegistries.class.getFields()) {
 			if (!Registry.class.isAssignableFrom(f.getType())) continue;
@@ -135,10 +135,16 @@ public final class ForbricRegistryHolders {
 			try {
 				registry = f.get(null);
 			} catch (Throwable notReadable) {
-				ForbricLog.debug("[Forbric/RegistryHolders] a built-in registry field was unreadable", notReadable);
+				// Was debug. In the delegate pass this is the only exit before the probe, so a debug-level line here
+				// made "the probe never printed" indistinguishable from "the method never ran".
+				ForbricLog.warn("[Forbric/RegistryHolders] delegate pass could not read field %s: %s: %s", f.getName(),
+						notReadable.getClass().getName(), notReadable.getMessage());
 				continue;
 			}
-			if (registry == null) continue;
+			if (registry == null) {
+				ForbricLog.info("[Forbric/RegistryHolders] delegate probe %s: registry field is null", f.getName());
+				continue;
+			}
 			Field mapField = findField(registry.getClass(), "holdersByName");
 			Field delegateField = findField(registry.getClass(), "delegate");
 			// Unconditional, because two rounds produced no output at all and there was no way to tell a skipped
@@ -181,6 +187,80 @@ public final class ForbricRegistryHolders {
 	}
 
 	/**
+	 * Puts exactly three known ids into holdersByName by asking the delegate directly.
+	 *
+	 * <p>Exists because enumerating the delegate with getKeys() copied zero. The ids NeoForge registers are known --
+	 * NeoForgeMod declares SWIM_SPEED, NAMETAG_DISTANCE and CREATIVE_FLIGHT and nothing else -- and AttrCheck already
+	 * proved delegate.getRaw finds all three by ResourceLocation. So there is no need to enumerate: ask for the three.
+	 *
+	 * <p>The id type is taken from getRaw's own parameter rather than named, because it is Identifier on 1.21.1 and
+	 * ResourceLocation elsewhere and this file must compile on both.
+	 *
+	 * @return how many were added
+	 */
+	public static int backfillTheKnownNeoForgeAttributes() {
+		int added = 0;
+		try {
+			for (Field f : BuiltInRegistries.class.getFields()) {
+				if (!"ATTRIBUTE".equals(f.getName())) continue;
+				Object registry = f.get(null);
+				if (registry == null) continue;
+				Field mapField = findField(registry.getClass(), "holdersByName");
+				Field delegateField = findField(registry.getClass(), "delegate");
+				if (mapField == null || delegateField == null) {
+					ForbricLog.warn("[Forbric/RegistryHolders] ATTRIBUTE has holdersByName=%s delegate=%s",
+							mapField == null ? "absent" : "found", delegateField == null ? "absent" : "found");
+					continue;
+				}
+				mapField.setAccessible(true);
+				delegateField.setAccessible(true);
+				@SuppressWarnings("unchecked")
+				Map<Object, Object> byName = (Map<Object, Object>) mapField.get(registry);
+				Object delegate = delegateField.get(registry);
+				if (byName == null || delegate == null) continue;
+				Method getRaw = null;
+				Class<?> idType = null;
+				for (Method m : delegate.getClass().getMethods()) {
+					if (m.getName().equals("getRaw") && m.getParameterCount() == 1) {
+						getRaw = m;
+						idType = m.getParameterTypes()[0];
+						break;
+					}
+				}
+				if (getRaw == null) {
+					ForbricLog.warn("[Forbric/RegistryHolders] the ATTRIBUTE delegate has no getRaw(id)");
+					continue;
+				}
+				Method parse = idType.getMethod("parse", String.class);
+				Method wrap = registry.getClass().getMethod("wrapAsHolder", Object.class);
+				for (String name : new String[] {"swim_speed", "nametag_distance", "creative_flight"}) {
+					Object id;
+					try {
+						id = parse.invoke(null, "neoforge:" + name);
+					} catch (Throwable parseFailed) {
+						ForbricLog.warn("[Forbric/RegistryHolders] could not parse neoforge:%s", name);
+						continue;
+					}
+					if (byName.containsKey(id)) continue;
+					Object raw = getRaw.invoke(delegate, id);
+					Object holder = raw == null ? null : wrap.invoke(registry, raw);
+					ForbricLog.info("[Forbric/RegistryHolders] neoforge:%s raw=%s holder=%s", name,
+							raw == null ? "null" : raw.getClass().getSimpleName(),
+							holder == null ? "null" : holder.getClass().getSimpleName());
+					if (holder != null) {
+						byName.put(id, holder);
+						added++;
+					}
+				}
+			}
+		} catch (Throwable t) {
+			ForbricLog.warn("[Forbric/RegistryHolders] known-attribute pass failed: %s: %s", t.getClass().getName(),
+					t.getMessage());
+		}
+		return added;
+	}
+
+	/**
 	 * Backfills the registries reached through the ROOT registry, which are not the same objects as the fields.
 	 *
 	 * <p>Measured: [Forbric/AttrCheck] reports that {@code BuiltInRegistries.REGISTRY.get(minecraft:attribute)} is a
@@ -189,7 +269,7 @@ public final class ForbricRegistryHolders {
 	 * DIFFERENT wrappers reporting the same field name, so the entries went into the one the field holds while the
 	 * root hands back another. This walks the root's own entries as well.
 	 */
-	static int backfillFromRoot() {
+	public static int backfillFromRoot() {
 		int copied = 0;
 		try {
 			Field rootField = BuiltInRegistries.class.getDeclaredField("REGISTRY");
