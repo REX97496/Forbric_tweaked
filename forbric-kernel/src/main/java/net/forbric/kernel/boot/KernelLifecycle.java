@@ -2976,6 +2976,10 @@ public final class KernelLifecycle {
 				Object bus = null;
 				// bus comes from lastRegistrationBus, set where RegisterEvent is fired
 				int attached = 0;
+		// "attached 0" with no per-field warning cannot distinguish a null bus (whole block skipped) from six
+		// fields that matched none of them. This line is the difference.
+		ForbricLog.info("[Forbric/NeoRegisters] bus=%s, NeoForgeMod has %d declared field(s)",
+				bus == null ? "null" : bus.getClass().getSimpleName(), neoMod.getDeclaredFields().length);
 				if (bus != null) {
 					for (java.lang.reflect.Field f : neoMod.getDeclaredFields()) {
 						if (!drType.isAssignableFrom(f.getType())) continue;
