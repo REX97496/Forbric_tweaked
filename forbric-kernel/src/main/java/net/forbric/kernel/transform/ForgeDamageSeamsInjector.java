@@ -183,13 +183,14 @@ public final class ForgeDamageSeamsInjector implements ClassTransformer {
 		if (code.size() < 4 || !load(code.get(0), Opcodes.ALOAD, 0) || !load(code.get(1), Opcodes.ALOAD, 1)
 				|| !(code.get(2) instanceof MethodInsnNode invulnerable) || !invulnerable.name.equals("isInvulnerableTo")
 				|| code.get(3).getOpcode() != Opcodes.IFNE) return false;
-		if (calls(method, "net/neoforged/neoforge/common/CommonHooks", "onLivingDamagePre") != 1
-				|| calls(method, "com/google/common/base/Preconditions", "checkArgument") != 1) return false;
+		// 1.21.1 does not call Preconditions.checkArgument here (measured: 0 against 26.2's 1), so only the
+		// onLivingDamagePre count is required.
+		if (calls(method, "net/neoforged/neoforge/common/CommonHooks", "onLivingDamagePre") != 1) return false;
 		AbstractInsnNode pre = null, store = null;
 		int stores = 0;
 		for (AbstractInsnNode insn : code) {
 			if (insn instanceof MethodInsnNode call && call.name.equals("onLivingDamagePre")) pre = insn;
-			if (pre != null && insn instanceof VarInsnNode v && v.getOpcode() == Opcodes.FSTORE && v.var == 2
+			if (pre != null && insn instanceof VarInsnNode v && v.getOpcode() == Opcodes.FSTORE && v.var == 3
 					&& v.getPrevious() instanceof MethodInsnNode read && read.owner.equals(CONTAINER)
 					&& read.name.equals("getNewDamage")) {
 				store = insn;
@@ -220,10 +221,10 @@ public final class ForgeDamageSeamsInjector implements ClassTransformer {
 		damage.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		container(damage);
 		damage.add(new VarInsnNode(Opcodes.ALOAD, 1));
-		damage.add(new VarInsnNode(Opcodes.FLOAD, 2));
+		damage.add(new VarInsnNode(Opcodes.FLOAD, 3));
 		damage.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "damage",
 				"(L" + LIVING + ";L" + CONTAINER + ";" + SOURCE + "F)F", false));
-		damage.add(new VarInsnNode(Opcodes.FSTORE, 2));
+		damage.add(new VarInsnNode(Opcodes.FSTORE, 3));
 		method.instructions.insert(store, damage);
 		return true;
 	}
