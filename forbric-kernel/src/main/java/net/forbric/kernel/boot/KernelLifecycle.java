@@ -2975,6 +2975,7 @@ public final class KernelLifecycle {
 					rl = Class.forName("net.minecraft.resources.ResourceLocation", false, cl)
 							.getMethod("parse", String.class).invoke(null, "minecraft:attribute");
 				} catch (ClassNotFoundException identifierInstead) {
+					ForbricLog.debug("[Forbric/Identity] no ResourceLocation; trying Identifier", identifierInstead);
 					rl = Class.forName("net.minecraft.resources.Identifier", false, cl)
 							.getMethod("parse", String.class).invoke(null, "minecraft:attribute");
 				}
@@ -2987,6 +2988,7 @@ public final class KernelLifecycle {
 						holder = fromRoot.getClass().getMethod("getHolder", Class.forName(
 								"net/minecraft/resources/ResourceKey".replace('/', '.'), false, cl));
 					} catch (NoSuchMethodException differentShape) {
+					ForbricLog.debug("[Forbric/Identity] the registry has no getHolder(ResourceKey)", differentShape);
 						holder = "no getHolder(ResourceKey)";
 					}
 				}
