@@ -61,14 +61,24 @@ public final class KernelClientPacks {
 	 * {@link #readsItsMetadataTheVanillaWay}).
 	 */
 	public static void addTo(Object packRepository, ClassLoader cl, List<Path> jars, Collection<Path> carriers) {
-		if (packRepository == null || jars == null || jars.isEmpty()) return;
+		if (packRepository == null || jars == null || jars.isEmpty()) {
+			// Was a silent early return. Whether the repository arrived, whether it was null, and whether the jar
+			// list was empty are three different failures, and none of them left a trace -- so "the hook says
+			// nothing" could not be read as anything. Named instead.
+			ForbricLog.info("[Forbric/ClientPacks] nothing added: repository=%s jars=%s",
+					packRepository == null ? "null" : "present",
+					jars == null ? "null" : String.valueOf(jars.size()));
+			return;
+		}
 		try {
 			List<Path> packJars = new ArrayList<>();
 			for (Path jar : jars) {
 				if (carriesClientAssets(jar)) packJars.add(jar);
 			}
 			if (packJars.isEmpty()) {
-				ForbricLog.debug("[Forbric/ClientPacks] no ecosystem jar carries client resources — nothing to serve");
+				ForbricLog.info("[Forbric/ClientPacks] the hook ran but no ecosystem jar carries client resources — "
+					+ "nothing to serve (%d jar(s) considered, %d carrier(s))", jars == null ? -1 : jars.size(),
+					carriers == null ? -1 : carriers.size());
 				return;
 			}
 

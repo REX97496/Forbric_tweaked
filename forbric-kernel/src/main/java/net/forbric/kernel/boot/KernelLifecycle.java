@@ -132,6 +132,12 @@ public final class KernelLifecycle {
 	 * injector rewrites the descriptor at the call site for exactly this reason.
 	 */
 	public static void onClientBeginReached(Object minecraft, Object packRepository, Object resourceManager) {
+		// Logged at the top, before anything can throw: whether this hook runs at all is a different question from
+		// whether addTo then serves anything, and both were invisible at once.
+		ForbricLog.info("[Forbric/Begin] the client entry reached the kernel: minecraft=%s repository=%s managers=%s",
+				minecraft == null ? "null" : minecraft.getClass().getName(),
+				packRepository == null ? "null" : packRepository.getClass().getName(),
+				resourceManager == null ? "null" : resourceManager.getClass().getName());
 		onClientModLoading();
 		onClientResourcePacks(packRepository);
 	}
