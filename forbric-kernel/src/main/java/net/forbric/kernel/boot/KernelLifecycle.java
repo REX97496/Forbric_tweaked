@@ -3052,7 +3052,11 @@ public final class KernelLifecycle {
 							f.setAccessible(true);
 							Object dr = f.get(null);
 							if (dr == null) continue;
-							drType.getMethod("register", busType).invoke(dr, bus);
+							java.lang.reflect.Method rm = drType.getMethod("register", busType);
+			ForbricLog.info("[Forbric/NeoRegisters] %s @%d -> %s(%s)", f.getName(),
+					System.identityHashCode(dr), rm.getDeclaringClass().getSimpleName(),
+					java.util.Arrays.toString(rm.getParameterTypes()));
+			rm.invoke(dr, bus);
 							ok++;
 						} catch (Throwable oneFailed) {
 							Throwable c = oneFailed.getCause() == null ? oneFailed : oneFailed.getCause();
