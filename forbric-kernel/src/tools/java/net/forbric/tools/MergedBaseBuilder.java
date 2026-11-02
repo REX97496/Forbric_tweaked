@@ -1989,6 +1989,18 @@ public final class MergedBaseBuilder {
 		ClassNode cn = allNodes.get(CUSTOM_PAYLOAD_NEO_CODEC);
 		if (cn == null) return;
 
+		// MEASURED FAILURE this fixes: fieldDesc below returns its fallback when the field is ABSENT, and the GETFIELD
+		// that follows was emitted unconditionally, so a class without these captured fields got bytecode referencing
+		// them. That builds cleanly and then throws at runtime:
+		//     NoSuchFieldError: Class ...CustomPacketPayload$1$forbricneo does not have member field
+		//         'java.util.Map val$idToType'
+		// which surfaces as "Internal Exception: io.netty.handler.codec.EncoderException" the moment a player connects.
+		// Every one of the four captured fields must be present before this patch touches the method; if any is missing
+		// the method is left exactly as it was, which is strictly better than emitting a field read that cannot resolve.
+		for (String required : new String[] {"val$idToType", "val$protocol", "val$packetFlow", "val$fallback"}) {
+			if (fieldDescOrNull(cn, required) == null) return;
+		}
+
 		String idToTypeDesc = fieldDesc(cn, "val$idToType", "Ljava/util/Map;");
 		String protocolDesc = fieldDesc(cn, "val$protocol", "Lnet/minecraft/network/ConnectionProtocol;");
 		String packetFlowDesc = fieldDesc(cn, "val$packetFlow", "Lnet/minecraft/network/protocol/PacketFlow;");
@@ -2033,6 +2045,14 @@ public final class MergedBaseBuilder {
 			if (name.equals(f.name)) return f.desc;
 		}
 		return fallback;
+	}
+
+	/** The field's real descriptor, or null when the class does not declare it at all. */
+	private static String fieldDescOrNull(ClassNode cn, String name) {
+		for (FieldNode f : cn.fields) {
+			if (name.equals(f.name)) return f.desc;
+		}
+		return null;
 	}
 
 	/**
