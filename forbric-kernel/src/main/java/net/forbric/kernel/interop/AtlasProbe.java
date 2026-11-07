@@ -10,8 +10,9 @@ import net.forbric.kernel.util.ForbricLog;
  *
  * <p>An atlas whose log line reads {@code Created: 32x32} while its siblings carry their real extents
  * has been stitched from almost nothing, and every model that names a sprite in it then reports a missing
- * texture. The count distinguishes the two causes that look identical from the outside: a source list that
- * never parsed, and a source list that parsed but produced no suppliers.
+ * texture. Three counts narrow it down: the sources the atlas file parsed into, the suppliers those
+ * sources produced, and the sprites the stitcher was actually handed. Whichever count drops to nothing
+ * names the stage that lost them.
  */
 public final class AtlasProbe {
 	private static final Field SOURCES = sources();
@@ -30,7 +31,7 @@ public final class AtlasProbe {
 	}
 
 	/**
-	 * Reports on the list without touching the operand stack.
+	 * Reports on the parsed source list without touching the operand stack.
 	 *
 	 * <p>This returns {@code void} on purpose. The call site is spliced as {@code DUP; ALOAD n;
 	 * INVOKESTATIC}, and a helper declared to return {@code Object} would leave a {@code java/lang/Object}
@@ -39,13 +40,17 @@ public final class AtlasProbe {
 	 * returning nothing leaves the original one exactly where it was.
 	 */
 	public static void loaded(Object spriteSourceList, Object location) {
-		int count = -1;
-		if (SOURCES != null && spriteSourceList != null) {
-			try {
-				Object value = SOURCES.get(spriteSourceList);
-				if (value instanceof List<?> list) count = list.size();
-			} catch (Throwable unreadable) {
-				count = -2;
+		String count = "unreadable";
+		if (spriteSourceList != null) {
+			if (SOURCES == null) {
+				count = "no sources field";
+			} else {
+				try {
+					Object value = SOURCES.get(spriteSourceList);
+					count = value instanceof List<?> list ? Integer.toString(list.size()) : "not a list";
+				} catch (Throwable unreadable) {
+					count = unreadable.getClass().getSimpleName() + ": " + unreadable.getMessage();
+				}
 			}
 		}
 		ForbricLog.warn("[Forbric/Atlas] " + location + " parsed into " + count + " sprite source(s)");
@@ -55,5 +60,28 @@ public final class AtlasProbe {
 	public static void listed(Object suppliers) {
 		int count = suppliers instanceof List<?> list ? list.size() : -1;
 		ForbricLog.warn("[Forbric/Atlas] a source list produced " + count + " sprite supplier(s)");
+	}
+
+	/**
+	 * Reports what reached the stitcher — the stage after the suppliers ran.
+	 *
+	 * <p>The first sprite's own name identifies which atlas this is, because {@code SpriteLoader} keeps its
+	 * location private and the stitch call itself is not handed one.
+	 */
+	public static void stitching(Object contents) {
+		if (!(contents instanceof List<?> list)) {
+			ForbricLog.warn("[Forbric/Atlas] stitch was handed " + contents);
+			return;
+		}
+		String first = "-";
+		if (!list.isEmpty()) {
+			Object sprite = list.get(0);
+			try {
+				first = String.valueOf(sprite.getClass().getMethod("name").invoke(sprite));
+			} catch (Throwable unnamed) {
+				first = sprite == null ? "null" : sprite.getClass().getName();
+			}
+		}
+		ForbricLog.warn("[Forbric/Atlas] stitch got " + list.size() + " sprite(s), first is " + first);
 	}
 }
