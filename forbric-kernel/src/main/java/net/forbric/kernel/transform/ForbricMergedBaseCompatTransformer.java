@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -219,6 +219,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		out.add(scanned("unwrapOptionalHolderValues",
 				"a Holder that carries an Optional the merge wrapped around the value — only the 1.21.1 "
 						+ "splice produces one, and unwrapping it is the identity everywhere else"));
+		out.add(scanned("reportWhatTheAtlasActuallyGot", "every atlas that parses a source list — the probe edits the two methods that decide what an atlas is stitched from, and both exist in either line"));
 		out.add(fixed("postMinecraftForgesReloadListenerEvent", RELOADABLE_SERVER_RESOURCES,
 				"MinecraftForge's AddReloadListenerEvent is never posted — traditional-Forge JSON data loaders never register"));
 		out.add(fixed("giveMinecraftForgesReloadEventItsConditionContext", FORGE_RELOAD_EVENT,
@@ -395,6 +396,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 					addMissingNoArgToForgeClientPlayerEvent(node));
 			changed |= claim(reporter, "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", pointSelfReadsAtTheFieldsTheClassActuallyDeclares(node));
 			changed |= claim(reporter, "unwrapOptionalHolderValues", unwrapOptionalHolderValues(node));
+		changed |= claim(reporter, "reportWhatTheAtlasActuallyGot", reportWhatTheAtlasActuallyGot(node));
 			changed |= claim(reporter, "postMinecraftForgesReloadListenerEvent", postMinecraftForgesReloadListenerEvent(node));
 			changed |= claim(reporter, "giveMinecraftForgesReloadEventItsConditionContext", giveMinecraftForgesReloadEventItsConditionContext(node));
 			changed |= claim(reporter, "letMinecraftForgeIngredientTypesDecode", letMinecraftForgeIngredientTypesDecode(node));
@@ -3180,6 +3182,8 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	 * anchor ledger only: the repair finds its target by the proof in {@link AtlasMipBoundsRepair}, never by name.
 	 */
 	static final String SPRITE_LOADER = "net/minecraft/client/renderer/texture/SpriteLoader";
+	static final String SPRITE_SOURCE_LIST = "net/minecraft/client/renderer/texture/atlas/SpriteSourceList";
+	private static final String ATLAS_PROBE = "net/forbric/kernel/interop/AtlasProbe";
 	/** {@code -Dforbric.mipmapLowering=off} disables the allocation-boundary constraint check. */
 	static final String MIPMAP_PROPERTY = "forbric.mipmapLowering";
 
@@ -3632,6 +3636,80 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				method.instructions.insert(call, unwrap);
 				ForbricLog.warn("[" + node.name + "] " + method.name + method.desc + " reads a Holder and casts it to "
 						+ castTo + " — the merge left the value wrapped in an Optional, so it is unwrapped first");
+				changed = true;
+			}
+		}
+		changed |= unwrapTheHoldersOwnValue(node);
+		return changed;
+	}
+
+
+	/**
+	 * A holder whose stored value is an Optional.
+	 *
+	 * <p>The merge splices two copies of a class together, and where the two pipelines disagreed about how a
+	 * value is carried, one of them left it wrapped. A call-site repair cannot see every reader: a comparator
+	 * key extractor or a lambda has no checkcast in the instruction stream the transformer walks, so the cast
+	 * happens somewhere it never looks. Fixing the holder itself covers every reader at once, and
+	 * {@link net.forbric.kernel.interop.OptionalHolder#unwrap(Object)} is the identity for anything that is not
+	 * an Optional, so classes that carry their value bare are untouched.
+	 */
+	private static boolean unwrapTheHoldersOwnValue(ClassNode node) {
+		if (!node.name.startsWith("net/minecraft/core/Holder$")) return false;
+		boolean changed = false;
+		for (MethodNode method : node.methods) {
+			if (!"value".equals(method.name) || !"()Ljava/lang/Object;".equals(method.desc)) continue;
+			if (method.instructions == null) continue;
+			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+				if (insn.getOpcode() != Opcodes.ARETURN) continue;
+				InsnList unwrap = new InsnList();
+				unwrap.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+						"net/forbric/kernel/interop/OptionalHolder", "unwrap",
+						"(Ljava/lang/Object;)Ljava/lang/Object;", false));
+				method.instructions.insertBefore(insn, unwrap);
+				changed = true;
+			}
+		}
+		if (changed) {
+			ForbricLog.warn("[" + node.name + "] value() hands back an Optional the merge left in the value field, so "
+					+ "it now hands back the value itself — a cast inside a comparator or a lambda has no call site "
+					+ "for the other repair to reach");
+		}
+		return changed;
+	}
+
+
+	/**
+	 * Reports how much of an atlas the merge actually handed to the stitcher.
+	 *
+	 * <p>An atlas logged as {@code Created: 32x32} while its siblings carry their real extents has been
+	 * stitched from almost nothing, and every model naming a sprite in it then reports a missing texture.
+	 * The two counts separate the causes that look identical from outside: a source list that never parsed,
+	 * and one that parsed but produced no suppliers.
+	 */
+	private static boolean reportWhatTheAtlasActuallyGot(ClassNode node) {
+		if (!SPRITE_SOURCE_LIST.equals(node.name)) return false;
+		boolean changed = false;
+		for (MethodNode method : node.methods) {
+			if (method.instructions == null) continue;
+			boolean load = "load".equals(method.name)
+					&& method.desc.startsWith("(Lnet/minecraft/server/packs/resources/ResourceManager;");
+			boolean list = "list".equals(method.name)
+					&& method.desc.equals("(Lnet/minecraft/server/packs/resources/ResourceManager;)Ljava/util/List;");
+			if (!load && !list) continue;
+			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+				if (insn.getOpcode() != Opcodes.ARETURN) continue;
+				InsnList probe = new InsnList();
+				probe.add(new InsnNode(Opcodes.DUP));
+				if (load) {
+					probe.add(new VarInsnNode(Opcodes.ALOAD, 1));
+					probe.add(new MethodInsnNode(Opcodes.INVOKESTATIC, ATLAS_PROBE, "loaded",
+							"(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", false));
+				} else {
+					probe.add(new MethodInsnNode(Opcodes.INVOKESTATIC, ATLAS_PROBE, "listed",
+							"(Ljava/lang/Object;)Ljava/lang/Object;", false));
+				}
+				method.instructions.insertBefore(insn, probe);
 				changed = true;
 			}
 		}
