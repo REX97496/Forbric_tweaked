@@ -3699,6 +3699,16 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			boolean list = "list".equals(method.name)
 					&& method.desc.equals("(Lnet/minecraft/server/packs/resources/ResourceManager;)Ljava/util/List;");
 			if (!load && !list) continue;
+			if (load) {
+				// Head of load(): what the resource manager can see, before a single source is parsed.
+				InsnList entry = new InsnList();
+				entry.add(new VarInsnNode(Opcodes.ALOAD, 0));
+				entry.add(new VarInsnNode(Opcodes.ALOAD, 1));
+				entry.add(new MethodInsnNode(Opcodes.INVOKESTATIC, ATLAS_PROBE, "loading",
+						"(Ljava/lang/Object;Ljava/lang/Object;)V", false));
+				method.instructions.insert(entry);
+				changed = true;
+			}
 			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
 				if (insn.getOpcode() != Opcodes.ARETURN) continue;
 				InsnList probe = new InsnList();
@@ -3743,6 +3753,16 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				"(Ljava/lang/Object;)V", false));
 		stitch.instructions.insert(probe);
 		stitch.maxStack = Math.max(stitch.maxStack, 8);
+		// The entry probe counts what went in; this one says what came back out. A stitcher handed five
+		// hundred sprites that still returns a 32x32 atlas names itself rather than whatever called it.
+		for (AbstractInsnNode insn = stitch.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn.getOpcode() != Opcodes.ARETURN) continue;
+			InsnList after = new InsnList();
+			after.add(new InsnNode(Opcodes.DUP));
+			after.add(new MethodInsnNode(Opcodes.INVOKESTATIC, ATLAS_PROBE, "stitched",
+					"(Ljava/lang/Object;)V", false));
+			stitch.instructions.insertBefore(insn, after);
+		}
 		return true;
 	}
 

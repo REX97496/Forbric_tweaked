@@ -393,10 +393,22 @@ public final class MergedBaseBuilder {
 		System.out.println("[merge] writing " + outJar);
 		Files.createDirectories(outJar.toAbsolutePath().getParent());
 		try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(outJar))) {
+			// The vanilla jar owns assets/minecraft: this jar is what the client's own "vanilla" pack reads, and the
+			// Neo-patched jar carries NeoForge's overrides of the same paths (its atlases/blocks.json replaces
+			// vanilla's seven-source definition with a single neoforge:white). Those overrides are not lost by
+			// dropping them here — the forge/neoforge runtime packs are mounted separately and serve them as
+			// additive resources — whereas letting them win here deletes vanilla's definition outright and with
+			// it every block and item sprite in the game.
+			Set<String> vanillaAssets = collectResourceNames(vanillaJar).stream()
+					.filter(name -> name.startsWith("assets/minecraft/"))
+					.collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+			copyResourcesMatching(vanillaJar, zos, vanillaAssets);
 			// carry over the Neo-patched jar's non-class resources (data packs, version.json, etc.), then any
 			// Forge-only resources the Neo jar lacks.
-			copyResources(neoJar, zos, outEntries.keySet());
-			copyResourcesMissing(forgeJar, zos, outEntries.keySet(), collectResourceNames(neoJar));
+			copyResourcesMissing(neoJar, zos, outEntries.keySet(), vanillaAssets);
+			Set<String> written = new LinkedHashSet<>(vanillaAssets);
+			written.addAll(collectResourceNames(neoJar));
+			copyResourcesMissing(forgeJar, zos, outEntries.keySet(), written);
 			for (Map.Entry<String, byte[]> e : outEntries.entrySet()) {
 				zos.putNextEntry(new ZipEntry(e.getKey() + ".class"));
 				zos.write(e.getValue());
@@ -2286,6 +2298,22 @@ public final class MergedBaseBuilder {
 				ZipEntry e = it.nextElement();
 				if (e.isDirectory() || e.getName().endsWith(".class")) continue;
 				if (e.getName().equals("META-INF/MANIFEST.MF") || already.contains(e.getName())) continue;
+				zos.putNextEntry(new ZipEntry(e.getName()));
+				zf.getInputStream(e).transferTo(zos);
+				zos.closeEntry();
+			}
+		}
+	}
+
+	/** Copies just the named resources out of {@code jar}, so one source can own a subtree without claiming the rest. */
+	private static void copyResourcesMatching(Path jar, ZipOutputStream zos, Set<String> wanted) throws IOException {
+		if (wanted.isEmpty()) return;
+		try (ZipFile zf = new ZipFile(jar.toFile())) {
+			var it = zf.entries();
+			while (it.hasMoreElements()) {
+				ZipEntry e = it.nextElement();
+				if (e.isDirectory() || e.getName().endsWith(".class")) continue;
+				if (!wanted.contains(e.getName())) continue;
 				zos.putNextEntry(new ZipEntry(e.getName()));
 				zf.getInputStream(e).transferTo(zos);
 				zos.closeEntry();
