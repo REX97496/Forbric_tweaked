@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -213,6 +213,9 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		out.add(fixed("addMissingNoArgToForgeClientPlayerEvent", FORGE_CLIENT_PLAYER_LOGGING_IN,
 				"connecting to a server dies on NoSuchMethodException while Forge's bus enumerates this event's "
 						+ "listeners — ForgeMod never constructs, so every forge:* registry is missing"));
+		out.add(scanned("pointSelfReadsAtTheFieldsTheClassActuallyDeclares",
+				"the Fabric-native twin this repairs is a 1.21.1-only merge artefact — 26.2 ships no "
+						+ "CustomPacketPayload$1$forbricneo at all, so finding nothing here is the expected outcome"));
 		out.add(fixed("postMinecraftForgesReloadListenerEvent", RELOADABLE_SERVER_RESOURCES,
 				"MinecraftForge's AddReloadListenerEvent is never posted — traditional-Forge JSON data loaders never register"));
 		out.add(fixed("giveMinecraftForgesReloadEventItsConditionContext", FORGE_RELOAD_EVENT,
@@ -387,6 +390,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			changed |= claim(reporter, "addTheMissingNbtBuilderFactory", addTheMissingNbtBuilderFactory(node));
 			changed |= claim(reporter, "addMissingNoArgToForgeClientPlayerEvent",
 					addMissingNoArgToForgeClientPlayerEvent(node));
+			changed |= claim(reporter, "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", pointSelfReadsAtTheFieldsTheClassActuallyDeclares(node));
 			changed |= claim(reporter, "postMinecraftForgesReloadListenerEvent", postMinecraftForgesReloadListenerEvent(node));
 			changed |= claim(reporter, "giveMinecraftForgesReloadEventItsConditionContext", giveMinecraftForgesReloadEventItsConditionContext(node));
 			changed |= claim(reporter, "letMinecraftForgeIngredientTypesDecode", letMinecraftForgeIngredientTypesDecode(node));
@@ -3549,6 +3553,47 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			if (method.name.equals(name) && method.desc.equals(desc)) return method;
 		}
 		return null;
+	}
+
+	/**
+	 * A {@code val$}-prefixed field read whose name the class does not declare, but whose DESCRIPTOR exactly one
+	 * declared field matches, is that same field under another name: the merge renamed the declaration and left
+	 * the read behind. Measured on {@code CustomPacketPayload$1$forbricneo} — it declares {@code val$map} and
+	 * {@code val$p_319839_} (both written by its constructor) while {@code codec()} still reads
+	 * {@code val$idToType} and {@code val$fallback}. The first custom_payload encode throws NoSuchFieldError, the
+	 * connection dies on join, and because the reference is baked into the merged base no kernel-side restart can
+	 * clear it. Nothing in the class can resolve the stale names, so the declared field of the same exact type is
+	 * the only candidate. Restricted to {@code val$} synthetic captured-local names, which javac only ever
+	 * declares on the class that captures them, so an inherited field can never be renamed by mistake.
+	 */
+	private static boolean pointSelfReadsAtTheFieldsTheClassActuallyDeclares(ClassNode node) {
+		boolean changed = false;
+		for (MethodNode method : node.methods) {
+			if (method.instructions == null) continue;
+			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+				if (!(insn instanceof FieldInsnNode)) continue;
+				int opcode = insn.getOpcode();
+				if (opcode != Opcodes.GETFIELD && opcode != Opcodes.PUTFIELD) continue;
+				FieldInsnNode field = (FieldInsnNode) insn;
+				if (!field.owner.equals(node.name)) continue;
+				if (!field.name.startsWith("val$")) continue;
+				if (hasField(node, field.name, field.desc)) continue;
+				String replacement = null;
+				int candidates = 0;
+				for (FieldNode declared : node.fields) {
+					if (!declared.desc.equals(field.desc)) continue;
+					candidates++;
+					replacement = declared.name;
+				}
+				if (candidates != 1) continue;
+				ForbricLog.warn("[" + node.name + "] " + method.name + method.desc + " reads " + field.name
+						+ ":" + field.desc + ", which the class does not declare; the one declared field of that "
+						+ "exact type is " + replacement + ", so it reads that instead");
+				field.name = replacement;
+				changed = true;
+			}
+		}
+		return changed;
 	}
 
 	private static boolean hasField(ClassNode node, String name, String desc) {
