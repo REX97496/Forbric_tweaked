@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -216,6 +216,9 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		out.add(scanned("pointSelfReadsAtTheFieldsTheClassActuallyDeclares",
 				"the Fabric-native twin this repairs is a 1.21.1-only merge artefact — 26.2 ships no "
 						+ "CustomPacketPayload$1$forbricneo at all, so finding nothing here is the expected outcome"));
+		out.add(scanned("unwrapOptionalHolderValues",
+				"a Holder that carries an Optional the merge wrapped around the value — only the 1.21.1 "
+						+ "splice produces one, and unwrapping it is the identity everywhere else"));
 		out.add(fixed("postMinecraftForgesReloadListenerEvent", RELOADABLE_SERVER_RESOURCES,
 				"MinecraftForge's AddReloadListenerEvent is never posted — traditional-Forge JSON data loaders never register"));
 		out.add(fixed("giveMinecraftForgesReloadEventItsConditionContext", FORGE_RELOAD_EVENT,
@@ -391,6 +394,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			changed |= claim(reporter, "addMissingNoArgToForgeClientPlayerEvent",
 					addMissingNoArgToForgeClientPlayerEvent(node));
 			changed |= claim(reporter, "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", pointSelfReadsAtTheFieldsTheClassActuallyDeclares(node));
+			changed |= claim(reporter, "unwrapOptionalHolderValues", unwrapOptionalHolderValues(node));
 			changed |= claim(reporter, "postMinecraftForgesReloadListenerEvent", postMinecraftForgesReloadListenerEvent(node));
 			changed |= claim(reporter, "giveMinecraftForgesReloadEventItsConditionContext", giveMinecraftForgesReloadEventItsConditionContext(node));
 			changed |= claim(reporter, "letMinecraftForgeIngredientTypesDecode", letMinecraftForgeIngredientTypesDecode(node));
@@ -3590,6 +3594,44 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 						+ ":" + field.desc + ", which the class does not declare; the one declared field of that "
 						+ "exact type is " + replacement + ", so it reads that instead");
 				field.name = replacement;
+				changed = true;
+			}
+		}
+		return changed;
+	}
+
+	/**
+	 * A {@code Holder.value()} whose result the very next cast treats as the bare type, while the merge has left it
+	 * holding an {@code Optional}. Measured on 1.21.1: {@code CommonPlayerSpawnInfo.dimensionType()} hands
+	 * {@code Level.<init>} a holder whose value is an {@code Optional}, so the {@code CHECKCAST DimensionType} that
+	 * follows {@code Holder.value()} throws ClassCastException and entering any world dies as a network protocol
+	 * error. Nothing at that call site can tell the two apart — both are objects — so the unwrap goes between
+	 * them, where it costs one static call and is the identity for a value that was never wrapped. A cast to
+	 * {@code Optional} itself is the caller asking for the wrapper, so that one is left alone.
+	 */
+	private static boolean unwrapOptionalHolderValues(ClassNode node) {
+		boolean changed = false;
+		for (MethodNode method : node.methods) {
+			if (method.instructions == null) continue;
+			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+				if (!(insn instanceof MethodInsnNode)) continue;
+				MethodInsnNode call = (MethodInsnNode) insn;
+				if (call.getOpcode() != Opcodes.INVOKEINTERFACE && call.getOpcode() != Opcodes.INVOKEVIRTUAL) continue;
+				if (!"net/minecraft/core/Holder".equals(call.owner)) continue;
+				if (!"value".equals(call.name) || !"()Ljava/lang/Object;".equals(call.desc)) continue;
+				AbstractInsnNode next = call.getNext();
+				while (next != null && next.getOpcode() < 0) next = next.getNext();
+				if (!(next instanceof TypeInsnNode)) continue;
+				if (next.getOpcode() != Opcodes.CHECKCAST) continue;
+				String castTo = ((TypeInsnNode) next).desc;
+				if ("java/util/Optional".equals(castTo)) continue;
+				InsnList unwrap = new InsnList();
+				unwrap.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+						"net/forbric/kernel/interop/OptionalHolder", "unwrap",
+						"(Ljava/lang/Object;)Ljava/lang/Object;", false));
+				method.instructions.insert(call, unwrap);
+				ForbricLog.warn("[" + node.name + "] " + method.name + method.desc + " reads a Holder and casts it to "
+						+ castTo + " — the merge left the value wrapped in an Optional, so it is unwrapped first");
 				changed = true;
 			}
 		}
