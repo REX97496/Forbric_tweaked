@@ -3704,12 +3704,13 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				if (load) {
 					probe.add(new VarInsnNode(Opcodes.ALOAD, 1));
 					probe.add(new MethodInsnNode(Opcodes.INVOKESTATIC, ATLAS_PROBE, "loaded",
-							"(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", false));
+							"(Ljava/lang/Object;Ljava/lang/Object;)V", false));
 				} else {
 					probe.add(new MethodInsnNode(Opcodes.INVOKESTATIC, ATLAS_PROBE, "listed",
-							"(Ljava/lang/Object;)Ljava/lang/Object;", false));
+							"(Ljava/lang/Object;)V", false));
 				}
 				method.instructions.insertBefore(insn, probe);
+				method.maxStack = Math.max(method.maxStack, 8);
 				changed = true;
 			}
 		}

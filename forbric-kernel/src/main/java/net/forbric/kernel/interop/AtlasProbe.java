@@ -29,8 +29,16 @@ public final class AtlasProbe {
 		}
 	}
 
-	/** @return the list it was handed, so the call site is unchanged. */
-	public static Object loaded(Object spriteSourceList, Object location) {
+	/**
+	 * Reports on the list without touching the operand stack.
+	 *
+	 * <p>This returns {@code void} on purpose. The call site is spliced as {@code DUP; ALOAD n;
+	 * INVOKESTATIC}, and a helper declared to return {@code Object} would leave a {@code java/lang/Object}
+	 * on the stack where the enclosing method's return type wants its own type — a {@code VerifyError} that
+	 * rejects the whole class and takes the resource reload with it. Consuming the duplicated reference and
+	 * returning nothing leaves the original one exactly where it was.
+	 */
+	public static void loaded(Object spriteSourceList, Object location) {
 		int count = -1;
 		if (SOURCES != null && spriteSourceList != null) {
 			try {
@@ -41,13 +49,11 @@ public final class AtlasProbe {
 			}
 		}
 		ForbricLog.warn("[Forbric/Atlas] " + location + " parsed into " + count + " sprite source(s)");
-		return spriteSourceList;
 	}
 
-	/** @return the list it was handed, so the call site is unchanged. */
-	public static Object listed(Object suppliers) {
+	/** Reports on the supplier list without touching the operand stack; see {@link #loaded} for why. */
+	public static void listed(Object suppliers) {
 		int count = suppliers instanceof List<?> list ? list.size() : -1;
 		ForbricLog.warn("[Forbric/Atlas] a source list produced " + count + " sprite supplier(s)");
-		return suppliers;
 	}
 }
