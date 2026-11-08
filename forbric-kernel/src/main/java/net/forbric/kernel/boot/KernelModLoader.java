@@ -328,6 +328,24 @@ public final class KernelModLoader {
 		publishNeoModList(cl, published, false);
 		publishedForge = Map.copyOf(forge);
 		publishForgeModList(cl, publishedForge, false);
+		// The unified Mods screen reads ModCatalog, and this is the first point where all three families exist as
+		// lists. PassiveSeeder publishes a catalogue too, from the NeoForge seeding pass, but that runs BEFORE Fabric
+		// discovery and before any Forge-family mod was arbitrated here, so on an install whose mods are all Fabric
+		// or all NeoForge jars it published an empty list and the screen read "Mods (0) - 0 Fabric 0 NeoForge 0
+		// MinecraftForge" next to a running JEI (measured on the 8-mod launch). The catalogue is display-only; a
+		// failure here must not cost the two publishes above, so it is caught.
+		try {
+			List<DiscoveredMod> catalog = new ArrayList<>(ModPresence.forgeFamilyMods());
+			Set<String> seenIds = new LinkedHashSet<>();
+			for (DiscoveredMod mod : catalog) if (mod.getId() != null) seenIds.add(mod.getId());
+			for (DiscoveredMod mod : ModPresence.fabricMods()) {
+				if (mod.getId() != null && seenIds.add(mod.getId())) catalog.add(mod);
+			}
+			KernelModCatalog.publish(catalog);
+		} catch (Throwable t) {
+			ForbricLog.warn("[Forbric/Catalog] could not build the unified mod list after publishing the mod lists"
+					+ " — the Mods screen will show whatever the seeding pass published", Reflect.unwrap(t));
+		}
 
 		// Phase 3 — construct.
 		List<ConstructedMod> built = new ArrayList<>();

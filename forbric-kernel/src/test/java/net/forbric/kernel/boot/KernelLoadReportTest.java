@@ -254,7 +254,12 @@ class KernelLoadReportTest {
 				&& report.contains("mixin:beta.mixins.json:beta.mixin.BetaMixin"), report);
 		assertEquals(1, report.lines().filter(line -> line.contains("partly did not run")
 				|| line.contains("有一部分没有跑起来")).count(), report);
-		assertTrue(said.contains("1 mod(s) did not finish loading: alpha"), said);
+		// alpha is DEGRADED, and this file says so beside its row ("partly did not run"). The log line used to
+		// collapse both statuses into "did not finish loading", which is the claim aModThatOnlyDegradedIsNotCalledBroken
+		// below refuses for the file: measured on an 8-mod launch, it printed "31 mod(s) did not finish loading"
+		// while every one of those rows read "part of this mod did not run" -- all 31 were loaded and running.
+		assertTrue(said.contains("1 mod(s) are running with part of themselves left out: alpha"), said);
+		assertFalse(said.contains("did not finish loading"), said);
 	}
 
 	@Test

@@ -162,12 +162,26 @@ public final class KernelLoadReport {
 				if (!disabled.isEmpty()) {
 					ForbricLog.info("[Forbric/Load] %s — details in .forbric-kernel/%s", switchedOffLine(false, disabled), FILE);
 				}
-				if (!failures.isEmpty()) {
-					List<String> ids = new ArrayList<>();
-					for (ModCatalog.Entry e : failures) ids.add(e.modId());
-					ForbricLog.warn("[Forbric/Load] %d mod(s) did not finish loading: %s — details in .forbric-kernel/%s",
-							failures.size(), String.join(", ", ids), FILE);
-				}
+				// Two sentences, because the two statuses are different claims. FAILED means the container was
+			// withdrawn — the mod genuinely did not finish loading. DEGRADED means the mod IS running with a
+			// feature left out; its mixin did not fit the merged base, or one of its entrypoints went half way.
+			// Said together as "did not finish loading" this line read, on a measured 8-mod launch, "31 mod(s) did
+			// not finish loading" while only 2 entrypoints had thrown — and the same launch's report body said
+			// "part of this mod did not run" beside every one of them. A log that tells a player to reinstall
+			// thirty working mods is wrong in the same way as one that calls a withdrawn mod absent.
+			List<String> failedIds = new ArrayList<>();
+			List<String> partialIds = new ArrayList<>();
+			for (ModCatalog.Entry e : failures) {
+				(e.status() == ModCatalog.Status.FAILED ? failedIds : partialIds).add(e.modId());
+			}
+			if (!failedIds.isEmpty()) {
+				ForbricLog.warn("[Forbric/Load] %d mod(s) did not finish loading: %s — details in .forbric-kernel/%s",
+						failedIds.size(), String.join(", ", failedIds), FILE);
+			}
+			if (!partialIds.isEmpty()) {
+				ForbricLog.warn("[Forbric/Load] %d mod(s) are running with part of themselves left out: %s — "
+						+ "details in .forbric-kernel/%s", partialIds.size(), String.join(", ", partialIds), FILE);
+			}
 				if (!unattributed.isEmpty()) {
 					List<String> keys = new ArrayList<>();
 					for (CompatibilityFinding f : unattributed) keys.add(f.key());
