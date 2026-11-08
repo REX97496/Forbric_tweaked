@@ -74,8 +74,16 @@ public final class KernelItemTooltip {
 	private KernelItemTooltip() {
 	}
 
-	/** One resolved shape: build an event, read its list, and ask whether it was cancelled. */
-	private record Resolution(MethodHandle constructor, MethodHandle tooltip) {
+	/**
+	 * One resolved shape: build an event, read its list, and ask whether it was cancelled.
+	 *
+	 * <p>{@code arity} says which constructor this line's {@code ItemTooltipEvent} actually has — 6 where a
+	 * {@code TooltipDisplay} exists (26.2), 5 where it does not (1.21.1, whose fifth parameter is the
+	 * {@code Item$TooltipContext}). Measured with javap against {@code neoforge-runtime.jar} on both lines; the
+	 * two shapes differ by exactly that one type, and asking for the wrong one threw
+	 * {@code ClassNotFoundException: net.minecraft.world.item.component.TooltipDisplay} on every single tooltip.
+	 */
+	private record Resolution(MethodHandle constructor, MethodHandle tooltip, int arity) {
 	}
 
 	/** A resolution that failed, with the reason, so the failure is reported once and not retried per frame. */
@@ -104,7 +112,9 @@ public final class KernelItemTooltip {
 		}
 		Resolution shape = (Resolution) resolved;
 		try {
-			Object event = shape.constructor().invoke(stack, player, tooltip, flag, context, display);
+			Object event = shape.arity() == 6
+					? shape.constructor().invoke(stack, player, tooltip, flag, context, display)
+					: shape.constructor().invoke(stack, player, tooltip, flag, context);
 			KernelLifecycle.postModBusEvent(event);
 		} catch (Throwable delivery) {
 			// Not swallowed: the first failure names itself, then the resolve is retired so a broken event does
@@ -118,30 +128,31 @@ public final class KernelItemTooltip {
 	/**
 	 * Resolves the event shape against whatever NeoForge this instance carries.
 	 *
-	 * <p>SIX constructor parameters, measured from neoforge-runtime-26.2.jar rather than assumed:
-	 * {@code (ItemStack, Player, List<Component>, TooltipFlag, Item$TooltipContext, TooltipDisplay)}. The first
-	 * version of this passed four and failed at runtime with "the event's shape changed" — the class was present,
-	 * the shape was not. The last two come from the merged tail's own locals: the {@code TooltipContext} it was
-	 * handed, and the {@code TooltipDisplay} it resolved from the stack's components.
+	 * <p>The shape is NOT the same across the lines, and asking for one too many parameters is not a harmless
+	 * miss — it throws on every tooltip. Measured with javap:
+	 * <ul>
+	 *   <li>26.2 — {@code (ItemStack, Player, List<Component>, TooltipFlag, Item$TooltipContext, TooltipDisplay)},
+	 *       six parameters.</li>
+	 *   <li>1.21.1 — {@code (ItemStack, Player, List<Component>, TooltipFlag, Item$TooltipContext)}, five. There
+	 *       is no {@code net.minecraft.world.item.component.TooltipDisplay} at all: asking for it raised
+	 *       {@code ClassNotFoundException} 1277 times in one session, and every hovered item lost its modded
+	 *       lines.</li>
+	 * </ul>
 	 *
-	 * <p>And NO {@code isCanceled}: {@code ItemTooltipEvent} in this version carries no cancel methods and does not
-	 * implement {@code ICancellableEvent}, so a listener extends the list and cannot suppress it. Resolving a
-	 * method that is not there was the other half of that failure.
+	 * <p>So the six-parameter shape is tried first and the five-parameter one is the fallback, not the other way
+	 * round: a 26.2 instance has both handled correctly by the first attempt, and only a base without the display
+	 * type reaches the second. The chosen arity travels with the resolution so {@link #afterForge} supplies
+	 * exactly that many arguments.
+	 *
+	 * <p>And NO {@code isCanceled}: {@code ItemTooltipEvent} carries no cancel methods and does not implement
+	 * {@code ICancellableEvent}, so a listener extends the list and cannot suppress it. Resolving a method that is
+	 * not there was the other half of that failure.
 	 */
 	private static Object resolve() {
+		ClassLoader loader = KernelItemTooltip.class.getClassLoader();
+		Class<?> type;
 		try {
-			ClassLoader loader = KernelItemTooltip.class.getClassLoader();
-			Class<?> type = Class.forName(EVENT, false, loader);
-			MethodHandles.Lookup lookup = MethodHandles.publicLookup();
-			MethodHandle constructor = lookup.findConstructor(type, MethodType.methodType(void.class,
-					Class.forName("net.minecraft.world.item.ItemStack", false, loader),
-					Class.forName("net.minecraft.world.entity.player.Player", false, loader),
-					List.class,
-					Class.forName("net.minecraft.world.item.TooltipFlag", false, loader),
-					Class.forName("net.minecraft.world.item.Item$TooltipContext", false, loader),
-					Class.forName("net.minecraft.world.item.component.TooltipDisplay", false, loader)));
-			return new Resolution(constructor,
-					lookup.findVirtual(type, "getToolTip", MethodType.methodType(List.class)));
+			type = Class.forName(EVENT, false, loader);
 		} catch (ClassNotFoundException absent) {
 			// Logged even though the Failure is reported on first use, because SilentFailureCensusTest counts the
 			// catch block and it was right to: this one fires on the classpath question, and a reader scanning the
@@ -149,10 +160,39 @@ public final class KernelItemTooltip {
 			ForbricLog.warn("[Forbric/EventMux] ItemTooltipEvent is not on the classpath — the tooltip bridge resolves"
 					+ " to disabled: %s", absent);
 			return new Failure("no NeoForge on the classpath", absent);
-		} catch (ReflectiveOperationException | LinkageError changed) {
-			ForbricLog.warn("[Forbric/EventMux] ItemTooltipEvent's shape changed; the tooltip bridge resolves to"
-					+ " disabled: %s", changed);
-			return new Failure("the event's shape changed", changed);
+		}
+		MethodHandles.Lookup lookup = MethodHandles.publicLookup();
+		try {
+			MethodHandle tooltip = lookup.findVirtual(type, "getToolTip", MethodType.methodType(List.class));
+			MethodHandle six = lookup.findConstructor(type, MethodType.methodType(void.class,
+					Class.forName("net.minecraft.world.item.ItemStack", false, loader),
+					Class.forName("net.minecraft.world.entity.player.Player", false, loader),
+					List.class,
+					Class.forName("net.minecraft.world.item.TooltipFlag", false, loader),
+					Class.forName("net.minecraft.world.item.Item$TooltipContext", false, loader),
+					Class.forName("net.minecraft.world.item.component.TooltipDisplay", false, loader)));
+			return new Resolution(six, tooltip, 6);
+		} catch (ReflectiveOperationException | LinkageError noDisplay) {
+			// The expected outcome on 1.21.1. Reported at DEBUG rather than WARN because nothing is wrong: this
+			// line simply has no TooltipDisplay, and the five-parameter event below is the correct one for it.
+			ForbricLog.debug("[Forbric/EventMux] ItemTooltipEvent here has no TooltipDisplay parameter (%s); resolving"
+					+ " the five-parameter shape it does have", noDisplay);
+			try {
+				MethodHandle tooltip = lookup.findVirtual(type, "getToolTip", MethodType.methodType(List.class));
+				MethodHandle five = lookup.findConstructor(type, MethodType.methodType(void.class,
+						Class.forName("net.minecraft.world.item.ItemStack", false, loader),
+						Class.forName("net.minecraft.world.entity.player.Player", false, loader),
+						List.class,
+						Class.forName("net.minecraft.world.item.TooltipFlag", false, loader),
+						Class.forName("net.minecraft.world.item.Item$TooltipContext", false, loader)));
+				ForbricLog.info("[Forbric/EventMux] ItemTooltipEvent resolved on the five-parameter shape — NeoForge"
+						+ " mods can add tooltip lines this session");
+				return new Resolution(five, tooltip, 5);
+			} catch (ReflectiveOperationException | LinkageError changed) {
+				ForbricLog.warn("[Forbric/EventMux] ItemTooltipEvent's shape changed; the tooltip bridge resolves to"
+						+ " disabled: %s", changed);
+				return new Failure("the event's shape changed", changed);
+			}
 		}
 	}
 

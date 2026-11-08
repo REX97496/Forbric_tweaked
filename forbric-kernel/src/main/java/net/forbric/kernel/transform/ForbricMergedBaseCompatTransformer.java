@@ -196,8 +196,17 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				"the window title carries another loader's brand"));
 		out.add(fixed("keepTheSaveOffTheTeardownsFailurePath", INTEGRATED_SERVER,
 				"a throw in IntegratedServer.teardownPublishedState costs the world save"));
-		out.add(fixed("postNeoForgesItemTooltipEvent", ITEM_STACK,
-				"NeoForge mods cannot add a line to any item's tooltip — the merged getTooltipLines posts only MinecraftForge's event"));
+		// Deliberately scanned, not fixed: this repair needs a TooltipDisplay local to hand the six-argument
+		// NeoForge event, and 1.21.1 has no such type at all (javap: ItemTooltipEvent here is
+		// (ItemStack, Player, List, TooltipFlag, Item$TooltipContext), five parameters). The feature is NOT
+		// missing on that base — ItemTooltipBridgeInjector carries it instead, reading the four operand locals off
+		// the Forge call site and letting KernelItemTooltip pick the five- or six-parameter shape at runtime. Two
+		// repairs posting the same event would deliver every NeoForge tooltip line twice, so declining here is the
+		// correct behaviour on a five-parameter base rather than a loss to report.
+		out.add(scanned("postNeoForgesItemTooltipEvent",
+				"bases whose ItemTooltipEvent has a TooltipDisplay: this repair posts it from inside the merged-base "
+						+ "pass. Bases without that type (1.21.1) are served by ItemTooltipBridgeInjector, which posts the "
+						+ "five-parameter shape instead — posting both would double every tooltip line"));
 		out.add(fixed("askNeoForgeWhatAnItemsAttributesAre", ITEM_STACK,
 				"an item's attributes are read off the raw component — elytra flight and every NeoForge attribute modifier stop working"));
 		out.add(fixed("readTheSpawnReasonThatIsActuallyWritten", "net/minecraft/world/entity/Mob",

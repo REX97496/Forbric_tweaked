@@ -72,13 +72,29 @@ public final class ItemTooltipBridgeInjector implements ClassTransformer {
 	static final String HOOK = "afterForge";
 	static final String HOOK_DESC = "(Ljava/util/List;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V";
 
-	/** Indices of the locals the merged base's own tail uses, read from its bytecode rather than assumed. */
-	private static final int LIST_LOCAL = 5;
-	private static final int STACK_LOCAL = 0;
-	private static final int PLAYER_LOCAL = 2;
-	private static final int FLAG_LOCAL = 3;
+	/**
+	 * Where the tooltip context lives: slot 1 of {@code getTooltipLines}, straight from its own signature
+	 * {@code (Item$TooltipContext, Player, TooltipFlag)}. The same slot on both lines.
+	 */
 	private static final int CONTEXT_LOCAL = 1;
+
+	/**
+	 * The local a 26.2 base keeps its {@code TooltipDisplay} in. Only read when the runtime resolved the
+	 * six-parameter event shape; a 1.21.1 base has no such type and never asks for this slot.
+	 */
 	private static final int DISPLAY_LOCAL = 4;
+
+	/**
+	 * How many argument loads to read off the {@code onItemTooltip} call site to learn where its four values live.
+	 *
+	 * <p>They used to be four hard-coded constants ({@code stack=0, player=2, list=5, flag=3}) and the list one was
+	 * WRONG for this base: measured with javap, {@code getTooltipLines} is
+	 * {@code (Item$TooltipContext, Player, TooltipFlag)} on an instance method, so its locals are
+	 * {@code 0=this, 1=context, 2=player, 3=flag, 4=list} — reading slot 5 loaded whatever came after, and the
+	 * bridge either failed verification or passed the wrong object. Reading the call's own operand loads removes
+	 * the guess for every line at once, which is what the constants were trying to pin down by hand.
+	 */
+	private static final int OPERANDS = 4;
 
 	private static volatile boolean reported;
 
@@ -120,14 +136,21 @@ public final class ItemTooltipBridgeInjector implements ClassTransformer {
 			if (!METHOD.equals(method.name) || method.instructions == null) continue;
 			MethodInsnNode forge = findForgeCall(method);
 			if (forge == null) continue;
-			AbstractInsnNode discard = forge.getNext();
+			AbstractInsnNode discard = nextReal(forge);
 			if (discard == null || discard.getOpcode() != Opcodes.POP) {
 				ForbricLog.warn("[Forbric/EventMux] %s.%s calls %s.%s but does not discard its result — tooltip"
 						+ " bridge not installed, NeoForge mods cannot add tooltip lines",
 						TARGET, METHOD, FORGE_FACTORY, FORGE_CALL);
 				continue;
 			}
-			method.instructions.insert(discard, hook());
+			int[] operands = operandsOf(forge);
+			if (operands == null) {
+				ForbricLog.warn("[Forbric/EventMux] %s.%s's %s.%s call does not read its four values straight out of"
+						+ " locals — tooltip bridge not installed, NeoForge mods cannot add tooltip lines",
+						TARGET, METHOD, FORGE_FACTORY, FORGE_CALL);
+				continue;
+			}
+			method.instructions.insert(discard, hook(operands));
 			changed = true;
 		}
 
@@ -166,13 +189,42 @@ public final class ItemTooltipBridgeInjector implements ClassTransformer {
 		return found.size() == 1 ? found.get(0) : null;
 	}
 
-	/** {@code KernelItemTooltip.afterForge(list, stack, player, flag)}. */
-	private static InsnList hook() {
+	/** The next instruction that actually executes — skips labels, line numbers and frames. */
+	private static AbstractInsnNode nextReal(AbstractInsnNode from) {
+		for (AbstractInsnNode insn = from.getNext(); insn != null; insn = insn.getNext()) {
+			if (insn.getOpcode() >= 0) return insn;
+		}
+		return null;
+	}
+
+	/**
+	 * The four local slots the {@code onItemTooltip} call loads its arguments from, in call order
+	 * ({@code stack, player, list, flag}), or null when the call site is not exactly four plain loads.
+	 *
+	 * <p>Read rather than assumed: the values are already in locals when the call happens, so the loads that push
+	 * them ARE the answer, and no guess about a particular base's slot layout can be wrong. Anything else — a
+	 * computed operand, more or fewer than four, a receiver on the stack — means this tail is not the shape the
+	 * bridge knows how to extend, and declining is better than weaving a call with the wrong arguments.
+	 */
+	private static int[] operandsOf(MethodInsnNode call) {
+		int[] slots = new int[OPERANDS];
+		AbstractInsnNode cursor = call.getPrevious();
+		for (int i = OPERANDS - 1; i >= 0; i--) {
+			while (cursor != null && cursor.getOpcode() < 0) cursor = cursor.getPrevious();
+			if (!(cursor instanceof VarInsnNode load) || load.getOpcode() != Opcodes.ALOAD) return null;
+			slots[i] = load.var;
+			cursor = cursor.getPrevious();
+		}
+		return slots;
+	}
+
+	/** {@code KernelItemTooltip.afterForge(list, stack, player, flag, context, display)}. */
+	private static InsnList hook(int[] operands) {
 		InsnList code = new InsnList();
-		code.add(new VarInsnNode(Opcodes.ALOAD, LIST_LOCAL));
-		code.add(new VarInsnNode(Opcodes.ALOAD, STACK_LOCAL));
-		code.add(new VarInsnNode(Opcodes.ALOAD, PLAYER_LOCAL));
-		code.add(new VarInsnNode(Opcodes.ALOAD, FLAG_LOCAL));
+		code.add(new VarInsnNode(Opcodes.ALOAD, operands[2])); // list
+		code.add(new VarInsnNode(Opcodes.ALOAD, operands[0])); // stack
+		code.add(new VarInsnNode(Opcodes.ALOAD, operands[1])); // player
+		code.add(new VarInsnNode(Opcodes.ALOAD, operands[3])); // flag
 		code.add(new VarInsnNode(Opcodes.ALOAD, CONTEXT_LOCAL));
 		code.add(new VarInsnNode(Opcodes.ALOAD, DISPLAY_LOCAL));
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, HOOK, HOOK_DESC, false));
