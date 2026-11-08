@@ -537,6 +537,7 @@ public final class ForbricClassLoader extends URLClassLoader {
 		// it refuses to weave anything else. Verifying this class must not define classes Mixin cannot weave yet.
 		if (!open.isEmpty()) bytes = deferLinkTimeTypes(bytes, open.peekLast(), name);
 
+		dumpIfAsked(name, bytes);
 		definePackageIfNeeded(name, resource);
 		Class<?> defined = define(name, bytes, domainFor(resource));
 		// A platform carrier's class whose superclass another platform's carrier serves: the merged base's proved
@@ -568,6 +569,28 @@ public final class ForbricClassLoader extends URLClassLoader {
 	 * game loader resolved. Any failure returns {@code null} and leaves the previous behaviour - the class is simply
 	 * absent - so this cannot make a working launch worse.
 	 */
+	/**
+	 * Writes one class's final bytes out for inspection, when {@code -Dforbric.dumpClass=<suffix>} names it.
+	 *
+	 * <p>Exists because a mixin can be reported as applied and still leave one of its fields uninitialised: the only
+	 * way to tell "Mixin merged this constructor" from "Mixin added the interface and moved on" is to read the bytes
+	 * that were defined. {@code -Dforbric.dumpDir} picks the directory; without either property this does nothing.
+	 */
+	private static void dumpIfAsked(String name, byte[] bytes) {
+		String suffix = System.getProperty("forbric.dumpClass");
+		if (suffix == null || bytes == null || !name.endsWith(suffix)) return;
+		try {
+			java.nio.file.Path dir = java.nio.file.Path.of(
+					System.getProperty("forbric.dumpDir", System.getProperty("java.io.tmpdir")));
+			java.nio.file.Path out = dir.resolve(name.replace('.', '/') + ".class");
+			java.nio.file.Files.createDirectories(out.getParent());
+			java.nio.file.Files.write(out, bytes);
+			ForbricLog.info("[Forbric/Dump] wrote %s (%d bytes)", out, bytes.length);
+		} catch (RuntimeException | java.io.IOException failed) {
+			ForbricLog.warn("[Forbric/Dump] could not write %s: %s", name, String.valueOf(failed));
+		}
+	}
+
 	private Class<?> defineEventBusWrapper(String name) {
 		if (WRAPPER_OFF) return null;
 		try {
@@ -721,6 +744,7 @@ public final class ForbricClassLoader extends URLClassLoader {
 	 * that is worth being able to see.
 	 */
 	private Class<?> define(String name, byte[] bytes, ProtectionDomain domain) {
+		dumpIfAsked(name, bytes);
 		traceDefine(name);
 		ancestorCompositions.verify(name, bytes, path -> {
 			try (InputStream input = getGameResourceAsStream(path)) { return input == null ? null : input.readAllBytes(); }

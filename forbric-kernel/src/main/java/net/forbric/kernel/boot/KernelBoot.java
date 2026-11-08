@@ -144,6 +144,14 @@ public final class KernelBoot {
 		// Before any switch is read: a renamed or retired -Dforbric.* flag is named in the log even when the mechanism
 		// it controls never runs in this session.
 		net.forbric.kernel.util.ForbricSwitches.announce();
+		// Mixin puts a guest's instance initialisers after the LAST delegate-looking <init> call it can find. Pack's
+		// private ctor builds its child Packs in a loop, so that heuristic placed fabric-resource-loader's
+		// `parentsPredicate = DEFAULT_PARENT_PREDICATE` inside the loop: the ordinary path (no children) never ran
+		// it, and fabric_parentsEnabled() threw NPE on every resource-pack query. Measured by dumping the class with
+		// -Dforbric.dumpClass=Pack: the putfield sat at offset 188, right behind the recursive
+		// `invokespecial Pack.<init>` at 181. SAFE is the documented option that stops at the first super()/this()
+		// call, which is where an instance initialiser belongs. Set before Mixin reads its options.
+		System.setProperty("mixin.initialiserInjectionMode", "SAFE");
 		// Load the runtime namespace table now, not at the first lookup: a whole fabric-api's worth of mixin targets
 		// asks for class_XXXX names during preparation, and a table that is absent or unreadable has to say so at a
 		// point a reader can connect to the launch rather than in the middle of fifty mixin errors. Nothing was
