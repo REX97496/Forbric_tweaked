@@ -374,7 +374,8 @@ public final class KernelBoot {
 		// so this is a hit rather than a second rewrite.
 		modJars = net.forbric.kernel.remap.GuestJarRemap.remapUnder(modJars,
 				gameDir.resolve(".forbric-kernel").resolve("candidates"),
-				gameDir.resolve(".forbric-kernel").resolve("remapped"));
+				gameDir.resolve(".forbric-kernel").resolve("remapped"),
+				baseJars);
 		// The members those guests asked the loader to open. Fabric mods do not @Shadow a class they do not target:
 		// they ship an accessWidener and expect the loader to widen the member before the injected code reads it.
 		// Measured with this missing: fabric-resource-loader-v0's handler read FolderRepositorySource.packSource and

@@ -1843,7 +1843,6 @@ net/minecraft/world/item/ItemStack$1#encode(Lnet/minecraft/network/RegistryFrien
 net/minecraft/world/item/ItemUtils#onContainerDestroyed(Lnet/minecraft/world/entity/item/ItemEntity;Ljava/lang/Iterable;)V 657a9cca=0
 net/minecraft/world/item/JukeboxSong#fromStack(Lnet/minecraft/core/HolderLookup$Provider;Lnet/minecraft/world/item/ItemStack;)Ljava/util/Optional; cd207c14=0
 net/minecraft/world/item/JukeboxSongPlayer#getSong()Lnet/minecraft/world/item/JukeboxSong; 00014e4a=0
-net/minecraft/world/item/JukeboxSongPlayer#setSongWithoutPlaying(Lnet/minecraft/core/Holder;J)V aaecc7a0=0
 net/minecraft/world/item/JukeboxSongPlayer#stop(Lnet/minecraft/world/level/LevelAccessor;Lnet/minecraft/world/level/block/state/BlockState;)V ed914fdf=0
 net/minecraft/world/item/JukeboxSongPlayer#tick(Lnet/minecraft/world/level/LevelAccessor;Lnet/minecraft/world/level/block/state/BlockState;)V ed914fdf=0 f1c63ce1=1
 net/minecraft/world/item/MapItem#getCorrectStateForFluidBlock(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState; 096dcd4a=0
@@ -1861,7 +1860,6 @@ net/minecraft/world/item/TridentItem#releaseUsing(Lnet/minecraft/world/item/Item
 net/minecraft/world/item/alchemy/PotionBrewing#hasMix(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemStack;)Z 00287d54=0@3:7f858bfe,T@3:0530dc7b
 net/minecraft/world/item/alchemy/PotionBrewing$Builder#addContainer(Lnet/minecraft/world/item/Item;)V ffeca9cb=0
 net/minecraft/world/item/alchemy/PotionBrewing$Builder#addContainerRecipe(Lnet/minecraft/world/item/Item;Lnet/minecraft/world/item/Item;Lnet/minecraft/world/item/Item;)V ffeca9cb=0 ffeca9cc=0 ffeca9cd=0
-net/minecraft/world/item/alchemy/PotionContents#getAllEffects()Ljava/lang/Iterable; 9249fa62=1
 net/minecraft/world/item/alchemy/PotionContents#getColor()I f5b3f9d1=0
 net/minecraft/world/item/alchemy/PotionContents#getColorOptional(Ljava/lang/Iterable;)Ljava/util/OptionalInt; b46dc163=0
 net/minecraft/world/item/alchemy/PotionContents#hasEffects()Z 00287d55=0@3:44ef6001,T@3:37a55724
@@ -1899,7 +1897,7 @@ net/minecraft/world/item/enchantment/ItemEnchantments#equals(Ljava/lang/Object;)
 net/minecraft/world/item/enchantment/LevelBasedValue$Fraction#calculate(I)F 67d144f0=0
 net/minecraft/world/item/enchantment/TargetedConditionalEffect#matches(Lnet/minecraft/world/level/storage/loot/LootContext;)Z 00287d55=0
 net/minecraft/world/item/enchantment/effects/ExplodeEffect#getDamageSource(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/damagesource/DamageSource; c25112a3=1
-net/minecraft/world/item/enchantment/effects/SummonEntityEffect#apply(Lnet/minecraft/server/level/ServerLevel;ILnet/minecraft/world/item/enchantment/EnchantedItemInUse;Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/phys/Vec3;)V 4ca356f9=0 7e5798e5=2 9c2a41a6=1
+net/minecraft/world/item/enchantment/effects/SummonEntityEffect#apply(Lnet/minecraft/server/level/ServerLevel;ILnet/minecraft/world/item/enchantment/EnchantedItemInUse;Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/phys/Vec3;)V 4ca356f9=0 9c2a41a6=1
 net/minecraft/world/item/trading/MerchantOffer#satisfiedBy(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemStack;)Z 00287d54=0@3:52f45036,1@3:52258870 00287d55=1
 net/minecraft/world/level/BaseSpawner#serverTick(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/core/BlockPos;)V 045672ba=0 6fadbbd1=1
 net/minecraft/world/level/BlockGetter#getBlockEntity(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/entity/BlockEntityType;)Ljava/util/Optional; 19a8b829=0
@@ -2440,8 +2438,6 @@ net/minecraft/world/level/levelgen/DensityFunctions$RangeChoice#compute(Lnet/min
 net/minecraft/world/level/levelgen/Heightmap#setRawData(Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/levelgen/Heightmap$Types;[J)V e6e86586=0
 net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator#buildSurface(Lnet/minecraft/server/level/WorldGenRegion;Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/chunk/ChunkAccess;)V 3717129c=0
 net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator#fillFromNoise(Lnet/minecraft/world/level/levelgen/blending/Blender;Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/chunk/ChunkAccess;)Ljava/util/concurrent/CompletableFuture; 27dacc25=0
-net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator#spawnOriginalMobs(Lnet/minecraft/server/level/WorldGenRegion;)V 678b8066=0
-net/minecraft/world/level/levelgen/NoiseChunk#wrapNew(Lnet/minecraft/world/level/levelgen/DensityFunction;)Lnet/minecraft/world/level/levelgen/DensityFunction; 463b43d7=4
 net/minecraft/world/level/levelgen/NoiseChunk$CacheAllInCell#compute(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)D 0e879709=1
 net/minecraft/world/level/levelgen/NoiseChunk$CacheOnce#fillArray([DLnet/minecraft/world/level/levelgen/DensityFunction$ContextProvider;)V f70fcca2=0
 net/minecraft/world/level/levelgen/NoiseChunk$FlatCache#compute(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)D 25a6d504=0

@@ -277,6 +277,20 @@ public final class GuestJarRemap {
 	 * found}. The cache is keyed by the source content, so this costs a hit, not a second rewrite.
 	 */
 	public static List<Path> remapUnder(List<Path> jars, Path under, Path cacheDir) {
+		return remapUnder(jars, under, cacheDir, null);
+	}
+
+	/**
+	 * Same, given the base jars. Without them the base index is null and every question that needs the base's own
+	 * declarations — which name a {@code @Shadow} really has, which method a synthetic lambda id points at — is
+	 * answered by the table alone or not at all. Measured with this missing: the candidates copy of
+	 * {@code fabric-resource-loader-v0}'s {@code GameOptionsMixin} reached Mixin as
+	 * {@code @Shadow field field_1887}, the run reported "was not located in the target class
+	 * net.minecraft.client.Options", and the same module rewritten by hand with the index in hand came out as
+	 * {@code resourcePacks}.
+	 */
+	public static List<Path> remapUnder(List<Path> jars, Path under, Path cacheDir, List<Path> minecraftJars) {
+		if (minecraftJars != null && !minecraftJars.isEmpty()) minecraftIndex = new MethodIndex(minecraftJars);
 		if (jars.isEmpty()) return jars;
 		List<Path> out = new ArrayList<>(jars.size());
 		for (Path jar : jars) {
@@ -308,7 +322,13 @@ public final class GuestJarRemap {
 
 	private static Path remapWithYarn(Path jar, Path cacheDir) throws IOException {
 		byte[] bytes = Files.readAllBytes(jar);
-		String key = digest(bytes);
+		// The cache is keyed by the guest's content, so on its own it never notices that the rewriter changed: a jar
+		// written by yesterday's remapper was handed back byte-for-byte today, and the fix under test could not be
+		// seen at all. Measured while chasing @Shadow field field_1887: the runtime copy still said field_1887 while
+		// the same jar rewritten by hand said resourcePacks, and the only difference was the cached file's mtime.
+		// The salt makes a rewriter change invalidate everything; the table's own identity does the same for a
+		// regenerated mappings file, since every answer here comes from that table.
+		String key = digest(fingerprintOf(bytes));
 		Path target = cacheDir.resolve(key + '-' + jar.getFileName());
 		if (Files.isRegularFile(target) && Files.size(target) > 0) return target;
 		Files.createDirectories(cacheDir);
@@ -744,7 +764,15 @@ public final class GuestJarRemap {
 	private static String pickBaseFieldName(MethodIndex index, String owner, String descriptor, String hint) {
 		java.util.Set<String> names = new java.util.LinkedHashSet<>(index.fieldsOfShape(owner, descriptor));
 		if (names.contains(hint)) return hint;
-		return names.size() == 1 ? names.iterator().next() : null;
+		if (names.size() == 1) return names.iterator().next();
+		// One shape is often shared by a dozen fields -- Options declares dozens of OptionInstance entries, all of
+		// them private final and therefore indistinguishable by type alone -- so uniqueness says nothing here. The
+		// name still does: field_1839 is an intermediary name the table answers on its own, and the answer is used
+		// only when the base really declares it with this shape. Measured before this: "@Shadow field field_1839
+		// was not located in the target class net.minecraft.client.Options" from fabric-key-binding-api-v1's
+		// GameOptionsMixin, and field_1887 from fabric-resource-loader-v0's -- the table maps both
+		// (class_315 field_1839 keyMappings, field_1887 resourcePacks) while this uniqueness search gave up.
+		return fromTheTable(owner, names, hint, false);
 	}
 
 	/** The one name of that shape on {@code owner}, or the hint when the base declares it. */
@@ -754,7 +782,40 @@ public final class GuestJarRemap {
 			if (!method.name().startsWith("lambda$") && !method.name().startsWith("<")) names.add(method.name());
 		}
 		if (names.contains(hint)) return hint;
-		return names.size() == 1 ? names.iterator().next() : null;
+		if (names.size() == 1) return names.iterator().next();
+		// Same argument as the field twin: a shape with several candidates still has a name, and an intermediary
+		// name is one the table can translate without picking. Used only when the base declares the translated
+		// name with this exact shape.
+		return fromTheTable(owner, names, hint, true);
+	}
+
+	/**
+	 * The candidate the mapping table names for {@code hint}, when {@code hint} is an intermediary member name and
+	 * the base declares the translated name with the same shape. Null otherwise -- an unknown or ambiguous name
+	 * makes the table answer nothing, which is the point of asking it instead of picking.
+	 */
+	private static String fromTheTable(String owner, java.util.Set<String> candidates, String hint, boolean method) {
+		if (!INTERMEDIARY_MEMBER.matcher(hint).matches()) return null;
+		String mapped = null;
+		// Owner-aware first. The table is keyed by (intermediary owner, intermediary member), and the owner here is
+		// already the official one, so it has to be turned back. Without this, field_1887 (Options.resourcePacks)
+		// was still unlocated after the first version: the owner-less index refuses a name that appears under more
+		// than one owner, and only field_1839 happened to be unique. Measured after this change: the same
+		// GameOptionsMixin's second shadow resolves too, and the run's InvalidMixinException count is what the log
+		// says rather than what this comment hopes.
+		String intermediaryOwner = KernelMappingResolver.INSTANCE.unmapClassName("intermediary", owner);
+		if (intermediaryOwner != null && !intermediaryOwner.equals(owner)) {
+			mapped = method
+					? KernelMappingResolver.INSTANCE.mapMethodName("intermediary", intermediaryOwner, hint, "")
+					: KernelMappingResolver.INSTANCE.mapFieldName("intermediary", intermediaryOwner, hint, "");
+		}
+		if (mapped == null || mapped.isEmpty() || mapped.equals(hint)) {
+			mapped = method
+					? KernelMappingResolver.INSTANCE.mapMethodNameWithoutOwner("intermediary", hint)
+					: KernelMappingResolver.INSTANCE.mapFieldNameWithoutOwner("intermediary", hint);
+		}
+		if (mapped == null || mapped.isEmpty() || mapped.equals(hint)) return null;
+		return candidates.contains(mapped) ? mapped : null;
 	}
 
 	/**
@@ -1648,6 +1709,28 @@ public final class GuestJarRemap {
 		}
 	}
 
+	/** The cache salt: bump {@code CACHE_VERSION} whenever the rewriting itself changes. */
+	private static final String CACHE_VERSION = "6";
+
+	private static byte[] fingerprintOf(byte[] jarBytes) {
+		String table = System.getProperty(KernelMappingResolver.TABLE_PROPERTY, "");
+		String tableIdentity = "none";
+		if (!table.isEmpty()) {
+			java.nio.file.Path path = java.nio.file.Path.of(table);
+			if (java.nio.file.Files.isRegularFile(path)) {
+				try {
+					tableIdentity = java.nio.file.Files.size(path) + "@" + java.nio.file.Files.getLastModifiedTime(path).toMillis();
+				} catch (java.io.IOException unreadable) {
+					tableIdentity = "unreadable";
+				}
+			}
+		}
+		byte[] prefix = (CACHE_VERSION + '|' + tableIdentity + '|').getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		byte[] combined = new byte[prefix.length + jarBytes.length];
+		System.arraycopy(prefix, 0, combined, 0, prefix.length);
+		System.arraycopy(jarBytes, 0, combined, prefix.length, jarBytes.length);
+		return combined;
+	}
 	private static String digest(byte[] bytes) {
 		try {
 			MessageDigest sha = MessageDigest.getInstance("SHA-256");
