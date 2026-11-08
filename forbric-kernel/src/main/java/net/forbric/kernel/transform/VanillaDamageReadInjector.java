@@ -76,13 +76,15 @@ public final class VanillaDamageReadInjector implements ClassTransformer {
 	@Override
 	public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("switched off by -D" + PROPERTY);
-		List<AnchorSet.Anchor> anchors = new ArrayList<>();
-		for (String target : TARGETS) {
-			anchors.add(new AnchorSet.Anchor(target, AnchorSet.Severity.REQUIRED,
-					"a mod changing the damage at actuallyHurt's first read changes nothing, and a pair that @Share state "
-							+ "across it (TaCZ) throws on every hit"));
-		}
-		return AnchorSet.of(anchors.toArray(new AnchorSet.Anchor[0]));
+		// MEASURED on patched-mc-merged-1.21.1.jar: this line's actuallyHurt is (DamageSource, float)V and reads its
+		// damage straight out of the DamageContainer it peeks off this.damageContainers -- there is no local copy
+		// taken before armour for a mod to rewrite, so there is nothing to reconcile back into the container. The
+		// Forge event that would have done the rewriting is LivingHurtEvent, which ForgeDamageSeamsInjector's new
+		// single-argument seam now delivers at the head of the same method, where it writes the container directly.
+		// A rebuild that restores the container-parameter shape brings the shape this repair is written for back.
+		return AnchorSet.scanned("this line's actuallyHurt reads the container itself, before armour and after, so no "
+				+ "reconciliation is needed; ForgeDamageSeamsInjector delivers MinecraftForge's LivingHurtEvent at the "
+				+ "head of that same method and writes the container there");
 	}
 
 	@Override

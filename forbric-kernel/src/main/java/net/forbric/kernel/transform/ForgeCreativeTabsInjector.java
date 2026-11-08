@@ -40,6 +40,17 @@ public final class ForgeCreativeTabsInjector implements ClassTransformer {
 			+ "Lnet/minecraft/world/item/CreativeModeTab$DisplayItemsGenerator;"
 			+ "Lnet/minecraft/world/item/CreativeModeTab$ItemDisplayParameters;"
 			+ "Lnet/minecraft/world/item/CreativeModeTab$Output;)V";
+	/**
+	 * 1.21.1's shape, with the tab's own {@code ResourceKey} as the second parameter — measured on
+	 * {@code patched-mc-merged-1.21.1.jar} ({@code CreativeModeTab.buildContents} offset 43) and in both carriers'
+	 * {@code EventHooks}. An earlier version accepted only the four-parameter form, so on this line the proof failed
+	 * on the descriptor alone and MinecraftForge mods never reached any tab build.
+	 */
+	static final String HOOK_DESC_WITH_KEY = "(Lnet/minecraft/world/item/CreativeModeTab;"
+			+ "Lnet/minecraft/resources/ResourceKey;"
+			+ "Lnet/minecraft/world/item/CreativeModeTab$DisplayItemsGenerator;"
+			+ "Lnet/minecraft/world/item/CreativeModeTab$ItemDisplayParameters;"
+			+ "Lnet/minecraft/world/item/CreativeModeTab$Output;)V";
 	static final String RUNTIME = "net/forbric/kernel/runtime/KernelForgeCreativeTabs";
 	private static final String NEO = ForeignType.EVENT_HOOKS.internal(Ecosystem.NEOFORGE);
 	private static final String FORGE = ForeignType.EVENT_HOOKS.internal(Ecosystem.FORGE);
@@ -85,7 +96,8 @@ public final class ForgeCreativeTabsInjector implements ClassTransformer {
 		if (declarations != 1 || calls != 1 || caller != target
 				|| (target.access & (Opcodes.ACC_STATIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) != 0
 				|| hook.getOpcode() != Opcodes.INVOKESTATIC || hook.itf
-				|| !NEO.equals(hook.owner) || !HOOK_DESC.equals(hook.desc)) return classBytes;
+				|| !NEO.equals(hook.owner)
+				|| !(HOOK_DESC.equals(hook.desc) || HOOK_DESC_WITH_KEY.equals(hook.desc))) return classBytes;
 
 		// Four references in, void out on both sides: no instructions, locals, frames or exception ranges change.
 		hook.owner = RUNTIME;
