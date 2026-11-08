@@ -9,8 +9,10 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -26,6 +28,8 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.TypePath;
 import org.objectweb.asm.commons.ClassRemapper;
@@ -115,6 +119,10 @@ public final class GuestJarRemap {
 	private static long refmapMisses;
 	private static long memberStrings;
 	private static long memberStringMisses;
+	private static long lambdasPicked;
+	private static long lambdasAmbiguous;
+	private static volatile MethodIndex minecraftIndex;
+	private static int lambdasUnindexed = 5;
 
 	private GuestJarRemap() {
 	}
@@ -128,6 +136,17 @@ public final class GuestJarRemap {
 	 * none.
 	 */
 	public static List<Path> remapAll(List<Path> jars, Path cacheDir) {
+		return remapAll(jars, cacheDir, null);
+	}
+
+	/**
+	 * Same, given the base jars the guests will run against. When the table maps an intermediary id onto a synthetic
+	 * lambda name and the base class has no such method, the base's own methods pick the target by descriptor — the
+	 * table alone cannot: nine intermediary ids of {@code ResourceLocation} all read {@code lambda$read$0}, and
+	 * {@code ByteBufCodecs} repeats the shape one lambda along.
+	 */
+	public static List<Path> remapAll(List<Path> jars, Path cacheDir, List<Path> minecraftJars) {
+		minecraftIndex = minecraftJars == null || minecraftJars.isEmpty() ? null : new MethodIndex(minecraftJars);
 		if (Boolean.getBoolean("forbric." + SWITCH + ".off")) return jars;
 		if (jars.isEmpty()) return jars;
 		if (KernelMappingResolver.INSTANCE.getNamespaces().size() < 2) {
@@ -155,7 +174,11 @@ public final class GuestJarRemap {
 					refmapValues,
 					(refmapMisses == 0 ? "" : ", " + refmapMisses + " refmap selector(s) not in the table")
 							+ (failed == 0 ? "" : ", " + failed + " left as they came")
-							+ (classFailures == 0 ? "" : ", " + classFailures + " class(es) unreadable"));
+							+ (classFailures == 0 ? "" : ", " + classFailures + " class(es) unreadable")
+							+ (lambdasPicked == 0 ? "" : ", " + lambdasPicked + " lambda name(s) replaced by the"
+									+ " method the base actually declares")
+							+ (lambdasAmbiguous == 0 ? "" : ", " + lambdasAmbiguous + " lambda name(s) left alone"
+									+ " because more than one method there accepts the descriptor"));
 		}
 		return out;
 	}
@@ -657,6 +680,56 @@ public final class GuestJarRemap {
 		return out.toString();
 	}
 
+	/**
+	 * The base jars, asked what a class actually declares.
+	 *
+	 * <p>Read lazily and cached per owner: only classes the guests call lambda-named methods on are ever opened, so
+	 * the cost is a handful of entries out of a fifty-thousand-entry jar rather than an index of the whole base.
+	 */
+	/** One method of a base class: its name and the access flags the base declares it with. */
+	private record BaseMethod(String name, int access) {
+		private boolean callable() {
+			return (access & 0x0001) != 0 && (access & 0x0008) != 0;
+		}
+	}
+
+	private static final class MethodIndex {
+		private final List<Path> jars;
+		private final Map<String, Map<String, List<BaseMethod>>> cache = new HashMap<>();
+
+		private MethodIndex(List<Path> jars) {
+			this.jars = jars;
+		}
+
+		private List<BaseMethod> methods(String internalOwner, String descriptor) {
+			return cache.computeIfAbsent(internalOwner, this::read).getOrDefault(descriptor, List.of());
+		}
+
+		private Map<String, List<BaseMethod>> read(String internalOwner) {
+			String entryName = internalOwner + ".class";
+			for (Path jar : jars) {
+				try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(jar.toFile())) {
+					java.util.zip.ZipEntry found = zip.getEntry(entryName);
+					if (found == null) continue;
+					ClassNode node = new ClassNode();
+					try (java.io.InputStream in = zip.getInputStream(found)) {
+						new ClassReader(in).accept(node,
+								ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+					}
+					Map<String, List<BaseMethod>> byDescriptor = new HashMap<>();
+					for (MethodNode method : node.methods) {
+						byDescriptor.computeIfAbsent(method.desc, key -> new ArrayList<>(2))
+								.add(new BaseMethod(method.name, method.access));
+					}
+					return byDescriptor;
+				} catch (IOException | RuntimeException unreadable) {
+					// A jar that cannot be opened simply does not answer; the next one may carry the class.
+				}
+			}
+			return Map.of();
+		}
+	}
+
 	/** The resolver, as the ASM visitor shape that asks for it. */
 	private static final class ResolverRemapper extends Remapper {
 		private final Set<String> seen;
@@ -684,28 +757,67 @@ public final class GuestJarRemap {
 			String resolved = mapped.equals(name)
 					? KernelMappingResolver.INSTANCE.mapMethodNameWithoutOwner("intermediary", name)
 					: mapped;
-			// Nine intermediary ids share the official name lambda$read$0, so the table cannot tell the two-argument
-			// shape from the one-argument one. On this line ResourceLocation has only the (String,
-			// ResourceLocationException) lambda; the (String, String) one fabric-api calls is exactly
-			// fromNamespaceAndPath's shape, and that method does exist — so hand the call there rather than naming a
-			// method no class in the merged base declares.
 			return lambdaShape(owner, resolved, descriptor);
 		}
 
 		/**
-		 * Renames the lambda ids the table collapsed onto one official name, using the descriptor to pick the method.
-		 * The owner and the descriptor still hold their <em>source</em> spelling here — ASM asks this for the name first
-		 * and maps the owner afterwards — so both are compared after mapping, which is why the first attempt at this
-		 * (matching the official owner directly) never fired.
+		 * Picks the method the base actually declares when the table named a synthetic lambda.
+		 *
+		 * <p>The table maps one official name onto every lambda of an enclosing method — nine intermediary ids of
+		 * {@code ResourceLocation} read {@code lambda$read$0}, and {@code ByteBufCodecs} repeats the shape — so a
+		 * name-only answer is right for at most one of them. The descriptor is not ambiguous, though: when the base
+		 * class has no method under the mapped name but exactly one non-lambda method accepts the same descriptor, that
+		 * method is the one the guest was compiled against. The owner and descriptor still hold their <em>source</em>
+		 * spelling here, because ASM asks for the name before it maps the owner, so both are mapped before comparing.
 		 */
-		private static String lambdaShape(String owner, String mapped, String descriptor) {
+		private String lambdaShape(String owner, String mapped, String descriptor) {
 			if (!mapped.startsWith("lambda$")) return mapped;
 			String officialOwner = mapInternal(owner);
-			if (!officialOwner.equals("net/minecraft/resources/ResourceLocation")) return mapped;
-			if (!descriptor.startsWith("(Ljava/lang/String;Ljava/lang/String;)L")) return mapped;
-			String returns = descriptor.substring(descriptor.indexOf(')') + 2, descriptor.length() - 1);
-			if (!mapInternal(returns).equals("net/minecraft/resources/ResourceLocation")) return mapped;
-			return "fromNamespaceAndPath";
+			String officialDescriptor = mapDesc(descriptor);
+			MethodIndex index = minecraftIndex;
+			if (index == null) return mapped;
+			List<BaseMethod> byDescriptor = index.methods(officialOwner, officialDescriptor);
+			if (byDescriptor.isEmpty() && lambdasUnindexed-- > 0) {
+				ForbricLog.debug("[Forbric/Remap] %s%s is not declared on the base, and no method there takes it",
+						officialOwner, officialDescriptor);
+			}
+			boolean present = false;
+			for (BaseMethod method : byDescriptor) if (method.name().equals(mapped)) present = true;
+			if (byDescriptor.isEmpty() || present) {
+				// Either the base could not be read, or the name really does exist with this descriptor: leave it.
+				if (!byDescriptor.isEmpty()) lambdasPicked++;
+				return mapped;
+			}
+			List<String> named = new ArrayList<>(byDescriptor.size());
+			for (BaseMethod method : byDescriptor) {
+				String candidate = method.name();
+				if (!candidate.startsWith("lambda$") && !candidate.startsWith("<") && method.callable()) {
+					named.add(candidate);
+				}
+			}
+			if (named.size() == 1) {
+				lambdasPicked++;
+				return named.get(0);
+			}
+			// More than one method takes the same descriptor, and the table cannot say which one the guest meant
+			// because it collapsed every lambda of the enclosing method onto one name. Measured case:
+			// ResourceLocation declares fromNamespaceAndPath(String, String) and tryBuild(String, String) publicly,
+			// and a private createUntrusted(String, String) beside them; fabric-api-base's read() was the public
+			// throwing one. Restricting to callable members drops the private helper, and a "try*" sibling is by
+			// naming convention the variant that answers instead of throwing — so a lone non-try candidate is the
+			// reader the lambda came from. Anything still tied is left alone rather than guessed.
+			List<String> readers = new ArrayList<>(named.size());
+			for (String candidate : named) {
+				if (!candidate.startsWith("try")) readers.add(candidate);
+			}
+			if (readers.size() == 1) {
+				lambdasPicked++;
+				ForbricLog.debug("[Forbric/Remap] %s%s is ambiguous, and %s is the one reader among %s", officialOwner,
+						officialDescriptor, readers.get(0), named);
+				return readers.get(0);
+			}
+			lambdasAmbiguous++;
+			return mapped;
 		}
 
 		@Override

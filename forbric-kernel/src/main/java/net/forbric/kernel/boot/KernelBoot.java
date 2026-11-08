@@ -315,8 +315,38 @@ public final class KernelBoot {
 		// Measured without this step: 268 "Error loading class: net/minecraft/class_2591" lines, every fabric-api
 		// entrypoint failing to construct, and the transfer bridge off. See GuestJarRemap for why the references are
 		// rewritten rather than aliased at load.
+		// The base classes the index needs live in the merged jar, which the loader puts on the JVM classpath but not
+		// necessarily in the library directory scan — measured: a lookup for ResourceLocation came back empty while
+		// fromNamespaceAndPath was right there, so both sources are handed over.
+		List<Path> baseJars = new ArrayList<>(minecraftLibraries);
+		for (String entry : System.getProperty("java.class.path", "").split(java.io.File.pathSeparator)) {
+			if (entry.endsWith(".jar")) baseJars.add(Path.of(entry));
+		}
+		// …and the merged base itself, which the launcher hands to the game's own loader rather than to this JVM's
+		// classpath. Measured: without it the index answered "not declared on the base" for ResourceLocation while
+		// fromNamespaceAndPath sat in the jar the game was about to load.
+		// The library root is NOT always the game directory's parent: with a version-isolated instance the game
+		// directory is <instance>/versions/1.21.1-forbric and the libraries sit one level above it (measured on the
+		// instance this tree is tested against — <instance>/versions/libraries does not exist). Walk both and take
+		// whichever carries the jars, so neither layout is guessed wrong.
+		Path mergedHome = null;
+		for (Path root : new Path[] {gameDir.getParent(), gameDir.getParent() == null ? null : gameDir.getParent().getParent()}) {
+			if (root == null) continue;
+			Path candidate = root.resolve("libraries").resolve("net").resolve("forbric").resolve("patched-mc-merged");
+			if (java.nio.file.Files.isDirectory(candidate)) {
+				mergedHome = candidate;
+				break;
+			}
+		}
+		if (java.nio.file.Files.isDirectory(mergedHome)) {
+			try (java.util.stream.Stream<Path> merged = java.nio.file.Files.walk(mergedHome, 2)) {
+				merged.filter(candidate -> candidate.toString().endsWith(".jar")).forEach(baseJars::add);
+			} catch (java.io.IOException unreadable) {
+				ForbricLog.debug("[Forbric/Remap] could not list " + mergedHome + ": " + unreadable);
+			}
+		}
 		fabricJars = net.forbric.kernel.remap.GuestJarRemap.remapAll(fabricJars,
-				gameDir.resolve(".forbric-kernel").resolve("remapped"));
+				gameDir.resolve(".forbric-kernel").resolve("remapped"), baseJars);
 		// …and the arbiter's extracted children, which reach the MOD-jar list and sit ahead of the Fabric list on
 		// the classpath. Measured with this missing: Mixin read BlockEntityTypeAccessor as the untouched 492-byte
 		// original out of candidates/ while the rewritten copy was 612 bytes, so its @Mixin annotation still said

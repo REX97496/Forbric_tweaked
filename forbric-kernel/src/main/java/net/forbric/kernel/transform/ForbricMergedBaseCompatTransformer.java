@@ -369,11 +369,13 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		// scanned(). Two instructions appended per widened registry, no branch introduced, so no StackMapTable.
 		out.add(fixed("mirrorTheDefaultedRegistriesTheMergeWidened", "net.minecraft.core.registries.BuiltInRegistries",
 				"fabric-api's transfer module asks for BuiltInRegistries.LOOT_NUMBER_PROVIDER_TYPE at the type it is stored as, and the merge widened the declaration — NoSuchFieldError in ItemVariant.<clinit> during Bootstrap"));
-		// fixed(). One hop to a method the class already declares, no branch, no StackMapTable.
-		out.add(fixed("aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", "net.minecraft.resources.ResourceLocation",
+		// scanned(), not fixed(): one hop to a method the class already declares, no branch, no StackMapTable — but
+		// 26.x names this class Identifier, so a fixed() anchor would be absent by design there and the census reads
+		// an absent target as a repair whose class this line never had. The repair logs its own line where it applies.
+		out.add(scanned("aliasTheVanillaLambdaTheGuestCallsByItsOfficialName",
 				"fabric-api-base calls lambda$read$0(String, String), the shape that base's read() had, and on this line"
 						+ " the only lambda$read$0 takes (String, ResourceLocationException) — NoSuchMethodError in"
-						+ " Event.<clinit> during Bootstrap"));
+						+ " Event.<clinit> during Bootstrap. Lines that call the class Identifier have nothing to alias."));
 
 		return List.copyOf(out);
 	}
