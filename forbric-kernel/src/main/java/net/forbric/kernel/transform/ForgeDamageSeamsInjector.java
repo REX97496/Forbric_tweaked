@@ -53,7 +53,10 @@ public final class ForgeDamageSeamsInjector implements ClassTransformer {
 	static final String RUNTIME = "net/forbric/kernel/runtime/KernelLivingDamage";
 	static final String SOURCE = "Lnet/minecraft/world/damagesource/DamageSource;";
 	static final String HURT_DESC = "(Lnet/minecraft/server/level/ServerLevel;" + SOURCE + "F)V";
+	/** 1.21.1's shape: no {@code ServerLevel} parameter, and the container is peeked off {@code damageContainers}. */
+	static final String SINGLE_HURT_DESC = "(" + SOURCE + "F)V";
 	static final String SERVER_DESC = "(Lnet/minecraft/server/level/ServerLevel;" + SOURCE + "F)Z";
+	static final String CONTAINER_STACK = "Ljava/util/Stack;";
 
 	static boolean enabled() {
 		return !"off".equalsIgnoreCase(System.getProperty(PROPERTY, "on"));
@@ -90,11 +93,96 @@ public final class ForgeDamageSeamsInjector implements ClassTransformer {
 		List<String> placed = new ArrayList<>();
 		MethodNode hurt = own(node, "actuallyHurt", HURT_DESC);
 		if (hurt != null && hurtSeams(hurt)) placed.add("Hurt and Damage in actuallyHurt");
+		MethodNode single = own(node, "actuallyHurt", SINGLE_HURT_DESC);
+		if (single != null && singleSeams(single)) placed.add("Hurt and Damage in actuallyHurt (1.21.1 shape)");
 		if (node.name.equals(PLAYER)) {
 			MethodNode server = own(node, "hurtServer", SERVER_DESC);
 			if (server != null && attackSeam(server) && noteSeam(node)) placed.add("player Attack in hurtServer");
 		}
 		return placed;
+	}
+
+	/**
+	 * The same two seams on the 1.21.1 shape, where {@code actuallyHurt} takes {@code (DamageSource, float)} and reads
+	 * its container with {@code this.damageContainers.peek()} rather than receiving one.
+	 *
+	 * <p>Measured on {@code patched-mc-merged-1.21.1.jar}: the method opens {@code aload_0; aload_1;
+	 * invokevirtual isInvulnerableTo; ifne <end>} — note there is no {@code aload_2}, which is the single reason the
+	 * container-shaped proof never matched this line. The damage local is the {@code fstore} directly after
+	 * {@code CommonHooks.onLivingDamagePre} (offset 86 → {@code fstore_3}), not one fed by
+	 * {@code DamageContainer.getNewDamage()}.
+	 *
+	 * <p>The container expression is legal here precisely because the injected code lands inside
+	 * {@code LivingEntity} itself: a private field of this class is addressable from its own bytecode.
+	 */
+	static boolean singleSeams(MethodNode method) {
+		if ((method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_ABSTRACT)) != 0) return false;
+		if (calls(method, "net/minecraftforge/common/ForgeHooks", "onLivingHurt") != 0
+				|| calls(method, "net/minecraftforge/common/ForgeHooks", "onLivingDamage") != 0
+				|| calls(method, RUNTIME, "hurt") != 0 || calls(method, RUNTIME, "damage") != 0) return false;
+		List<AbstractInsnNode> code = code(method);
+		// aload0 aload1 invokevirtual isInvulnerableTo; ifne <end>
+		if (code.size() < 4 || !load(code.get(0), Opcodes.ALOAD, 0) || !load(code.get(1), Opcodes.ALOAD, 1)
+				|| !(code.get(2) instanceof MethodInsnNode invulnerable) || !invulnerable.name.equals("isInvulnerableTo")
+				|| code.get(3).getOpcode() != Opcodes.IFNE) return false;
+		// The one fstore right after NeoForge's Pre: the health damage this hit goes on to apply.
+		AbstractInsnNode pre = null, store = null;
+		int stores = 0;
+		for (AbstractInsnNode insn : code) {
+			if (insn instanceof MethodInsnNode call && call.owner.equals("net/neoforged/neoforge/common/CommonHooks")
+					&& call.name.equals("onLivingDamagePre")) pre = insn;
+			if (pre != null && insn instanceof VarInsnNode v && v.getOpcode() == Opcodes.FSTORE
+					&& nextReal(pre) == insn) {
+				store = insn;
+				stores++;
+			}
+		}
+		if (stores != 1) return false;
+
+		LabelNode end = new LabelNode(), go = new LabelNode();
+		InsnList hurt = new InsnList();
+		hurt.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		peeked(hurt);
+		hurt.add(new VarInsnNode(Opcodes.ALOAD, 1));
+		hurt.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "hurt",
+				"(L" + LIVING + ";L" + CONTAINER + ";" + SOURCE + ")Z", false));
+		hurt.add(new JumpInsnNode(Opcodes.IFNE, end));
+		hurt.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		hurt.add(new FieldInsnNode(Opcodes.GETFIELD, LIVING, "dead", "Z"));
+		hurt.add(new JumpInsnNode(Opcodes.IFEQ, go));
+		hurt.add(end);
+		hurt.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
+		hurt.add(new InsnNode(Opcodes.RETURN));
+		hurt.add(go);
+		hurt.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
+		method.instructions.insert(code.get(3), hurt);
+
+		int slot = ((VarInsnNode) store).var;
+		InsnList damage = new InsnList();
+		damage.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		peeked(damage);
+		damage.add(new VarInsnNode(Opcodes.ALOAD, 1));
+		damage.add(new VarInsnNode(Opcodes.FLOAD, slot));
+		damage.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "damage",
+				"(L" + LIVING + ";L" + CONTAINER + ";" + SOURCE + "F)F", false));
+		damage.add(new VarInsnNode(Opcodes.FSTORE, slot));
+		method.instructions.insert(store, damage);
+		return true;
+	}
+
+	/** {@code this.damageContainers.peek()}, cast back to the container — only legal inside {@link #LIVING}. */
+	private static void peeked(InsnList out) {
+		out.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		out.add(new FieldInsnNode(Opcodes.GETFIELD, LIVING, "damageContainers", CONTAINER_STACK));
+		out.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/util/Stack", "peek", "()Ljava/lang/Object;", false));
+		out.add(new TypeInsnNode(Opcodes.CHECKCAST, CONTAINER));
+	}
+
+	/** The first instruction after {@code from} that an interpreter would execute. */
+	private static AbstractInsnNode nextReal(AbstractInsnNode from) {
+		AbstractInsnNode insn = from.getNext();
+		while (insn != null && insn.getOpcode() < 0) insn = insn.getNext();
+		return insn;
 	}
 
 	/** Hurt after the invulnerability check, Damage after the health damage is read back. */
