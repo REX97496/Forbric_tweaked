@@ -68,5 +68,5 @@ public final class FabricFluidBreathingInjector implements ClassTransformer {
 				&&code.get(2) instanceof MethodInsnNode call&&call.getOpcode()==Opcodes.INVOKEVIRTUAL&&call.owner.equals(LIVING)&&call.name.equals("canDrownInFluidType")&&call.desc.equals("(L"+TYPE+";)Z")&&code.get(3).getOpcode()==Opcodes.IRETURN;
 	}
 	private static AbstractInsnNode next(AbstractInsnNode node){for(var i=node.getNext();i!=null;i=i.getNext())if(i.getOpcode()>=0)return i;return null;}
-	private static boolean declined(String reason){ForbricLog.warn("[Forbric/Fluid] shared foreign adapter refill seam was not applied: %s",reason);return false;}
+	private static boolean declined(String reason){ForbricLog.info("[Forbric/Fluid] this line's air-supply seam is not the one this repair targets, so nothing was applied: %s",reason);return false;}
 }

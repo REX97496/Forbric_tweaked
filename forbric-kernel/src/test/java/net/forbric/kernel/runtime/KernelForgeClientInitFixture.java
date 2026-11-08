@@ -160,7 +160,7 @@ final class KernelForgeClientInitFixture implements AutoCloseable {
 				import net.neoforged.bus.api.*;
 				import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 				public final class ClientProbe {
-				  public static final List<String> trace = new ArrayList<>(), warnings = new ArrayList<>();
+				  public static final List<String> trace = new ArrayList<>(), warnings = new ArrayList<>(), debugs = new ArrayList<>();
 				  public static final List<PreparableReloadListener> listeners = new ArrayList<>(List.of(new Listener()));
 				  public static final SpyBus bus = new SpyBus();
 				  public static int forgeCalls, forgePosts, neoCalls, optionLoads, geometryCalls;
@@ -337,6 +337,8 @@ final class KernelForgeClientInitFixture implements AutoCloseable {
 				  public static void info(String message, Object... arguments) {}
 				  public static void warn(String message, Object... arguments) { fixture.ClientProbe.warnings.add(String.format(message, arguments)); }
 				  public static void warn(String message, Throwable failure) { fixture.ClientProbe.warnings.add(message); }
+				  public static void debug(String message) { fixture.ClientProbe.debugs.add(message); }
+				  public static void debug(String message, Object... arguments) { fixture.ClientProbe.debugs.add(String.format(message, arguments)); }
 				}
 				"""),
 			Map.entry("net.forbric.kernel.util.Reflect", """

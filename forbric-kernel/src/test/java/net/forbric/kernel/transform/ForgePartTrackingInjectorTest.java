@@ -472,8 +472,11 @@ class ForgePartTrackingInjectorTest {
 			Path library = newestUnder(pattern);
 			if (library != null) urls.add(library.toUri().toURL());
 		}
+        // PartEntityViews is what the injected loop calls to drop the other family's parts before its cast; the isolated
+        // loader has no kernel on its path, so the source is compiled into it exactly as the two views above are.
         Map<String,String> helperSources=Map.of("net.forbric.kernel.runtime.KernelMultipartViews",Files.readString(Path.of("src/runtime/java/net/forbric/kernel/runtime/KernelMultipartViews.java")),
-            "net.forbric.api.VirtualGetters",Files.readString(Path.of("src/main/java/net/forbric/api/VirtualGetters.java")));
+            "net.forbric.api.VirtualGetters",Files.readString(Path.of("src/main/java/net/forbric/api/VirtualGetters.java")),
+            "net.forbric.kernel.interop.PartEntityViews",Files.readString(Path.of("src/main/java/net/forbric/kernel/interop/PartEntityViews.java")));
         for(var entry:InjectorExecution.compile(Files.createTempDirectory("multipart-actual-helper"),helperSources,urls.stream().map(url->{try{return Path.of(url.toURI());}catch(Exception bad){throw new IllegalStateException(bad);}}).toList()).entrySet())defined.put(dotted(entry.getKey()),entry.getValue());
 		return new URLClassLoader(urls.toArray(URL[]::new), ClassLoader.getPlatformClassLoader()) {
 			@Override protected Class<?> findClass(String name) throws ClassNotFoundException {

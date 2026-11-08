@@ -43,11 +43,12 @@ public final class SpawnPositionCallsInjector implements ClassTransformer {
 			+ "Lnet/minecraft/world/entity/EntitySpawnReason;Lnet/minecraft/world/level/SpawnData;Lnet/minecraft/world/level/BaseSpawner;)Z";
 	static final String NEO_POSITION = "checkSpawnPosition", NEO_POSITION_DESC = "(Lnet/minecraft/world/entity/Mob;"
 			+ "Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/world/entity/EntitySpawnReason;)Z";
-	static final String RUNTIME = "net/forbric/kernel/runtime/KernelSpawnPosition";
+	static final String RUNTIME = "net/forbric/kernel/runtime/KernelSpawnPosition", RUNTIME_POSITION = "decidePosition";
 	static final String DECIDE_DESC = "(Lnet/minecraft/world/entity/Mob;Lnet/minecraft/world/level/ServerLevelAccessor;"
 			+ "Lnet/minecraft/world/entity/EntitySpawnReason;Lnet/minecraft/world/level/BaseSpawner;)I";
 	static final String MOB = "net/minecraft/world/entity/Mob";
 	static final String SPAWN_DATA = "Lnet/minecraft/world/level/SpawnData;";
+	static final String BASE_SPAWNER = "Lnet/minecraft/world/level/BaseSpawner;";
 	static final String CHECK_RULES = "checkSpawnRules", CHECK_RULES_DESC = "(Lnet/minecraft/world/level/LevelAccessor;Lnet/minecraft/world/entity/EntitySpawnReason;)Z";
 	static final String CHECK_OBSTRUCTION = "checkSpawnObstruction", CHECK_OBSTRUCTION_DESC = "(Lnet/minecraft/world/level/LevelReader;)Z";
 
@@ -79,7 +80,7 @@ public final class SpawnPositionCallsInjector implements ClassTransformer {
 	@Override public byte[] transform(String className, byte[] bytes, TransformContext context) {
 		if (!enabled() || !TARGETS.contains(className) || bytes == null || bytes.length == 0) return bytes;
 		ClassNode node = new ClassNode();
-		new ClassReader(bytes).accept(node, ClassReader.SKIP_FRAMES);
+		new ClassReader(bytes).accept(node, 0);
 		int restored = 0;
 		if (TARGET.equals(className)) {
 			List<MethodNode> hosts = node.methods.stream().filter(m -> m.name.equals("serverTick") && m.desc.equals(HOST_DESC)).toList();
@@ -101,7 +102,14 @@ public final class SpawnPositionCallsInjector implements ClassTransformer {
 		if (restored == 0) return bytes;
 		try {
 			ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES) {
-				@Override protected String getCommonSuperClass(String type1, String type2) { return hierarchy.commonSuperClass(type1, type2); }
+				@Override protected String getCommonSuperClass(String type1, String type2) {
+					String answer = hierarchy.commonSuperClass(type1, type2);
+					if (answer == null || answer.isEmpty()) {
+						ForbricLog.warn("[Forbric/Spawner] no common superclass of %s and %s from the hierarchy; using Object", type1, type2);
+						return "java/lang/Object";
+					}
+					return answer;
+				}
 			};
 			node.accept(writer);
 			byte[] out = writer.toByteArray();
@@ -109,8 +117,45 @@ public final class SpawnPositionCallsInjector implements ClassTransformer {
 					+ "PositionCheck event as its hook ran them, so a Fabric mixin redirecting them binds", className, restored);
 			return out;
 		} catch (Throwable unresolved) {
-			return declined(className, bytes, "its frames could not be recomputed: " + unresolved);
+			return retarget(className, bytes, unresolved);
 		}
+	}
+
+	/**
+	 * The fallback for a class whose frames cannot be recomputed: point the hook itself at the kernel, which posts the
+	 * same event and runs vanilla's two checks on DEFAULT. A method-reference swap changes no instruction count, so the
+	 * class's own frames stay valid and {@code ClassWriter(0)} writes it. What is lost is only the mixin-redirect seam —
+	 * the calls happen one frame down — which is still more than NeoForge's hook offered, since its body was equally
+	 * unreachable to a Fabric redirect.
+	 */
+	private static byte[] retarget(String className, byte[] bytes, Throwable unresolved) {
+		ClassNode node = new ClassNode();
+		new ClassReader(bytes).accept(node, 0);
+		int moved = 0;
+		for (MethodNode method : node.methods) {
+			for (MethodInsnNode hook : hooks(method, NEO_POSITION, 3)) {
+				hook.owner = RUNTIME;
+				hook.name = RUNTIME_POSITION;
+				moved++;
+			}
+		}
+		if (moved == 0) {
+			return declined(className, bytes, "its frames could not be recomputed: " + unresolved + " at" + firstFrames(unresolved));
+		}
+		ClassWriter writer = new ClassWriter(0);
+		node.accept(writer);
+		ForbricLog.warn("[Forbric/Spawner] %s's frames could not be recomputed (%s at%s), so its %d position check(s) stay one frame "
+				+ "down in the kernel instead of in the caller: the event and vanilla's two checks still run, but a Fabric mixin "
+				+ "redirecting checkSpawnRules there will not bind", className, unresolved, firstFrames(unresolved), moved);
+		return writer.toByteArray();
+	}
+
+	/** The top frames of a frame-recomputation failure, so the log names the method ASM choked on. */
+	private static String firstFrames(Throwable failure) {
+		StringBuilder out = new StringBuilder();
+		StackTraceElement[] trace = failure.getStackTrace();
+		for (int i = 0; i < Math.min(6, trace.length); i++) out.append(i == 0 ? " " : " <- ").append(trace[i]);
+		return out.toString();
 	}
 
 	private static boolean callsCheckRules(MethodNode method) {
@@ -165,6 +210,10 @@ public final class SpawnPositionCallsInjector implements ClassTransformer {
 			if (param.equals(SPAWN_DATA)) continue;
 			out.append(param);
 		}
+		// The kernel entry always takes the spawner as its last argument, whether or not the hook it replaces did: the
+		// spawner call sites pass theirs, and the plain position checks pass null. Leaving it out of the descriptor
+		// made every plain site push one argument too many, so the verifier saw the level where it wanted the mob.
+		if (!body.contains(BASE_SPAWNER)) out.append(BASE_SPAWNER);
 		return out.append(")I").toString();
 	}
 
@@ -203,7 +252,11 @@ public final class SpawnPositionCallsInjector implements ClassTransformer {
 		code.add(new InsnNode(Opcodes.ICONST_1)); code.add(new JumpInsnNode(Opcodes.GOTO, done));
 		code.add(denied); code.add(new InsnNode(Opcodes.ICONST_0));
 		code.add(done);
-		host.instructions.insert(hook, code);
+		// Before the call, not after: the hook's own arguments are still on the stack there and this code pops them into
+		// locals. Inserted after, it popped the hook's boolean result instead and read slots nothing had written — the
+		// verifier named exactly that ("expected Mob, but found ServerLevel") and ASM's frame merge then failed on the
+		// unbalanced stack it produced.
+		host.instructions.insertBefore(hook, code);
 		host.instructions.remove(hook);
 		host.maxLocals += spawner ? 5 : 3;
 	}

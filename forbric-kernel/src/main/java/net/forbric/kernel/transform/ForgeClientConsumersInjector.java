@@ -57,6 +57,12 @@ public final class ForgeClientConsumersInjector implements ClassTransformer {
 		String owner(Ecosystem ecosystem) { return family.binary(ecosystem).replace('.', '/'); }
 	}
 
+	/** True when {@code name} is {@code prefix} followed by nothing but digits: the same lambda, renumbered. */
+	private static boolean renumbered(String name, String prefix) {
+		if (!name.startsWith(prefix) || name.length() == prefix.length()) return false;
+		for (int i = prefix.length(); i < name.length(); i++) if (!Character.isDigit(name.charAt(i))) return false;
+		return true;
+	}
 	private static boolean enabled() {
 		return !"off".equalsIgnoreCase(System.getProperty("forbric.forgeClientConsumers"))
 				&& !"off".equalsIgnoreCase(System.getProperty("forbric.forgeClientInit"));
@@ -81,10 +87,12 @@ public final class ForgeClientConsumersInjector implements ClassTransformer {
 				&& candidate.desc.equals(rule.methodDescriptor())).findFirst().orElse(null);
 		if (method == null && rule.method().startsWith("lambda$")) {
 			// javac numbers a constructor's lambdas by the order it emits them, and the merge emits lambdas of its
-			// own, so the same body is lambda$new$3 on one line and lambda$new$0 on another. The body's own
-			// descriptor is the stable half of its identity.
-			method = node.methods.stream().filter(candidate -> candidate.name.startsWith("lambda$")
-					&& candidate.desc.equals(rule.methodDescriptor())).findFirst().orElse(null);
+			// own, so the same body is lambda$new$3 on one line and lambda$new$0 on another. Only the number moves:
+			// the name up to the last '$' and the body's descriptor are the stable halves of its identity, and a
+			// method renamed to anything else is a moved seam, not a renumbered one.
+			String prefix = rule.method().substring(0, rule.method().lastIndexOf('$') + 1);
+			method = node.methods.stream().filter(candidate -> candidate.desc.equals(rule.methodDescriptor())
+					&& renumbered(candidate.name, prefix)).findFirst().orElse(null);
 			if (method != null) ForbricLog.info("[Forbric/ClientConsumers] %s's consumer is %s on this line, not %s"
 					+ " — matched it by its descriptor", rule.host(), method.name, rule.method());
 		}

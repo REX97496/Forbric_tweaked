@@ -46,6 +46,8 @@ final class ForgeEventPost {
 			eventBus = Class.forName(ForeignType.EVENT_BUS.binary(Ecosystem.FORGE), false, loader);
 		} catch (ClassNotFoundException absent) {
 			// no IEventBus on this line: nothing to post on directly
+			ForbricLog.debug("[Forbric/Forge] no IEventBus on this line, so the event goes through ModLoader: "
+					+ absent);
 		}
 
 		int posted = 0;

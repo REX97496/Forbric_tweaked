@@ -87,15 +87,15 @@ class KernelRegistrationIsolationTest {
 				"KernelForgeBaseline.fireNewRegistryEvent not found in the compiled src/main classes, which exist "
 						+ "before any test runs");
 
-		// The post is reflective -- KernelForgeModContext.single(bus.getClass(), "post").invoke(...) -- so it is
-		// located by the resolver call, not by a method named "post", which does not exist in the bytecode.
-		int post = indexOfCall(fire, "single");
+		// The post is ForgeEventPost.post now, not a reflective KernelForgeModContext.single("post"): 1.21.1's
+		// NewRegistryEvent carries no BUS field, so the reflective lookup threw before the event was ever posted.
+		int post = indexOfCall(fire, "post");
 		int fill = indexOfCall(fire, "getDeclaredMethod");
-		assertTrue(post >= 0, "the event is still posted through KernelForgeModContext.single here");
+		assertTrue(post >= 0, "the event is still posted through ForgeEventPost here");
 		assertTrue(fill >= 0, "and fill is still resolved here");
 
-		assertTrue(guardedRange(fire, post), "the post needs a handler of its own, or one mod's listener takes "
-				+ "fill() with it");
+		assertTrue(isolatedFrom(fire, "post", "getDeclaredMethod"), "the post needs a handler of its own, or one "
+				+ "mod's listener takes fill() with it");
 		assertTrue(fill > post, "and fill must still be reached after it");
 		assertTrue(fire.tryCatchBlocks.size() >= 2,
 				"the outer handler alone means the post and the fill still share a fate");

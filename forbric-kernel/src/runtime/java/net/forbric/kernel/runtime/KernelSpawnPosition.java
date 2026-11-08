@@ -30,4 +30,18 @@ public final class KernelSpawnPosition {
 		if (result == MobSpawnEvent.PositionCheck.Result.DEFAULT) return -1;
 		return result == MobSpawnEvent.PositionCheck.Result.SUCCEED ? 1 : 0;
 	}
+
+	/**
+	 * The same decision, with vanilla's two checks run here instead of in the caller. It exists for the classes whose
+	 * stack map frames cannot be recomputed after the inlined form is spliced in: there the hook is retargeted to this
+	 * method in place, which changes no instruction count and so needs no new frames, and the behaviour is the one
+	 * {@code EventHooks.checkSpawnPosition} had — the event first, vanilla's checks only when the listeners said
+	 * DEFAULT. A Fabric mixin aimed at the caller's {@code checkSpawnRules} cannot bind on that path; that is a
+	 * narrower gap than leaving NeoForge's hook in place, which had neither the calls nor a way to reach them.
+	 */
+	public static boolean decidePosition(Mob mob, ServerLevelAccessor level, EntitySpawnReason reason) {
+		int answer = decide(mob, level, reason, null);
+		if (answer >= 0) return answer != 0;
+		return mob.checkSpawnRules(level, reason) && mob.checkSpawnObstruction(level);
+	}
 }

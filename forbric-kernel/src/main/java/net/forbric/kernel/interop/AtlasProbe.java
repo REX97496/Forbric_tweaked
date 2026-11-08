@@ -55,8 +55,8 @@ public final class AtlasProbe {
 				}
 			}
 		}
-		ForbricLog.warn("[Forbric/Atlas] " + location + " parsed into " + count + " sprite source(s)");
-		ForbricLog.warn("[Forbric/Atlas] " + location + " sources: " + sourceNames(spriteSourceList));
+		ForbricLog.debug("[Forbric/Atlas] " + location + " parsed into " + count + " sprite source(s)");
+		ForbricLog.debug("[Forbric/Atlas] " + location + " sources: " + sourceNames(spriteSourceList));
 	}
 
 	/**
@@ -103,7 +103,7 @@ public final class AtlasProbe {
 	/** Reports on the supplier list without touching the operand stack; see {@link #loaded} for why. */
 	public static void listed(Object suppliers) {
 		int count = suppliers instanceof List<?> list ? list.size() : -1;
-		ForbricLog.warn("[Forbric/Atlas] a source list produced " + count + " sprite supplier(s)");
+		ForbricLog.debug("[Forbric/Atlas] a source list produced " + count + " sprite supplier(s)");
 	}
 
 	/**
@@ -117,10 +117,10 @@ public final class AtlasProbe {
 	 */
 	public static void loading(Object resourceManager, Object location) {
 		Object file = atlasFile(location);
-		ForbricLog.warn("[Forbric/Atlas] loading " + location + " reads " + file + " from "
+		ForbricLog.debug("[Forbric/Atlas] loading " + location + " reads " + file + " from "
 				+ packIds(resourceManager, file));
 		if (String.valueOf(location).endsWith(":blocks")) {
-			ForbricLog.warn("[Forbric/Atlas] mounted packs: " + mountedPacks(resourceManager));
+			ForbricLog.debug("[Forbric/Atlas] mounted packs: " + mountedPacks(resourceManager));
 		}
 	}
 
@@ -283,7 +283,7 @@ public final class AtlasProbe {
 	 */
 	public static void stitching(Object contents) {
 		if (!(contents instanceof List<?> list)) {
-			ForbricLog.warn("[Forbric/Atlas] stitch was handed " + contents);
+			ForbricLog.debug("[Forbric/Atlas] stitch was handed " + contents);
 			return;
 		}
 		String first = "-";
@@ -328,7 +328,7 @@ public final class AtlasProbe {
 				sample.append(name.replace("minecraft:", ""));
 			}
 		}
-		ForbricLog.warn("[Forbric/Atlas] stitch got " + list.size() + " sprite(s), first is " + first
+		ForbricLog.debug("[Forbric/Atlas] stitch got " + list.size() + " sprite(s), first is " + first
 				+ "; empty=" + zero + ", w " + (minW == Integer.MAX_VALUE ? "-" : minW) + ".." + maxW
 				+ ", h " + (minH == Integer.MAX_VALUE ? "-" : minH) + ".." + maxH + ", area=" + area
 				+ ", block/=" + blocks + ", item/=" + items + ", names: " + sample);
@@ -349,12 +349,12 @@ public final class AtlasProbe {
 	 */
 	public static void stitched(Object preparations) {
 		if (preparations == null) {
-			ForbricLog.warn("[Forbric/Atlas] stitch returned null");
+			ForbricLog.debug("[Forbric/Atlas] stitch returned null");
 			return;
 		}
 		Object regions = call(preparations, "regions");
 		int count = regions instanceof Map<?, ?> map ? map.size() : -1;
-		ForbricLog.warn("[Forbric/Atlas] stitch produced " + call(preparations, "width") + "x"
+		ForbricLog.debug("[Forbric/Atlas] stitch produced " + call(preparations, "width") + "x"
 				+ call(preparations, "height") + "x" + call(preparations, "mipLevel") + " with " + count
 				+ " sprite(s)");
 	}

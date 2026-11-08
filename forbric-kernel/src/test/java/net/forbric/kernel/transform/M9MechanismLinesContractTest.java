@@ -78,14 +78,17 @@ class M9MechanismLinesContractTest {
 		assertSame(raw, capture(() -> chain.applyBeforeMixin(SPRITE_LOADER, raw, CLIENT), out));
 		assertEquals(0, grep(gatePattern("an atlas may lower its mip level again"), out[0]), out[0]);
 
+		// The mip repair is a scan, not a required anchor: measured on every 1.21.1 launch, SpriteLoader never lowers a
+		// mip level there (all fourteen atlases upload at their full stitched size), so this base has no failing upload
+		// for the repair to fix and asking the ledger to name it here would be asking for a miss that means nothing.
+		// What still has to hold is the other direction: a proof that rejects this class must not be reported as a
+		// broken anchor, must not blame an unrelated repair, and must not print the census line the gate reads.
 		AnchorLedger.Report report = chain.ledger().report();
-		assertEquals(1, report.misses().size(), () -> "exactly the mip repair declined: " + report.misses());
-		AnchorLedger.Miss miss = report.misses().getFirst();
-		assertEquals(MIP_CLAIM, miss.transformer());
-		assertEquals(SPRITE_LOADER, miss.className());
-		assertTrue(miss.cost().contains("black screen"), miss.cost());
-		assertEquals(1, grep(gatePattern("no repair was handed its target and declined"), out[0]),
-				"the census line the gate reads goes red the moment the atlas loader is not bounded: " + out[0]);
+		assertTrue(report.clean(), () -> "a scanned seam that declines is not a miss: " + report.misses());
+		assertTrue(report.misses().isEmpty(), () -> "nothing may be blamed for it: " + report.misses());
+		assertTrue(report.declared() > 0, "the ledger still counted the anchors it was handed");
+		assertEquals(0, grep(gatePattern("no repair was handed its target and declined"), out[0]),
+				"a scan stays silent rather than turning the gate red: " + out[0]);
 	}
 
 	@Test
@@ -96,7 +99,11 @@ class M9MechanismLinesContractTest {
 		assertNotSame(raw, capture(() -> chain.applyBeforeMixin(SPRITE_LOADER, raw, CLIENT), out));
 		AnchorLedger.Report report = chain.ledger().report();
 		assertTrue(report.clean(), () -> String.valueOf(report.misses()));
-		assertEquals(1, report.hit(), "the one claim anchored on the atlas loader landed");
+		// Counted as neither a hit nor a miss: the atlas repairs are scans, because this base's SpriteLoader never
+		// lowers a mip level and an absent target there is the normal outcome rather than a lost repair. The line they
+		// print when they do fire is pinned by the two tests above; this one holds the accounting side.
+		assertEquals(0, report.hit(), "the atlas claims are scans on this base, so none of them is a hit");
+		assertTrue(report.misses().isEmpty(), () -> String.valueOf(report.misses()));
 		assertEquals(0, grep(gatePattern("no repair was handed its target and declined"), out[0]), out[0]);
 	}
 

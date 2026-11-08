@@ -22,7 +22,14 @@ public final class KernelForgeClientInit {
 
 	public static void initClientHooks(Minecraft minecraft, ReloadableResourceManager resources) {
 		// A separate feature from the hooks below, so it is installed before their switch is read.
-		KernelScreenEvents.installForgeScreenEvents();
+		// Wrapped because it is the only line here that needs NeoForge's screen events to be on the classpath: a
+		// harness or a line without them can still run everything below. Nothing that happens later is covered, so a
+		// real failure elsewhere still propagates.
+		try {
+			KernelScreenEvents.installForgeScreenEvents();
+		} catch (LinkageError withoutNeoForgeScreens) {
+			ForbricLog.debug("[Forbric/Screens] no NeoForge screen events to ride here: " + withoutNeoForgeScreens);
+		}
 		if (!enabled()) {
 			ClientHooks.initClientHooks(minecraft, resources);
 			return;

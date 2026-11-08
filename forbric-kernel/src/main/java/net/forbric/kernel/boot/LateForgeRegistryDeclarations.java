@@ -25,6 +25,8 @@ final class LateForgeRegistryDeclarations {
 		try {
 			bus = Class.forName("net.minecraftforge.registries.NewRegistryEvent", false, loader).getField("BUS").get(null);
 		} catch (NoSuchFieldException noGlobalBus) {
+			ForbricLog.debug("[Forbric/Forge] this line's NewRegistryEvent has no global BUS field, so there is no "
+					+ "listener list to diff late declarations against: " + noGlobalBus);
 			return null;
 		}
 		List<Object> result=new ArrayList<>();collect(bus,result,Collections.newSetFromMap(new IdentityHashMap<>()));return result;

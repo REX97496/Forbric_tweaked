@@ -245,8 +245,12 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 						+ "splice produces one, and unwrapping it is the identity everywhere else"));
 		out.add(scanned("reportWhatTheAtlasActuallyGot", "every atlas that parses a source list — the probe edits the two methods that decide what an atlas is stitched from, and both exist in either line"));
 		out.add(scanned("reportWhatTheStitcherWasHanded", "one stitch per atlas name — the SpriteLoader class and its stitch(List,int,Executor) method exist in either line, and reporting what it was handed cannot change what it stitches"));
-		out.add(fixed("postMinecraftForgesReloadListenerEvent", RELOADABLE_SERVER_RESOURCES,
-				"MinecraftForge's AddReloadListenerEvent is never posted — traditional-Forge JSON data loaders never register"));
+		// Scanned, not fixed: measured on 1.21.1, ReloadableServerResources already calls BOTH
+		// EventHooks.onResourceReload(ReloadableServerResources, RegistryAccess) and
+		// ForgeEventFactory.onResourceReload(resources, HolderLookup$Provider, RegistryAccess) itself, so there is
+		// nothing to redirect and redirecting anyway would post MinecraftForge's event twice.
+		out.add(scanned("postMinecraftForgesReloadListenerEvent", "a base that posts NeoForge's reload event but not "
+				+ "MinecraftForge's; 1.21.1 posts both from ReloadableServerResources itself"));
 		out.add(fixed("giveMinecraftForgesReloadEventItsConditionContext", FORGE_RELOAD_EVENT,
 				"AddReloadListenerEvent must expose the active reload context through the Forge interface"));
 		out.add(fixed("letMinecraftForgeIngredientTypesDecode", "net/minecraft/world/item/crafting/Ingredient",
@@ -1100,15 +1104,33 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	 * The kill switch lives in the helper ({@code -Dforbric.forgeReloadListeners=off}), so the redirect is inert
 	 * rather than absent when it is off.
 	 */
-	private static boolean postMinecraftForgesReloadListenerEvent(ClassNode node) {
-		if (!RELOADABLE_SERVER_RESOURCES.equals(node.name)) return false;
+	/** Either shape of the hook: 26.2 passes the active conditions map as a third argument, 1.21.1 passes two. */
+	private static boolean reloadHookShape(String desc) {
+		return desc.startsWith("(L" + RELOADABLE_SERVER_RESOURCES + ";") && desc.endsWith(")Ljava/util/List;");
+	}
+
+	private static boolean postMinecraftForgesReloadListenerEvent(ClassNode node) {		if (!RELOADABLE_SERVER_RESOURCES.equals(node.name)) return false;
+		// Some bases already post MinecraftForge's own event from this class (1.21.1 calls ForgeEventFactory's
+		// onResourceReload next to NeoForge's hook). Redirecting then would post it twice, which is worse than the
+		// silence this repair exists to fix, so it stands down and says why.
+		for (MethodNode method : node.methods) {
+			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+				if (insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESTATIC
+						&& call.owner.startsWith("net/minecraftforge/") && "onResourceReload".equals(call.name)) {
+					ForbricLog.info("[Forbric/MergedBaseCompat] %s already posts MinecraftForge's reload event itself "
+							+ "(%s.%s) — nothing to redirect, and redirecting would post it twice", node.name, call.owner,
+							call.desc);
+					return false;
+				}
+			}
+		}
 		String neo = ForeignType.EVENT_HOOKS.internal(Ecosystem.NEOFORGE);
 		List<MethodInsnNode> calls = new java.util.ArrayList<>();
 		for (MethodNode method : node.methods) {
 			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
 				if (insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESTATIC
 						&& neo.equals(call.owner) && "onResourceReload".equals(call.name)
-						&& RELOAD_HOOK_DESC.equals(call.desc)) {
+						&& reloadHookShape(call.desc)) {
 					calls.add(call);
 				}
 			}
@@ -4547,7 +4569,10 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		// touch today would leave the next subscription, in the next class, failing the same way: the predicate is
 		// "a MinecraftForge class that extends the bus's Event", which is exactly what EventListenerHelper probes.
 		if (!node.name.startsWith("net/minecraftforge/")) return false;
-		if (!node.name.endsWith("Event")) return false;
+		// Nested events are the ones the bus probes most: ForgeMod subscribes TickEvent$ServerTickEvent$Pre and
+		// TickEvent$ServerTickEvent$Post, whose names end in "$Pre"/"$Post", not "Event". A class named for an event
+		// anywhere in its qualified name is the same probe target.
+		if (!node.name.endsWith("Event") && !node.name.contains("Event$")) return false;
 		// NO CLASS-NAME LITERALS: the superclass to chain to is node.superName itself. The first version wrote
 		// "net/minecraftforge/eventbus/api/Event" inline and ForeignTypeTest named it -- that concept is spelled out
 		// under both Forge families, and ForeignType.EVENT is the 26.2 spelling (eventbus.internal.Event), so a
@@ -4560,7 +4585,10 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		if (superName == null) return false;
 		boolean chainToBusBase = superName.startsWith("net/minecraftforge/eventbus/");
 		boolean chainToLifecycle = superName.endsWith("/ServerLifecycleEvent");
-		if (!chainToBusBase && !chainToLifecycle) return false;
+		// A nested event chains to its own parent event (TickEvent$ServerTickEvent$Pre -> TickEvent$ServerTickEvent),
+		// which is itself an event this repair gives a no-arg constructor to, so the chain terminates at Event.
+		boolean chainToParentEvent = superName.startsWith("net/minecraftforge/event/");
+		if (!chainToBusBase && !chainToLifecycle && !chainToParentEvent) return false;
 		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
 			if ("<init>".equals(method.name) && "()V".equals(method.desc)) return false; // already there
 		}
