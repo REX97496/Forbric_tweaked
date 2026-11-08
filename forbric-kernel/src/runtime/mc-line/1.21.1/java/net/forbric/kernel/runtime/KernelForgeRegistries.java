@@ -87,10 +87,16 @@ public final class KernelForgeRegistries {
 	public static List<Object[]> targets() throws Exception {
 		List<Object[]> targets = new ArrayList<>();
 		Set<ForgeRegistry<?>> covered = Collections.newSetFromMap(new IdentityHashMap<>());
+		// A mirrored slot answers as a Registry too (mirrorTheDefaultedRegistriesTheMergeWidened adds one per
+		// widened field), and it holds the same registry as the field it mirrors. Enumerating by field therefore
+		// saw one registry twice and posted RegisterEvent for it twice; the second pass died on
+		// "Adding duplicate key 'forge:loot_table_id'". Unwrap first, then dedupe by identity.
+		Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
 
 		for (Field f : BuiltInRegistries.class.getFields()) {
 			if (!Registry.class.isAssignableFrom(f.getType())) continue;
-			Registry<?> vanilla = (Registry<?>) f.get(null);
+			Object unwrapped = KernelRegistryViews.unwrap(f.get(null));
+			if (!(unwrapped instanceof Registry<?> vanilla) || !seen.add(vanilla)) continue;
 			ResourceKey<? extends Registry<?>> key = vanilla.key();
 			ForgeRegistry<?> forgeReg = forgeRegistryFor(key);
 			targets.add(new Object[] {key, vanilla, forgeReg});
@@ -134,7 +140,12 @@ public final class KernelForgeRegistries {
 					} catch (Throwable noWrapper) {
 						// leave null
 					}
-					targets.add(new Object[] {forgeReg.getRegistryKey(), wrapper, forgeReg});
+					boolean already = false;
+					for (Object[] existing : targets) {
+						if (wrapper != null && existing[1] == wrapper) { already = true; break; }
+						if (existing[2] == forgeReg) { already = true; break; }
+					}
+					if (!already) targets.add(new Object[] {forgeReg.getRegistryKey(), wrapper, forgeReg});
 				} catch (Throwable perReg) {
 					ForbricLog.debug("[Forbric/Forge] skip custom-registry RegisterEvent target: %s",
 							String.valueOf(Reflect.unwrap(perReg)));

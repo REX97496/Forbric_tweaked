@@ -181,6 +181,23 @@ public final class SpawnPositionCallsInjector implements ClassTransformer {
 		return found;
 	}
 
+	/** {@code Mob.checkSpawnRules(LevelAccessor, <this line's spawn reason>)} — the reason taken from the hook. */
+	private static String checkRulesDesc(String hookDesc) {
+		String body = hookDesc.substring(1, hookDesc.indexOf(')'));
+		int third = -1;
+		int seen = 0;
+		int start = 0;
+		for (int i = 0; i < body.length(); i++) {
+			if (body.charAt(i) != ';') continue;
+			if (seen == 2) { third = start; break; }
+			seen++;
+			start = i + 1;
+		}
+		if (third < 0) return CHECK_RULES_DESC;
+		int end = body.indexOf(';', third);
+		if (end < 0) return CHECK_RULES_DESC;
+		return "(Lnet/minecraft/world/level/LevelAccessor;" + body.substring(third, end + 1) + ")Z";
+	}
 	private static int parametersOf(String desc) {
 		String body = desc.substring(1, desc.indexOf(')'));
 		int count = 0;
@@ -243,7 +260,11 @@ public final class SpawnPositionCallsInjector implements ClassTransformer {
 			code.add(new JumpInsnNode(Opcodes.IFNE, obstruction));
 		}
 		code.add(new VarInsnNode(Opcodes.ALOAD, mob)); code.add(new VarInsnNode(Opcodes.ALOAD, level)); code.add(new VarInsnNode(Opcodes.ALOAD, reason));
-		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, MOB, CHECK_RULES, CHECK_RULES_DESC, false));
+		// The reason type is whatever THIS line names: 26.2 calls it EntitySpawnReason, 1.21.1 only has MobSpawnType
+		// and no such class at all. The literal CHECK_RULES_DESC put EntitySpawnReason into an injected call site on
+		// 1.21.1, and the first chunk tick that reached it died with
+		// NoClassDefFoundError: net/minecraft/world/entity/EntitySpawnReason at ServerChunkCache.tickChunks.
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, MOB, CHECK_RULES, checkRulesDesc(hook.desc), false));
 		code.add(new JumpInsnNode(Opcodes.IFEQ, denied));
 		code.add(obstruction);
 		code.add(new VarInsnNode(Opcodes.ALOAD, mob)); code.add(new VarInsnNode(Opcodes.ALOAD, level));

@@ -91,7 +91,11 @@ public final class KernelNeoRegistries {
 		try {
 			for (Field f : holder.getFields()) {
 				if (!Registry.class.isAssignableFrom(f.getType())) continue;
-				Object reg = f.get(null);
+				// A mirrored field and the field it was mirrored from hold the same registry, and the view answers
+				// as a Registry too; without unwrapping the sweep sees two objects and posts RegisterEvent for one
+				// registry twice, after which the second pass dies on "Adding duplicate key" in a mod's
+				// DeferredRegister (measured: curios' loot function type on the 8-mod launch).
+				Object reg = KernelRegistryViews.unwrap(f.get(null));
 				if (reg != null && !containsIdentity(out, reg)) out.add(reg);
 			}
 		} catch (Throwable t) {

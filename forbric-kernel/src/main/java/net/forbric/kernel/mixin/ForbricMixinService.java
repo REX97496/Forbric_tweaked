@@ -540,6 +540,17 @@ public final class ForbricMixinService
 			MixinCompatibility.rememberOriginalConfig(name, bytes);
             MergedBaseMixinCompat.discover(name,bytes,ForbricMixinService::readGameResource);
             named=suppressedMixinsFor(name);drop=new ArrayList<>(named);
+			if (drop.contains("*")) {
+				// "-Dforbric.suppressMixins=<config>:*" turns a whole config off. Needed where every mixin in it
+				// contributes to the same contract and one of them cannot apply: fabric-loot-api-v3's builder
+				// @Shadow fields do not exist on the merged base, and the sibling that DID apply calls
+				// FabricLootTableBuilder.pools(), which is implemented by the mixin that could not apply and
+				// therefore throws UnsupportedOperationException("Implemented via mixin") during level load.
+				drop.remove("*");
+				for (String each : mixinsDeclaredIn(json)) {
+					if (!drop.contains(each)) drop.add(each);
+				}
+			}
 
 			if (scanForOwned) {
 				// Derive, from THIS config, the mixins that target a Forge/NeoForge-owned merged class — the general
@@ -835,6 +846,20 @@ public final class ForbricMixinService
 		return out.isEmpty() ? Collections.emptyList() : out;
 	}
 
+	/** The entries of a mixin config's {@code mixins}, {@code client} and {@code server} arrays. */
+	private static List<String> mixinsDeclaredIn(String json) {
+		List<String> out = new ArrayList<>();
+		java.util.regex.Matcher m = java.util.regex.Pattern
+				.compile("\"(?:mixins|client|server)\"\\s*:\\s*\\[(.*?)\\]", java.util.regex.Pattern.DOTALL)
+				.matcher(json);
+		while (m.find()) {
+			java.util.regex.Matcher token = java.util.regex.Pattern.compile("\"([A-Za-z0-9_$]+)\"").matcher(m.group(1));
+			while (token.find()) {
+				if (!out.contains(token.group(1))) out.add(token.group(1));
+			}
+		}
+		return out;
+	}
 	/** Which list put {@code configName:mixin} in {@link #suppressedMixinsFor}, in the words the report uses. */
 	static String suppressionSource(String configName, String mixin) {
 		String entry = configName + ":" + mixin;

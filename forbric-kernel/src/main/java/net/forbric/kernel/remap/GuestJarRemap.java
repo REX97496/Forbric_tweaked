@@ -29,6 +29,8 @@ import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.TypePath;
@@ -361,6 +363,30 @@ public final class GuestJarRemap {
 				out.closeEntry();
 			}
 		}
+		// Pass 2: renameOverrides learned (owner, name, descriptor) -> real name class by class, but a call site
+		// that goes through an interface is not necessarily in a class rewritten after that interface. Re-read the
+		// partial jar once and apply what was learned; measured, ModResourcePackCreator.loadPacks called
+		// ModResourcePack.method_56926() and the world refused to open with NoSuchMethodError.
+		if (!OVERRIDES.isEmpty()) {
+			java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+			ZipOutputStream rewritten = new ZipOutputStream(buffer);
+			try (ZipInputStream again = new ZipInputStream(Files.newInputStream(partial))) {
+				for (ZipEntry entry; (entry = again.getNextEntry()) != null; ) {
+					if (entry.isDirectory()) continue;
+					byte[] content = again.readAllBytes();
+					if (entry.getName().endsWith(".class")) content = applyOverrides(content);
+					ZipEntry copy = new ZipEntry(entry.getName());
+					copy.setTime(0L);
+					rewritten.putNextEntry(copy);
+					rewritten.write(content);
+					rewritten.closeEntry();
+				}
+			}
+			rewritten.finish();
+			rewritten.close();
+			Files.write(partial, buffer.toByteArray());
+			OVERRIDES.clear();
+		}
 		Files.move(partial, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 		jarsWritten++;
 		classesRewritten += classes;
@@ -432,7 +458,7 @@ public final class GuestJarRemap {
 		// class_2591"). Measured after the first pass, which only handled descriptors: 251 "Error loading class:
 		// net/minecraft/class_2591" lines survived a jar that had been rewritten top to bottom.
 		reader.accept(new StringConstants(remapper, seen, owners), 0);
-		return patchListenableRegistry(renameShadows(writer.toByteArray()));
+		return renameOverrides(patchListenableRegistry(renameShadows(writer.toByteArray())));
 	}
 
 	/**
@@ -483,11 +509,109 @@ public final class GuestJarRemap {
 	 * because refmaps answer selectors, never a member's own name. The descriptor is the evidence: only the name is
 	 * translated, and only when the base declares exactly one method of that shape (or one of them is the hint).
 	 */
+	/** {@code owner|name|descriptor} -> the name the base actually declares, filled while pass 1 runs. */
+	private static final Map<String, String> OVERRIDES = new HashMap<>();
+
+	/** Pass 2 of a single jar: rewrite the call sites that name an override by its intermediary spelling. */
+	private static byte[] applyOverrides(byte[] bytes) {
+		ClassNode node = new ClassNode();
+		new ClassReader(bytes).accept(node, 0);
+		boolean changed = false;
+		for (MethodNode method : node.methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof MethodInsnNode call) {
+					String fixed = OVERRIDES.get(call.owner + '|' + call.name + '|' + call.desc);
+					if (fixed == null && INTERMEDIARY_MEMBER.matcher(call.name).matches()
+							&& !call.owner.startsWith("net/minecraft/")) {
+						// A reference through a guest type names a member the base declares on that type's
+						// supertype (measured: ModResourcePack.method_56926 -> PackResources.location). The base
+						// cannot be asked by the guest owner, so ask the table by name; it refuses ambiguity.
+						String byName = KernelMappingResolver.INSTANCE.mapMethodNameWithoutOwner("intermediary", call.name);
+						if (byName != null && !byName.equals(call.name)) {
+							fixed = byName;
+							OVERRIDES.put(call.owner + '|' + call.name + '|' + call.desc, byName);
+						}
+					}
+					if (fixed != null) {
+						call.name = fixed;
+						changed = true;
+					}
+				} else if (insn instanceof org.objectweb.asm.tree.FieldInsnNode field) {
+					String fixed = OVERRIDES.get(field.owner + '|' + field.name + '|' + field.desc);
+					if (fixed != null) {
+						field.name = fixed;
+						changed = true;
+					}
+				}
+			}
+		}
+		if (!changed) return bytes;
+		ClassWriter writer = new ClassWriter(0);
+		node.accept(writer);
+		return writer.toByteArray();
+	}
+	/**
+	 * Renames the members a guest declares because an interface it implements declares them.
+	 *
+	 * <p>{@code ClassRemapper} renames method <em>references</em> through the table, but a declaration is keyed by
+	 * the declaring class — and a guest class is not in the table, so its {@code MethodNode.name} stays
+	 * intermediary. That is invisible until something calls the member through the interface: measured,
+	 * {@code net.fabricmc.fabric.impl.resource.loader.ModResourcePackCreator} still declared
+	 * {@code method_14453(Consumer)} after the remap, so {@code PackRepository.discoverAvailable} threw
+	 * {@code AbstractMethodError: ... does not define or inherit an implementation of the resolved method
+	 * 'abstract void loadPacks(java.util.function.Consumer)'} and the world would not open.
+	 *
+	 * <p>The base answers by descriptor across the whole hierarchy. One name is a fact; several are ambiguity and
+	 * the member keeps its intermediary name so the failure stays visible instead of being guessed away.
+	 */
+	private static byte[] renameOverrides(byte[] remapped) {
+		MethodIndex index = minecraftIndex;
+		if (index == null) return remapped;
+
+		ClassNode node = new ClassNode();
+		new ClassReader(remapped).accept(node, 0);
+		List<String> supers = new ArrayList<>();
+		if (node.superName != null) supers.add(node.superName);
+		supers.addAll(node.interfaces);
+
+		Map<String, String> renamed = new HashMap<>();
+		boolean changed = false;
+		for (MethodNode method : node.methods) {
+			if (!INTERMEDIARY_MEMBER.matcher(method.name).matches()) continue;
+			Set<String> names = new LinkedHashSet<>();
+			for (String owner : supers) {
+				for (BaseMethod candidate : index.declaredByType(owner, method.desc)) {
+					if (candidate.name().startsWith("lambda$") || candidate.name().startsWith("<")) continue;
+					names.add(candidate.name());
+				}
+			}
+			if (names.size() != 1) continue;
+			String fixed = names.iterator().next();
+			renamed.put(method.name + method.desc, fixed);
+			method.name = fixed;
+			// Call sites in OTHER classes still name this member by its intermediary spelling, and they were
+			// rewritten before this class was: remember the rename so pass 2 can fix them.
+			OVERRIDES.put(node.name + '|' + method.name + '|' + method.desc, fixed);
+			changed = true;
+		}
+		if (!changed) return remapped;
+
+		for (MethodNode method : node.methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(node.name)) continue;
+				String fixed = renamed.get(call.name + call.desc);
+				if (fixed != null) call.name = fixed;
+			}
+		}
+		ClassWriter writer = new ClassWriter(0);
+		node.accept(writer);
+		return writer.toByteArray();
+	}
 	private static byte[] renameShadows(byte[] remapped) {
 		MethodIndex index = minecraftIndex;
 		if (index == null) return remapped;
 		ClassNode node = new ClassNode();
-		new ClassReader(remapped).accept(node, ClassReader.SKIP_FRAMES);
+		new ClassReader(remapped).accept(node, 0);
 		List<String> targets = new ArrayList<>();
 		// @Mixin is @Retention(CLASS): it lands in the *invisible* annotation list, and reading only the visible one
 		// left the target list empty — the first attempt renamed nothing.

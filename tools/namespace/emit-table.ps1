@@ -89,11 +89,14 @@ foreach ($line in [System.IO.File]::ReadLines($txt)) {
         $right = $line.Substring($arrow + 4).Trim()
         $tokens = $left -split '\s+'
         if ($tokens.Count -lt 2) { continue }
+        $kind = if ($left.Contains('(')) { 'm' } else { 'f' }
         $moj = $tokens[$tokens.Count - 1]
         $paren = $moj.IndexOf('(')
         if ($paren -ge 0) { $moj = $moj.Substring(0, $paren) }
         if (-not $moj -or $moj -eq '<init>' -or $moj -eq '<clinit>') { continue }
-        $kind = if ($left -match '^\d+:\d+:') { 'm' } else { 'f' }
+        # A method row always carries its argument list; the `line:column:` prefix is only printed for members
+        # whose source spans were recorded, so keying the kind off it filed every unannotated method as a FIELD
+        # (measured: `bnf|f|V|a` for ProfilerFiller.push, and then the name-only fallback renamed push to tee).
         # Erased descriptor, so an overload can be joined to the one intermediary name that owns its shape.
         $sig = $null
         if ($kind -eq 'm') {
@@ -171,6 +174,11 @@ foreach ($k in $memberIntToObf.Keys) {
         }
     }
     if (-not $moj) {
+        # Name-only fallback survives for FIELDS (an obf field name is unique per owner). For METHODS it is
+        # exactly the bug that renamed ProfilerFiller.push to tee: one obf letter carries every overload, so the
+        # first row to claim `bnf|m|a` wins and the rest inherit a name their descriptor never had. Leave the
+        # method unmapped instead; GuestJarRemap answers it from the base by descriptor.
+        if ($kind -eq 'm') { continue }
         $mk = "$obfOwner|$kind|$obfMember"
         if (-not $memberObfToMoj.ContainsKey($mk)) { continue }
         $moj = $memberObfToMoj[$mk]

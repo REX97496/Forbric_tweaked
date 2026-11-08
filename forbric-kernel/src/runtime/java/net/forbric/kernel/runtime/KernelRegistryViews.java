@@ -30,6 +30,27 @@ public final class KernelRegistryViews {
 	}
 
 	/**
+	 * The value behind one of this class's proxies, or the input unchanged. A mirrored field and its original are
+	 * the same registry, so anything that sweeps registries by identity (the {@code RegisterEvent} sweep) has to
+	 * see one object, not two: the duplicate made a mod's {@code DeferredRegister} run twice, and the second pass
+	 * died on "Adding duplicate key".
+	 */
+	public static Object unwrap(Object value) {
+		Object current = value;
+		while (current != null && java.lang.reflect.Proxy.isProxyClass(current.getClass())) {
+			InvocationHandler handler = java.lang.reflect.Proxy.getInvocationHandler(current);
+			if (handler instanceof View) {
+				current = ((View) handler).target();
+			} else if (handler instanceof ListenableView) {
+				current = ((ListenableView) handler).registry();
+			} else {
+				return current;
+			}
+		}
+		return current;
+	}
+
+	/**
 	 * Returns {@code registry} unchanged when it already is a {@code DefaultedRegistry}, otherwise a view over it.
 	 * Returns {@code null} for {@code null}, so a mirrored field can never turn a missing slot into a live one.
 	 */
@@ -167,6 +188,11 @@ public final class KernelRegistryViews {
 
 		ListenableView(Object registry) {
 			this.registry = registry;
+		}
+
+		/** The registry behind this view; {@link #unwrap(Object)} returns it to a sweep. */
+		Object registry() {
+			return registry;
 		}
 
 		@Override

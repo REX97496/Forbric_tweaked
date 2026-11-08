@@ -1432,6 +1432,18 @@ public final class KernelBoot {
 					+ "neoforged FluidType) → AbstractMethodError on WaterFluid.getFluidType during worldgen fluid "
 					+ "ticking. Return false so vanilla fluid behavior proceeds (Forge/Neo FluidType ABI split)"));
 		}
+		// Opening a saved world calls ForgeHooks.readAdditionalLevelSaveData, which asks ModList.get() for each mod
+		// recorded in level.dat. The kernel loads Forge mods itself and leaves ModList unindexed on purpose (see the
+		// DataPackHookInjector note), so indexedMods is null and the lookup NPEs from WorldOpenFlows before the world
+		// is opened — measured crash-2026-11-09_00.26.18-client.txt. With no indexed ModList there is no per-mod save
+		// data to read, so the honest answer is to read none; the mismatch report it would produce has no mods to name.
+		neuter.add(new MethodBodyNeuter.Target("net.minecraftforge.common.ForgeHooks",
+				"readAdditionalLevelSaveData",
+				"(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;"
+						+ "Lnet/minecraft/world/level/storage/LevelStorageSource$LevelDirectory;)V",
+				"ModList is not indexed in a kernel launch (the kernel owns mod loading), so the per-mod save-data read "
+						+ "NPEs on ModList.getModContainerById before a world opens. There is no indexed mod list to ask, "
+						+ "and therefore nothing to read."));
 		addSideNeuters(side, neuter);
 		return neuter;
 	}
