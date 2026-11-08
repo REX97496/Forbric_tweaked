@@ -19,6 +19,7 @@ import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -55,6 +56,8 @@ public final class ForgePartTrackingInjector implements ClassTransformer {
 	static final String FIND_DESC = "(L" + LEVEL_INTERNAL + ";L" + ENTITY + ";L" + AABB + ";Ljava/util/function/Predicate;Ljava/util/List;Ljava/util/Set;)V";
 	/** MinecraftForge's level extension, which declares getPartEntities(). */
 	static final String FORGE_LEVEL = "net/minecraftforge/common/extensions/IForgeLevel";
+	/** Narrows a mixed part collection to the one family the loop in hand can cast to. */
+	static final String PART_VIEWS = "net/forbric/kernel/interop/PartEntityViews";
 
 	private final Function<String, byte[]> gameClass;
 
@@ -211,8 +214,15 @@ public final class ForgePartTrackingInjector implements ClassTransformer {
 	static int level(ClassNode level) {
 		MethodNode get = method(level, "getEntities", GET_ENTITIES_DESC);
 		if (get == null) return declined("Level has no getEntities(Entity, AABB, Predicate)");
-		// NeoForge's own game has no getPartEntities(); MinecraftForge's own body (or this edit) already reads it.
-		if (!level.interfaces.contains(FORGE_LEVEL) || calls(get, "getPartEntities") || calls(get, FIND)) return 0;
+		// Already MinecraftForge's own body, or already this edit's result.
+		if (!level.interfaces.contains(FORGE_LEVEL) || calls(get, FIND)) return 0;
+		// NeoForge's own loop casts every element of Level.getPartEntities() to the NeoForge part type. On a base
+		// that also publishes Forge parts into that one collection, its cast is the throw; narrowing the collection
+		// it walks is separate from the find loop below, and is done whether or not that loop can also be added.
+		boolean narrowed = narrowNativePartLoop(get);
+		// A getPartEntities() read this repair does not recognise means the loop is not the shape it knows how to
+		// narrow, and adding a second loop beside it would guess.
+		if (calls(get, "getPartEntities") && !narrowed) return 0;
 		AbstractInsnNode output = null;
 		for (AbstractInsnNode insn : get.instructions) {
 			if (insn.getOpcode() != Opcodes.ARETURN) continue;
@@ -244,6 +254,40 @@ public final class ForgePartTrackingInjector implements ClassTransformer {
         find.add(new MethodInsnNode(Opcodes.INVOKESTATIC, level.name, FIND, FIND_DESC, false));
         get.instructions.insertBefore(output, find); level.methods.add(findLoop(level.name));
 		return 1;
+	}
+
+	/**
+	 * Keeps a MinecraftForge part out of NeoForge's own part loop.
+	 *
+	 * <p>{@code net.minecraftforge.entity.PartEntity} and {@code net.neoforged.neoforge.entity.PartEntity} are
+	 * unrelated classes that both extend {@code Entity} (javap: neither extends the other), and Level keeps parts
+	 * of both in the single {@code getPartEntities()} collection. NeoForge's {@code getEntities(Entity, AABB,
+	 * Predicate)} walks that collection with {@code Iterator.next()} then {@code checkcast} to the NeoForge type,
+	 * so one Forge part in it throws {@code ClassCastException} out of an ordinary projectile query. Wrapping the
+	 * collection with {@link #PART_VIEWS} narrows it, branch-free, before the iterator is taken.
+	 *
+	 * @return whether the collection was wrapped
+	 */
+	private static boolean narrowNativePartLoop(MethodNode get) {
+		for (AbstractInsnNode insn : get.instructions) {
+			if (!(insn instanceof TypeInsnNode cast) || cast.getOpcode() != Opcodes.CHECKCAST
+					|| !cast.desc.equals(NEO_PART)) continue;
+			if (!(previous(cast) instanceof MethodInsnNode next) || !next.owner.equals("java/util/Iterator")
+					|| !next.name.equals("next") || !next.desc.equals("()Ljava/lang/Object;")) continue;
+			for (AbstractInsnNode at = next.getPrevious(); at != null; at = at.getPrevious()) {
+				if (!(at instanceof MethodInsnNode call) || !call.name.equals("getPartEntities")
+						|| !call.desc.equals("()Ljava/util/Collection;")) continue;
+				if (next(call) instanceof MethodInsnNode wrapped && wrapped.owner.equals(PART_VIEWS)) return false;
+				InsnList narrow = new InsnList();
+				narrow.add(new LdcInsnNode(Type.getObjectType(NEO_PART)));
+				narrow.add(new MethodInsnNode(Opcodes.INVOKESTATIC, PART_VIEWS, "only",
+						"(Ljava/util/Collection;Ljava/lang/Class;)Ljava/util/Collection;", false));
+				get.instructions.insert(call, narrow);
+				return true;
+			}
+			return false;
+		}
+		return false;
 	}
 
 	private static boolean readsNeoForgeParts(MethodNode method) {
@@ -367,6 +411,9 @@ public final class ForgePartTrackingInjector implements ClassTransformer {
         code.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, "java/util/Set", "addAll", "(Ljava/util/Collection;)Z", true)); code.add(new InsnNode(Opcodes.POP));
 		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, level, "getPartEntities", "()Ljava/util/Collection;", false));
+		code.add(new LdcInsnNode(Type.getObjectType(FORGE_PART)));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, PART_VIEWS, "only",
+				"(Ljava/util/Collection;Ljava/lang/Class;)Ljava/util/Collection;", false));
 		code.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, "java/util/Collection", "iterator", "()Ljava/util/Iterator;", true));
 		code.add(new VarInsnNode(Opcodes.ASTORE, 6));
 		code.add(head);
