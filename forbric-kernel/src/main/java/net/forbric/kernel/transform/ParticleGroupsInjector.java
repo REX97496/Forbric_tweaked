@@ -49,8 +49,16 @@ public final class ParticleGroupsInjector implements ClassTransformer {
 
 	@Override public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("MinecraftForge particle groups explicitly left as merged with -D" + PROPERTY + "=off");
-		return AnchorSet.of(new AnchorSet.Anchor(ENGINE, AnchorSet.Severity.REQUIRED,
-				"a MinecraftForge mod registering a particle group throws"));
+		// Measured on 1.21.1: MinecraftForge does not offer particle groups on this line at all. Its own
+		// ParticleEngine (read out of the merged base's META-INF/forbric/native-reference/FORGE/…class.bin) declares
+		// neither factories nor particleRenderOrder nor registerParticleGroup — only vanilla's trackedParticleCounts,
+		// updateCount and hasSpaceInParticleLimit — and the merged base contains no RegisterParticleGroupsEvent of
+		// either family. So no mod on this line can register a group, by Forge's own design, and nothing throws from
+		// here. The repair stays for the bases where the three members do exist; it declines cleanly when they do not.
+		return AnchorSet.of(new AnchorSet.Anchor(ENGINE, AnchorSet.Severity.HEDGE,
+				"older Forge shipped ParticleEngine.registerParticleGroup, a static factories map and "
+						+ "particleRenderOrder; 1.21.1 ships none of the three in either family and has no "
+						+ "RegisterParticleGroupsEvent, so there is no group seam here to repair"));
 	}
 
 	@Override public byte[] transform(String className, byte[] bytes, TransformContext context) {
