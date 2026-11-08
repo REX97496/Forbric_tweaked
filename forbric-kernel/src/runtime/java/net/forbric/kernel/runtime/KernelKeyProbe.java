@@ -53,7 +53,7 @@ public final class KernelKeyProbe {
 		try {
 			if (LINES.get() >= LIMIT) return;
 			if (!SEEN.add("entered|" + key + "|" + action)) return;
-			ForbricLog.info("{} key={} action={}", PREFIX + " entered", key, action);
+			say("entered key=" + key + " action=" + action);
 			Class<?> type = handler.getClass();
 			Object minecraft = read(type, handler, "minecraft");
 			Object screen = minecraft == null ? null : read(minecraft.getClass(), minecraft, "screen");
@@ -62,10 +62,34 @@ public final class KernelKeyProbe {
 			String signature = key + "|" + action + "|" + where + "|" + handled;
 			if (!SEEN.add(signature)) return;
 			if (LINES.incrementAndGet() > LIMIT) return;
-			ForbricLog.info("{} key={} action={} screen={} handledDebugKey={}", PREFIX, key, action, where, handled);
+			say("state key=" + key + " action=" + action + " screen=" + where + " handledDebugKey=" + handled);
 		} catch (Throwable unreadable) {
-			ForbricLog.warn("{} could not read the handler's state", PREFIX, unreadable);
+			say("unreadable " + unreadable);
 		}
+	}
+
+	/**
+	 * Writes one line where a launcher cannot swallow it.
+	 *
+	 * <p>{@code ForbricLog} routes to log4j when it can see it and to {@code System.err} otherwise - and a stock
+	 * launcher does not put the game's stderr into {@code latest.log}, so a probe that only had the log said
+	 * nothing at all and looked like it never ran. When {@code -Dforbric.probeFile} names a file, every line is
+	 * appended there instead, which does not depend on any logging configuration.
+	 */
+	private static void say(String line) {
+		String path = System.getProperty("forbric.probeFile");
+		String text = PREFIX + " " + line;
+		if (path != null && !path.isBlank()) {
+			try {
+				java.nio.file.Files.writeString(java.nio.file.Path.of(path), text + System.lineSeparator(),
+						java.nio.charset.StandardCharsets.UTF_8,
+						java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+				return;
+			} catch (Throwable unwritable) {
+				// Fall through to the log; a missing file must not hide the measurement.
+			}
+		}
+		ForbricLog.info(text);
 	}
 
 	private static Object read(Class<?> type, Object instance, String name) throws ReflectiveOperationException {
