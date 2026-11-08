@@ -383,9 +383,16 @@ public final class NativeAbsentTargets {
 	 * injector in a {@code @Group}, whose group needs at least one injection whatever its members' counts say. Under
 	 * {@code mixin.debug.countInjections} native Mixin fails on the empty injector too, so nothing is dropped then.
 	 *
-	 * <p>And only for a mod native to the game the rows describe: its manifest known, of that platform, with no
-	 * mandatory {@code minecraft}, {@code forge} or {@code neoforge} range that game's version fails
-	 * ({@link #unmetRequirement}).
+	 * <p>And only for a base the table speaks for ({@link #speaksFor}), and for a mod native to the game the rows
+	 * describe: its manifest known, of that platform, with no mandatory {@code minecraft}, {@code forge} or
+	 * {@code neoforge} range that game's version fails ({@link #unmetRequirement}).
+	 *
+	 * <p>The base is asked first, and the versions second. The other order was wrong for every line but the one the
+	 * table was derived on: on 1.21.1 the shipped table still carries 26.2's {@code platform} lines, so a mod built for
+	 * 1.21.1 read as "not native to the game the rows describe" and the boot said curios
+	 * {@code requires minecraft >=1.21 <1.22, which 26.2 does not satisfy} — a claim about a mod that runs there. The
+	 * table has no authority over a base whose members digest is not the one it records, so its versions decide
+	 * nothing either, and the whole version step is skipped without a line.
 	 */
 	static boolean dropsNatively(MethodNode handler, AnnotationNode injector, List<String> selectors, String owner,
 			Context context) {
@@ -403,6 +410,10 @@ public final class NativeAbsentTargets {
 			if (member == null) return false;
 			if (!nativeLacks(context.platform(), owner, member[0], member[1], context.raw(), table)) return false;
 		}
+		// The base before the versions: a table recording another base's versions cannot say whose game this is, and
+		// the line it used to log about the mod ("its own loader would not run it") was false on this line. The first
+		// ask reads the whole serving jar once; ForbricMixinService caches that digest per jar.
+		if (!versionsApply(table, context, owner)) return false;
 		// Whose game the rows describe is asked only once they would answer: the line it may log is about this miss. A
 		// mod the kernel has no manifest for, or one of another platform, is not shown to be native to it either.
 		Rows rows = table.of(context.platform());
@@ -418,8 +429,7 @@ public final class NativeAbsentTargets {
 			}
 			return false;
 		}
-		// Last, because the first ask reads the whole serving jar once.
-		return speaksFor(table, context, owner);
+		return true;
 	}
 
 	/**
@@ -553,6 +563,19 @@ public final class NativeAbsentTargets {
 			if (m.name.equals(name) && (desc == null || m.desc.equals(desc))) return false;
 		}
 		return true;
+	}
+
+	/**
+	 * Whether the {@code platform} lines' versions may be read at all: only the base the table records ({@link
+	 * #speaksFor}) has the game those versions name. A base of another build means the rows are questions about a game
+	 * this one is not, so the mandatory ranges are not held against it and nothing is said about the mod — the 1.21.1
+	 * line, whose shipped table still carries 26.2's lines, logged that curios
+	 * {@code requires minecraft >=1.21 <1.22, which 26.2 does not satisfy} about a mod that runs there.
+	 *
+	 * <p>Package-private so the order this enforces — base first, versions second — is what the test pins.
+	 */
+	static boolean versionsApply(Table table, Context context, String owner) {
+		return speaksFor(table, context, owner);
 	}
 
 	/**

@@ -282,6 +282,28 @@ class NativeAbsentTargetsTest {
 				"a requirement on something the line does not name is not the game's");
 	}
 
+	/**
+	 * The versions on a {@code platform} line describe the base the table's {@code base} line records, and nothing else:
+	 * where the running base is another build the ranges must not be read, or a 1.21.1 install judges 1.21.1 mods
+	 * against 26.2 and says a mod that runs there "would not run" — measured on the eight-mod 1.21.1 client, which said
+	 * exactly that about curios before this gate went first.
+	 */
+	@Test void theVersionsAreOnlyReadForTheBaseTheTableRecords() {
+		NativeAbsentTargets.Table table = NativeAbsentTargets.Table.parse(List.of("base b",
+				"platform fabric minecraft=26.2", "platform neoforge minecraft=26.2 neoforge=26.2.0.88"));
+		Function<String, byte[]> raw = Map.of(BLOCK_ENTITY + ".class", blockEntity("fillCrashReportCategory"))::get;
+		NativeAbsentTargets.Context same = new NativeAbsentTargets.Context(raw, 0, Ecosystem.FABRIC, name -> "b",
+				mod(Ecosystem.FABRIC, "m", required("minecraft", ">=1.21 <1.22")));
+		NativeAbsentTargets.Context other = new NativeAbsentTargets.Context(raw, 0, Ecosystem.FABRIC, name -> "not-b",
+				mod(Ecosystem.FABRIC, "m", required("minecraft", ">=1.21 <1.22")));
+
+		assertTrue(NativeAbsentTargets.versionsApply(table, same, BLOCK_ENTITY), "the recorded base is spoken for");
+		assertFalse(NativeAbsentTargets.versionsApply(table, other, BLOCK_ENTITY),
+				"another base is not, so 26.2's versions say nothing about its mods");
+		assertFalse(NativeAbsentTargets.versionsApply(table, new NativeAbsentTargets.Context(raw, 0, Ecosystem.FABRIC,
+				null, mod(Ecosystem.FABRIC, "m")), BLOCK_ENTITY), "and no digest to compare is not spoken for either");
+	}
+
 	// --- which selectors are a plain name lookup -----------------------------------------------------------------------
 
 	/**
