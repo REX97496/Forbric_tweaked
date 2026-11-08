@@ -144,6 +144,17 @@ public final class KernelBoot {
 		// Before any switch is read: a renamed or retired -Dforbric.* flag is named in the log even when the mechanism
 		// it controls never runs in this session.
 		net.forbric.kernel.util.ForbricSwitches.announce();
+		// Load the runtime namespace table now, not at the first lookup: a whole fabric-api's worth of mixin targets
+		// asks for class_XXXX names during preparation, and a table that is absent or unreadable has to say so at a
+		// point a reader can connect to the launch rather than in the middle of fifty mixin errors. Nothing was
+		// consulting the resolver during startup at all (measured: with -Dforbric.mappings set, the "loaded ..."
+		// line did not appear in a 3,213-line launch), which is why this call exists.
+		try {
+			net.forbric.kernel.fabric.KernelMappingResolver.INSTANCE.getNamespaces();
+		} catch (RuntimeException | LinkageError unreadable) {
+			net.forbric.kernel.util.ForbricLog.warn("[Forbric/Mappings] the runtime mapping table could not be"
+					+ " reported at startup; lookups will answer without it", unreadable);
+		}
 		net.forbric.api.CompatibilityFindings.reset();
 		net.forbric.kernel.discovery.MetadataFailures.reset();
 		net.forbric.kernel.ui.CompatibilityDecision.reset();

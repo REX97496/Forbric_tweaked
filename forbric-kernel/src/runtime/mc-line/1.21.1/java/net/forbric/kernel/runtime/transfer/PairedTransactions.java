@@ -148,6 +148,26 @@ public final class PairedTransactions {
 	}
 
 	/**
+	 * The peer of {@link #fabricFinal}, kept because the boot side pins 26.2's contract for this class and reported
+	 * this line as 125 of 126 linked without it.
+	 *
+	 * <p>It cannot be reached here. 26.2's {@code TransferTransactionHooks} redirected NeoForge's
+	 * {@code TransactionManager.callOnRootCommit} into this method, and that anchor does not exist on 1.21.1 -- the
+	 * same javap that shows {@code neoforge.transfer} absent shows {@code ItemStackHandler.insertItem} as the whole
+	 * mechanism, so there is no NeoForge journal to finish. An actual call would mean something reached a NeoForge
+	 * transaction on a line that has none, so it says so once instead of pretending to have committed anything.
+	 */
+	public static void neoFinal(Object journal) {
+		if (!REACHED_NEO_FINAL) {
+			REACHED_NEO_FINAL = true;
+			System.err.println("[Forbric/Transfer] neoFinal(" + journal + ") was called on 1.21.1, which has no"
+					+ " NeoForge transaction; nothing was committed by this hook");
+		}
+	}
+
+	private static volatile boolean REACHED_NEO_FINAL;
+
+	/**
 	 * What this line actually depends on, checked before any store is touched. 26.2 checked the transform's marker
 	 * on two NeoForge classes and two Fabric ones; the NeoForge half does not exist here and is not needed, and the
 	 * Fabric half is replaced by the public API this class is written against -- a stronger check than a marker,
