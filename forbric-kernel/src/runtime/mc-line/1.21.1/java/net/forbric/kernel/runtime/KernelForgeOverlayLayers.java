@@ -30,6 +30,7 @@ import net.forbric.kernel.util.Reflect;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.client.gui.LayeredDraw.Layer;
+import net.minecraftforge.client.event.ForgeEventFactoryClient;
 import net.minecraftforge.client.gui.overlay.ForgeLayeredDraw;
 import net.neoforged.neoforge.client.gui.GuiLayerManager;
 
@@ -102,17 +103,29 @@ public final class KernelForgeOverlayLayers {
 			treeRegistered = true;
 		}
 
+		ForgeLayeredDraw tree = null;
 		String refusal = null;
 		try {
-			Minecraft mc = Minecraft.getInstance();
-			// 1.21.1 has no net.minecraft.client.gui.Hud, and no Minecraft#gui.hud: Minecraft#gui is
-			// net.minecraft.client.gui.Gui on BOTH lines, and it is 26.2's Gui that gained a `hud` field.
-			// The HUD object, the layer manager that carries MinecraftForge's overlay stack and
-			// ForgeLayeredDraw#extractRenderState are all 26.x structures, so there is nothing here to
-			// hand MinecraftForge's overlay layers to.
-			refusal = "1.21.1 has no Hud: MinecraftForge's HUD overlay layers cannot draw";
+			// MinecraftForge has no HUD-tree builder on this line: there is no ForgeGui and nothing in the merged
+			// base ever constructs a ForgeLayeredDraw, which is why the whole overlay system is inert here. So the
+			// tree is built HERE, and every MinecraftForge vanilla position is seeded as a no-op — a mod's
+			// addAbove(CROSSHAIR, id, layer) then has a crosshair to sit above instead of taking the
+			// "layer not present" branch and dropping the layer.
+			//
+			// Honest limit: MinecraftForge's stack-targeted overloads (addBelow(HOTBAR_AND_DECOS, id, …, layer))
+			// resolve their anchor through subLayerStacks, and a flat tree has no stacks, so those still drop.
+			// Building the real stack shape needs the builder class this line does not ship.
+			tree = new ForgeLayeredDraw(ForgeLayeredDraw.VANILLA_ROOT);
+			int seeded = 0;
+			for (ResourceLocation id : vanillaLayerNames()) {
+				tree.add(id, NOTHING);
+				seeded++;
+			}
+			ForgeEventFactoryClient.onComputeLayerOrder(tree);
+			tree.resolveLayers();
+			forbric$seeded = seeded;
 		} catch (Throwable t) {
-			refusal = "MinecraftForge's own tree builder threw (" + Reflect.unwrap(t) + ")";
+			refusal = "building MinecraftForge's overlay tree threw (" + Reflect.unwrap(t) + ")";
 		}
 
 		// The EVENT half is reported separately from the DRAWING half, because they can differ. Once init has
@@ -121,33 +134,30 @@ public final class KernelForgeOverlayLayers {
 		// never posts", which would be false.
 		if (NEUTERED.ran()) EventBridges.installed(GameEventBridge.GUI_OVERLAY_LAYERS);
 
-		if (refusal != null) {
+		if (refusal != null || tree == null) {
 			// Deliberately NOT the success sentence, and deliberately no GuiLayerManager.add: registering a tree
 			// whose vanilla leaves are live draws the entire vanilla HUD a second time, which is worse than the
 			// bug. This WARN is then the only thing carrying the bad news, so it is mandatory.
 			ForbricLog.warn("[Forbric/HudBridge] refusing to register MinecraftForge's overlay stack (%s) — every "
-					+ "MinecraftForge HUD overlay will draw nothing%s", refusal, NEUTERED.strandedSuffix());
+					+ "MinecraftForge HUD overlay will draw nothing%s",
+					refusal != null ? refusal : "the tree was never built", NEUTERED.strandedSuffix());
 			EventBridges.verify(GameEventBridge.Pass.CLIENT_HUD);
 			return;
 		}
 
 		try {
-			// The singleton is private static final, so its `extract` cannot be referenced; this public static
-			// wrapper is `getstatic instance; aload_0; aload_1; invokevirtual extract` and has no other caller.
-			// ForgeLayeredDraw#extractRenderState is 26.x; on 1.21.1 the class has no such member, so the
-			// layer cannot be registered. Reported rather than dropped quietly, because a mod's HUD overlay
-			// will then draw nothing.
-			ForbricLog.warn("[Forbric/HudBridge] 1.21.1's ForgeLayeredDraw has no extractRenderState, so "
-					+ "MinecraftForge's overlay stack was not added to NeoForge's layer manager — a mod's HUD "
-					+ "overlay will render nothing");
-			ForbricLog.info("[Forbric/HudBridge] MinecraftForge's overlay stack is on NeoForge's layer manager — %s",
-					NEUTERED.describe());
+			// ForgeLayeredDraw inherits LayeredDraw.render, so the baked layer list is what this draws.
+			((GuiLayerManager) layerManager).add(LAYER, tree::render);
+			ForbricLog.info("[Forbric/HudBridge] MinecraftForge's overlay stack is on NeoForge's layer manager, "
+					+ "built here from %d seeded vanilla position(s) — %s", forbric$seeded, NEUTERED.describe());
 		} catch (Throwable t) {
 			ForbricLog.warn("[Forbric/HudBridge] could not give MinecraftForge's overlay layers a place to draw — "
 					+ "a mod's HUD overlay will render nothing", Reflect.unwrap(t));
 		}
 		EventBridges.verify(GameEventBridge.Pass.CLIENT_HUD);
 	}
+
+	private static int forbric$seeded;
 
 	/**
 	 * Replaces every vanilla LEAF in MinecraftForge's tree with a no-op, at the head of {@code resolveLayers}.

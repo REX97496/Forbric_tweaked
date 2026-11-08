@@ -72,9 +72,15 @@ public final class HudElementBridgeInjector implements ClassTransformer {
 
 	@Override
 	public AnchorSet anchors() {
-		return AnchorSet.of(new AnchorSet.Anchor(TARGET, AnchorSet.Severity.REQUIRED,
-				"every guest-registered HUD element -- Xaero's minimap, malilib's overlays -- would be registered "
-						+ "somewhere nothing reads, and simply not draw"));
+		// Measured on the 1.21.1 merged base: GuiLayerManager takes `add(ResourceLocation, LayeredDraw.Layer)` and
+		// `add(GuiLayerManager, BooleanSupplier)`; it does not declare a GuiLayer type at all, so there is no
+		// GuiLayer-taking overload to route. That is not a lost feature — the Fabric dispatch needs the type, and
+		// the base does not have it. The overlay half of this transform still runs on that shape, which is why the
+		// missing-overlay warning would otherwise have been wrong twice over.
+		return AnchorSet.of(new AnchorSet.Anchor(TARGET, AnchorSet.Severity.HEDGE,
+				"1.21.1's GuiLayerManager declares only LayeredDraw.Layer-taking overloads, so Fabric's "
+						+ "HudElementRegistry has nothing to route through here; bases that ship GuiLayer get the "
+						+ "routing, and MinecraftForge's overlay stack is installed by this transform on either shape"));
 	}
 
 	@Override
@@ -105,16 +111,25 @@ public final class HudElementBridgeInjector implements ClassTransformer {
 
 		int overlays = appendForgeOverlayInstall(node);
 
-		if (edited == 0) {
-			ForbricLog.warn("[Forbric/HudBridge] %s has no add(Identifier, GuiLayer[, BooleanSupplier]) to route — the "
-					+ "seam has drifted, so Fabric HUD elements will render nothing", className);
+		if (edited == 0 && overlays == 0) {
+			ForbricLog.warn("[Forbric/HudBridge] %s has no add(Identifier, GuiLayer[, BooleanSupplier]) and no "
+					+ "%s()V to append to — the seam has drifted, so Fabric HUD elements will render nothing",
+					className, INIT_METHOD);
 			return classBytes;
 		}
 
-		routed += edited;
-		ForbricLog.info("[Forbric/HudBridge] routed %d GuiLayerManager.add overload(s) through the kernel — Fabric's "
-				+ "HudElementRegistry dispatches off NeoForge's layer manager from here%s", edited,
-				overlays > 0 ? ", and MinecraftForge's overlay stack goes on at the end of initModdedLayers" : "");
+		if (edited == 0) {
+			// The overlay half is independent of the routing half and worth the write on its own: this is the shape
+			// where the layer list is built by NeoForge and MinecraftForge's stack has nowhere to go.
+			ForbricLog.info("[Forbric/HudBridge] %s takes LayeredDraw.Layer rather than GuiLayer, so Fabric's "
+					+ "HudElementRegistry cannot route through this seam on this base — MinecraftForge's overlay "
+					+ "stack still goes on at the end of %s", className, INIT_METHOD);
+		} else {
+			routed += edited;
+			ForbricLog.info("[Forbric/HudBridge] routed %d GuiLayerManager.add overload(s) through the kernel — "
+					+ "Fabric's HudElementRegistry dispatches off NeoForge's layer manager from here%s", edited,
+					overlays > 0 ? ", and MinecraftForge's overlay stack goes on at the end of initModdedLayers" : "");
+		}
 
 		ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 		node.accept(writer);
