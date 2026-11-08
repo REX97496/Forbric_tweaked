@@ -38,5 +38,6 @@ net/forbric/kernel/boot/KernelClientSmoke.java	1	getMethod("getValue", identifie
 net/forbric/kernel/boot/KernelLifecycle.java	1	Object id = key.getClass().getMethod("identifier").invoke(key);	Object id = key.getClass().getMethod("location").invoke(key);
 # ResourceKey#identifier() -> location(), fourth call site
 net/forbric/kernel/boot/KernelRegistryAliases.java	1	identifier = key.getClass().getMethod("identifier");	identifier = key.getClass().getMethod("location");
-# ResourceKey#identifier() -> location(), fifth call site, and the only one that also names its owner
-net/forbric/kernel/boot/KernelWrapperEntryEvents.java	1	Method identifier = Class.forName("net.minecraft.resources.ResourceKey", false, loader).getMethod("identifier");	Method identifier = Class.forName("net.minecraft.resources.ResourceKey", false, loader).getMethod("location");
+# ResourceKey#identifier() -> location(), fifth and sixth call sites (the second is the kernel-event fallback
+# KernelWrapperEntryEvents takes for a registry that is not a ListenableRegistry)
+net/forbric/kernel/boot/KernelWrapperEntryEvents.java	2	Method identifier = Class.forName("net.minecraft.resources.ResourceKey", false, loader).getMethod("identifier");	Method identifier = Class.forName("net.minecraft.resources.ResourceKey", false, loader).getMethod("location");

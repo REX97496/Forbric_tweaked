@@ -30,7 +30,8 @@ public final class KernelWrapperEntryEvents {
 	private static final String EVENT = "net.fabricmc.fabric.api.event.Event";
 	private static final String CALLBACK = "net.fabricmc.fabric.api.event.registry.RegistryEntryAddedCallback";
 
-	private record Hooks(Method event, Method invoker, Method onEntryAdded, Method rawId, Method identifier) {
+	private record Hooks(Method event, Method invoker, Method onEntryAdded, Method rawId, Method identifier,
+			boolean fromKernel) {
 	}
 
 	private static final ConcurrentHashMap<Class<?>, Optional<Hooks>> HOOKS = new ConcurrentHashMap<>();
@@ -47,7 +48,7 @@ public final class KernelWrapperEntryEvents {
 		if (hooks == null) return;
 		try {
 			// Null only before fabric-registry-sync's constructor injection has run, and nothing can listen yet then.
-			Object event = hooks.event().invoke(registry);
+			Object event = hooks.fromKernel() ? hooks.event().invoke(null, registry) : hooks.event().invoke(registry);
 			if (event == null) return;
 			Object invoker = hooks.invoker().invoke(event);
 			hooks.onEntryAdded().invoke(invoker, hooks.rawId().invoke(registry, value), hooks.identifier().invoke(key), value);
@@ -70,35 +71,31 @@ public final class KernelWrapperEntryEvents {
 			if (!listenable.isAssignableFrom(wrapper)) {
 				// SAID OUT LOUD, because this branch used to be silent and that cost a whole diagnosis.
 				//
-				// A Fabric mod asks fabric-registry-sync for a registry's event by an instanceof test —
-				// ListenableRegistry.get() throws "Unsupported registry: <id>" when the registry is not one.
-				// MappedRegistryMixin is what makes a MappedRegistry into a ListenableRegistry, and on this
-				// merged base at least one registry reaches this method without that having happened:
-				//
-				//   IllegalArgumentException: Unsupported registry: minecraft:block
-				//     at ListenableRegistry.get(ListenableRegistry.java:31)
-				//     at RegistryEntryAddedCallback.event(RegistryEntryAddedCallback.java:51)
-				//     at Blocks.handler$...$fabric-registry-sync-v0$initShapeCache(Blocks.java:6088)
-				//
-				// Every static check said the mixin should apply — the target class is MappedRegistry, the
-				// registry IS a MappedRegistry subclass, all five shadowed fields and all six shadowed methods
-				// exist, and the load report lists no finding for the mixin — so the reason is runtime state
-				// that no amount of jar inspection reaches. Returning empty here quietly makes this class
-				// register "without firing" the callback, which is indistinguishable from correct behaviour
-				// and is exactly the shape this project keeps getting criticised for.
-				ForbricLog.warn("[Forbric/Registries] %s is NOT a %s, so fabric-registry-sync's"
-						+ " RegistryEntryAddedCallback cannot fire for it — a Fabric listener misses what this"
-						+ " registry registers, and ListenableRegistry.get(%s) will throw \"Unsupported registry\"."
-						+ " MappedRegistryMixin is what supplies that interface; every static check says it should"
-						+ " have applied, so this is what a failed application looks like from the outside.",
-						wrapper.getName(), LISTENABLE, wrapper.getName());
-				return Optional.empty();
+				// fabric-registry-sync supplies ListenableRegistry with a mixin on MappedRegistry, and on this merged
+				// base that mixin can fail on a single @Shadow (measured: lambda$freeze$5()V, which the two patched
+				// families number differently). A Forge wrapper is then a MappedRegistry without the interface, and
+				// ListenableRegistry.get would throw "Unsupported registry: minecraft:item" for it — the first such
+				// call is ItemModelShaper's, inside Minecraft's own constructor. GuestJarRemap replaces that throw
+				// with a call to KernelRegistryViews.listenable, which answers this same event, so the callback still
+				// fires for the wrapper; the warning stays because the interface itself is still missing.
+				ForbricLog.warn("[Forbric/Registries] %s is NOT a %s, so its own event getters do not exist; the"
+						+ " kernel answers the event instead, at %s", wrapper.getName(), LISTENABLE,
+						"net.forbric.kernel.runtime.KernelRegistryViews#addObjectEvent");
+				Method event = Class.forName("net.forbric.kernel.runtime.KernelRegistryViews", false, loader)
+						.getMethod("addObjectEvent", Object.class);
+				Method identifier = Class.forName("net.minecraft.resources.ResourceKey", false, loader).getMethod("identifier");
+				return Optional.of(new Hooks(event, Class.forName(EVENT, false, loader).getMethod("invoker"),
+						Class.forName(CALLBACK, false, loader).getMethod("onEntryAdded", int.class,
+								identifier.getReturnType(), Object.class),
+						Class.forName("net.minecraft.core.IdMap", false, loader).getMethod("getId", Object.class),
+						identifier, true));
 			}
 			Method identifier = Class.forName("net.minecraft.resources.ResourceKey", false, loader).getMethod("identifier");
 			return Optional.of(new Hooks(listenable.getMethod("fabric_getAddObjectEvent"),
 					Class.forName(EVENT, false, loader).getMethod("invoker"),
 					Class.forName(CALLBACK, false, loader).getMethod("onEntryAdded", int.class, identifier.getReturnType(), Object.class),
-					Class.forName("net.minecraft.core.IdMap", false, loader).getMethod("getId", Object.class), identifier));
+					Class.forName("net.minecraft.core.IdMap", false, loader).getMethod("getId", Object.class), identifier,
+					false));
 		} catch (ClassNotFoundException absent) {
 			return Optional.empty(); // no fabric-registry-sync: nothing listens
 		} catch (ReflectiveOperationException | LinkageError e) {

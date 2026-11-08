@@ -88,8 +88,76 @@ public final class GuestJarRemap {
 	 */
 	static String mapInternal(String internalName) {
 		String mapped = KernelMappingResolver.INSTANCE.mapClassName("intermediary", internalName);
+		if (mapped.equals(internalName)) {
+			// Fabric API is published with its mixin annotations and refmaps still spelled in Yarn names, because the
+			// loader is expected to translate them at runtime. The jar's own refmap says which intermediary class
+			// each of its named classes is, and the table says which official class that is: two hops, one dictionary
+			// that came with the guest instead of a second table this build would have to carry.
+			String intermediary = yarn.classes.get(internalName);
+			if (intermediary != null) {
+				mapped = KernelMappingResolver.INSTANCE.mapClassName("intermediary", intermediary);
+				if (!mapped.equals(intermediary)) yarnClasses++;
+			}
+		}
 		if (mapped.equals(internalName)) return internalName;
 		return mapped.indexOf('.') < 0 ? mapped : mapped.replace('.', '/');
+	}
+
+	/**
+	 * Yarn names to intermediary ones, collected from one guest jar's refmaps.
+	 *
+	 * <p>A refmap's {@code data} section is exactly the set of named references that jar writes down, so the guest's
+	 * own dictionary answers for its own names and no external Yarn table is needed. Rebuilt per jar; guest jars are
+	 * rewritten one at a time.
+	 */
+	private static volatile YarnNames yarn = YarnNames.EMPTY;
+	private static long yarnClasses;
+	private static long yarnMembers;
+
+	private static final class YarnNames {
+		private static final YarnNames EMPTY = new YarnNames();
+		private final Map<String, String> classes = new HashMap<>();
+		private final Map<String, String> members = new HashMap<>();
+	}
+
+	/** A named-to-intermediary pair inside a refmap's {@code data} section. */
+	private static final Pattern YARN_PAIR = Pattern.compile(
+			"\"([^\"]*)\"\\s*:\\s*\"L([A-Za-z0-9_$/]+);([A-Za-z0-9_$<>]+)([:(][^\"\\r\\n]*)?\"");
+
+	private static YarnNames readYarnNames(byte[] jarBytes) {
+		YarnNames names = new YarnNames();
+		try (ZipInputStream in = new ZipInputStream(new java.io.ByteArrayInputStream(jarBytes))) {
+			for (ZipEntry entry; (entry = in.getNextEntry()) != null; ) {
+				if (entry.isDirectory() || !entry.getName().endsWith("-refmap.json")) continue;
+				String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+				int at = text.indexOf("\"data\"");
+				if (at < 0) continue;
+				Matcher matcher = YARN_PAIR.matcher(text.substring(at));
+				while (matcher.find()) {
+					String key = matcher.group(1);
+					String intermediaryOwner = matcher.group(2);
+					String intermediaryMember = matcher.group(3);
+					if (!intermediaryOwner.contains("class_")) continue;
+					int semicolon = key.indexOf(';');
+					String namedOwner = key.startsWith("L") && semicolon > 0 ? key.substring(1, semicolon) : null;
+					if (namedOwner != null && namedOwner.startsWith("net/minecraft/")
+							&& !namedOwner.contains("class_")) {
+						names.classes.putIfAbsent(namedOwner, intermediaryOwner);
+					}
+					String namedMember = namedOwner != null ? key.substring(semicolon + 1) : key;
+					int cut = namedMember.indexOf('(') >= 0 ? namedMember.indexOf('(') : namedMember.indexOf(':');
+					if (cut >= 0) namedMember = namedMember.substring(0, cut);
+					if (namedMember.matches("[A-Za-z_$][A-Za-z0-9_$]*") && !namedMember.contains("class_")
+							&& intermediaryMember.matches("(?:method|field)_\\d+")
+							&& !namedMember.equals(intermediaryMember)) {
+						names.members.putIfAbsent(namedMember, intermediaryMember);
+					}
+				}
+			}
+		} catch (IOException unreadable) {
+			return names;
+		}
+		return names;
 	}
 
 	/** Off switch, for a launch that needs to see the unwritten jar. */
@@ -125,6 +193,8 @@ public final class GuestJarRemap {
 	private static long memberStringMisses;
 	private static long lambdasPicked;
 	private static long lambdasAmbiguous;
+	private static long tableNamesCorrected;
+	private static long tableNamesUnresolved;
 	private static volatile MethodIndex minecraftIndex;
 	private static int lambdasUnindexed = 5;
 
@@ -184,7 +254,11 @@ public final class GuestJarRemap {
 							+ (lambdasAmbiguous == 0 ? "" : ", " + lambdasAmbiguous + " lambda name(s) left alone"
 									+ " because more than one method there accepts the descriptor")
 							+ (descriptorsPicked == 0 ? "" : ", " + descriptorsPicked + " member(s) named by their"
-									+ " descriptor because the table had no row for them"));
+									+ " descriptor because the table had no row for them")
+							+ (tableNamesCorrected == 0 ? "" : ", " + tableNamesCorrected + " table name(s) the base"
+									+ " does not declare replaced by the method it does")
+							+ (tableNamesUnresolved == 0 ? "" : ", " + tableNamesUnresolved + " table name(s) left"
+									+ " unresolved because the base has no method with that shape"));
 		}
 		return out;
 	}
@@ -220,6 +294,17 @@ public final class GuestJarRemap {
 	}
 
 	private static Path remapOne(Path jar, Path cacheDir) throws IOException {
+		// Read the refmaps first: they are the only place a guest says what its Yarn-spelled names mean, and the class
+		// pass below needs that dictionary while it is still rewriting.
+		yarn = readYarnNames(Files.readAllBytes(jar));
+		try {
+			return remapWithYarn(jar, cacheDir);
+		} finally {
+			yarn = YarnNames.EMPTY;
+		}
+	}
+
+	private static Path remapWithYarn(Path jar, Path cacheDir) throws IOException {
 		byte[] bytes = Files.readAllBytes(jar);
 		String key = digest(bytes);
 		Path target = cacheDir.resolve(key + '-' + jar.getFileName());
@@ -285,6 +370,9 @@ public final class GuestJarRemap {
 
 	private static final String MANIFEST = "META-INF/MANIFEST.MF";
 
+	/** fabric-registry-sync's marker interface: the one Fabric asks a registry for by {@code instanceof}. */
+	private static final String LISTENABLE = "net/fabricmc/fabric/impl/registry/sync/ListenableRegistry";
+
 	/**
 	 * Signature files of a signed jar. A rewritten jar keeps the manifest's per-entry digests and the .SF/.RSA
 	 * pair, so the first class the verifier reads fails with
@@ -344,7 +432,44 @@ public final class GuestJarRemap {
 		// class_2591"). Measured after the first pass, which only handled descriptors: 251 "Error loading class:
 		// net/minecraft/class_2591" lines survived a jar that had been rewritten top to bottom.
 		reader.accept(new StringConstants(remapper, seen, owners), 0);
-		return renameShadows(writer.toByteArray());
+		return patchListenableRegistry(renameShadows(writer.toByteArray()));
+	}
+
+	/**
+	 * Replaces the body of fabric-registry-sync's {@code ListenableRegistry.get} with a call to the kernel's view.
+	 *
+	 * <p>Everything else in that class stays: the two event getters and the interface are untouched. The original
+	 * {@code get} is an {@code instanceof} test followed by {@code throw new IllegalArgumentException("Unsupported
+	 * registry: …")}; on a merged base the interface is missing from every Forge registry wrapper, so the throw fires
+	 * during {@code Minecraft}'s constructor ({@code ItemModelShaper} asks for the item registry's event) and the client
+	 * never reaches the main menu. The replacement answers a view backed by the kernel's own event instead of a throw.
+	 */
+	private static byte[] patchListenableRegistry(byte[] bytes) {
+		if (new ClassReader(bytes).getClassName().equals(LISTENABLE)) {
+			ClassNode node = new ClassNode();
+			// Frames stay on every other method: only the replaced body has branches to lose.
+			new ClassReader(bytes).accept(node, 0);
+			for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+				if (!method.name.equals("get") || !method.desc.endsWith(")L" + LISTENABLE + ";")) continue;
+				method.instructions.clear();
+				method.tryCatchBlocks.clear();
+				method.localVariables = null;
+				method.visibleLocalVariableAnnotations = null;
+				method.invisibleLocalVariableAnnotations = null;
+				method.instructions.add(new org.objectweb.asm.tree.VarInsnNode(org.objectweb.asm.Opcodes.ALOAD, 0));
+				method.instructions.add(new org.objectweb.asm.tree.MethodInsnNode(org.objectweb.asm.Opcodes.INVOKESTATIC,
+						"net/forbric/kernel/runtime/KernelRegistryViews", "listenable",
+						"(Ljava/lang/Object;)Ljava/lang/Object;", false));
+				method.instructions.add(new org.objectweb.asm.tree.TypeInsnNode(org.objectweb.asm.Opcodes.CHECKCAST, LISTENABLE));
+				method.instructions.add(new org.objectweb.asm.tree.InsnNode(org.objectweb.asm.Opcodes.ARETURN));
+				method.maxStack = 1;
+				method.maxLocals = 1;
+			}
+			ClassWriter writer = new ClassWriter(0);
+			node.accept(writer);
+			return writer.toByteArray();
+		}
+		return bytes;
 	}
 
 	/**
@@ -391,7 +516,21 @@ public final class GuestJarRemap {
 				}
 			}
 		}
-		if (byDescriptor.isEmpty()) return remapped;
+		// Fields too. creative-inventory's mixin shadows the search field by its intermediary name and the whole
+		// mixin was dropped with `@Shadow field field_2896 was not located in CreativeModeInventoryScreen`.
+		java.util.Map<String, String> fieldByDescriptor = new java.util.HashMap<>();
+		for (org.objectweb.asm.tree.FieldNode field : node.fields) {
+			if (!hasAnnotation(field, "Lorg/spongepowered/asm/mixin/Shadow;")) continue;
+			for (String target : targets) {
+				if (declaresFieldName(index, target, field.desc, field.name)) break;
+				String picked = pickBaseFieldName(index, target, field.desc, field.name);
+				if (picked != null) {
+					fieldByDescriptor.put(field.name + ' ' + field.desc, picked);
+					break;
+				}
+			}
+		}
+		if (byDescriptor.isEmpty() && fieldByDescriptor.isEmpty()) return remapped;
 		for (MethodNode method : node.methods) {
 			String renamed = byDescriptor.get(method.name + method.desc);
 			if (renamed != null) method.name = renamed;
@@ -401,7 +540,16 @@ public final class GuestJarRemap {
 					String called = byDescriptor.get(call.name + call.desc);
 					if (called != null) call.name = called;
 				}
+				if (insn instanceof org.objectweb.asm.tree.FieldInsnNode access
+						&& node.name.equals(access.owner)) {
+					String called = fieldByDescriptor.get(access.name + ' ' + access.desc);
+					if (called != null) access.name = called;
+				}
 			}
+		}
+		for (org.objectweb.asm.tree.FieldNode field : node.fields) {
+			String renamed = fieldByDescriptor.get(field.name + ' ' + field.desc);
+			if (renamed != null) field.name = renamed;
 		}
 		ClassWriter writer = new ClassWriter(0);
 		node.accept(writer);
@@ -432,6 +580,15 @@ public final class GuestJarRemap {
 		return false;
 	}
 
+	private static boolean hasAnnotation(org.objectweb.asm.tree.FieldNode field, String descriptor) {
+		for (List<org.objectweb.asm.tree.AnnotationNode> list : annotationLists(field)) {
+			for (org.objectweb.asm.tree.AnnotationNode annotation : list) {
+				if (descriptor.equals(annotation.desc)) return true;
+			}
+		}
+		return false;
+	}
+
 	private static List<List<org.objectweb.asm.tree.AnnotationNode>> annotationLists(Object holder) {
 		List<List<org.objectweb.asm.tree.AnnotationNode>> lists = new ArrayList<>(2);
 		if (holder instanceof ClassNode node) {
@@ -440,6 +597,9 @@ public final class GuestJarRemap {
 		} else if (holder instanceof MethodNode method) {
 			if (method.visibleAnnotations != null) lists.add(method.visibleAnnotations);
 			if (method.invisibleAnnotations != null) lists.add(method.invisibleAnnotations);
+		} else if (holder instanceof org.objectweb.asm.tree.FieldNode field) {
+			if (field.visibleAnnotations != null) lists.add(field.visibleAnnotations);
+			if (field.invisibleAnnotations != null) lists.add(field.invisibleAnnotations);
 		}
 		return lists;
 	}
@@ -450,6 +610,17 @@ public final class GuestJarRemap {
 			if (method.name().equals(name)) return true;
 		}
 		return false;
+	}
+
+	private static boolean declaresFieldName(MethodIndex index, String owner, String descriptor, String name) {
+		return index.fieldsOfShape(owner, descriptor).contains(name);
+	}
+
+	/** The one field name of that shape on {@code owner}, or the hint when the base declares it. */
+	private static String pickBaseFieldName(MethodIndex index, String owner, String descriptor, String hint) {
+		java.util.Set<String> names = new java.util.LinkedHashSet<>(index.fieldsOfShape(owner, descriptor));
+		if (names.contains(hint)) return hint;
+		return names.size() == 1 ? names.iterator().next() : null;
 	}
 
 	/** The one name of that shape on {@code owner}, or the hint when the base declares it. */
@@ -578,9 +749,21 @@ public final class GuestJarRemap {
 			if (member.equals(named) || !rest.startsWith("(")) continue;
 			if (!INTERMEDIARY_MEMBER.matcher(member).matches() && !member.startsWith("lambda$")) continue;
 			if (!named.matches("[A-Za-z_$][A-Za-z0-9_$]*")) continue;
-			if (!index.declares(matcher.group(2), rest, named)) continue;
+			String target = named;
+			if (!index.declares(matcher.group(2), rest, target)) {
+				// The value's member is a name the base never declares: the table row behind it is one of the
+				// rows that records a lambda the base no longer has (`CompoundTag.contains` at `()Set` is
+				// `getKeys`). The key is what the mixin source wrote, so translate it through the jar's own
+				// yarn -> intermediary dictionary and then the table, and keep the answer only if the base
+				// declares it at this shape.
+				String intermediary = yarn.members.get(named);
+				if (intermediary == null) continue;
+				String official = KernelMappingResolver.INSTANCE.mapMethodNameWithoutOwner("intermediary", intermediary);
+				if (official.equals(intermediary) || !index.declares(matcher.group(2), rest, official)) continue;
+				target = official;
+			}
 			refmapValues++;
-			out.append(json, last, matcher.start(3)).append(named);
+			out.append(json, last, matcher.start(3)).append(target);
 			last = matcher.end(3);
 		}
 		if (last == 0) return json;
@@ -892,6 +1075,37 @@ public final class GuestJarRemap {
 			matcher.appendReplacement(out, Matcher.quoteReplacement(replacement));
 		}
 		matcher.appendTail(out);
+		return replaceYarnClasses(out.toString(), seen);
+	}
+
+	/** A path-shaped token, used to find Yarn class names inside selectors and annotation values. */
+	private static final Pattern TOKEN = Pattern.compile(
+			"(?<![A-Za-z0-9_$/.\\-])[A-Za-z_$][A-Za-z0-9_$]*(?:[./][A-Za-z0-9_$]+)+");
+
+	/**
+	 * Replaces the class names a guest still spells the Yarn way, using the dictionary its own refmap supplied.
+	 *
+	 * <p>Measured need: {@code @Mixin(targets = "net/minecraft/item/ItemStack")} and refmap keys written
+	 * {@code net/minecraft/block/BlockState} both name classes no intermediary entry can answer for, so the mixin
+	 * service looked for a class that does not exist and the whole mixin was dropped.
+	 */
+	private static String replaceYarnClasses(String text, Set<String> seen) {
+		if (yarn.classes.isEmpty()) return text;
+		Matcher matcher = TOKEN.matcher(text);
+		StringBuilder out = new StringBuilder(text.length());
+		while (matcher.find()) {
+			String token = matcher.group();
+			String internal = token.replace('.', '/');
+			if (!yarn.classes.containsKey(internal)) {
+				matcher.appendReplacement(out, Matcher.quoteReplacement(token));
+				continue;
+			}
+			String mapped = mapInternal(internal);
+			seen.add(internal);
+			matcher.appendReplacement(out,
+					Matcher.quoteReplacement(token.indexOf('.') >= 0 ? mapped.replace('/', '.') : mapped));
+		}
+		matcher.appendTail(out);
 		return out.toString();
 	}
 
@@ -933,13 +1147,22 @@ public final class GuestJarRemap {
 			// return Holder and HolderSet and would fail that cast. Measured failure: NoSuchMethodError for
 			// lambda$fromCodecWithRegistries$9(ResourceKey) during Bootstrap, VariantCodecs.<clinit>.
 			"net/minecraft/network/codec/ByteBufCodecs|(Lnet/minecraft/resources/ResourceKey;)"
-					+ "Lnet/minecraft/network/codec/StreamCodec;|lambda$fromCodecWithRegistries$9", "registry");
+					+ "Lnet/minecraft/network/codec/StreamCodec;|lambda$fromCodecWithRegistries$9", "registry",
+			// fabric-model-loading-api-v1's ModelLoadingPluginManager.preparePlugins returns Util.combine(futures)
+			// (yarn), which this line's table records as class_156.method_652 -> lambda$allOf$8. That name belongs
+			// to lambda$allOf$8(int)Predicate[] here, not to any (List)CompletableFuture, so the guest got a
+			// NoSuchMethodError while Minecraft was still constructing its ModelManager. Util.sequence is the
+			// (List)CompletableFuture the reload path itself uses (ModelManager.reload, offset 68); sequenceFailFast
+			// and sequenceFailFastAndCancel share that erasure but belong to SimpleReloadInstance.of instead.
+			"net/minecraft/Util|(Ljava/util/List;)Ljava/util/concurrent/CompletableFuture;|lambda$allOf$8", "sequence");
 
 	private static final class MethodIndex {
 		private final List<Path> jars;
 		private final Map<String, Map<String, List<BaseMethod>>> cache = new HashMap<>();
 		private final Map<String, List<String>> parents = new HashMap<>();
 		private final Map<String, java.util.Set<String>> declaredFields = new HashMap<>();
+		/** field descriptor -> the names the type declares with it, for the @Shadow field pass. */
+		private final Map<String, Map<String, List<String>>> fieldShapes = new HashMap<>();
 
 		private MethodIndex(List<Path> jars) {
 			this.jars = jars;
@@ -949,6 +1172,22 @@ public final class GuestJarRemap {
 		private java.util.Set<String> fields(String internalOwner) {
 			read(internalOwner);
 			return declaredFields.getOrDefault(internalOwner, java.util.Set.of());
+		}
+
+		/** Every field name of that shape declared by the type or by what it extends or implements. */
+		private List<String> fieldsOfShape(String internalOwner, String descriptor) {
+			List<String> found = new ArrayList<>(2);
+			java.util.ArrayDeque<String> queue = new java.util.ArrayDeque<>();
+			java.util.Set<String> visited = new java.util.HashSet<>();
+			queue.add(internalOwner);
+			while (!queue.isEmpty() && visited.size() < 24) {
+				String type = queue.poll();
+				if (!visited.add(type)) continue;
+				read(type);
+				found.addAll(fieldShapes.getOrDefault(type, Map.of()).getOrDefault(descriptor, List.of()));
+				queue.addAll(parents.getOrDefault(type, List.of()));
+			}
+			return found;
 		}
 
 		private List<BaseMethod> methods(String internalOwner, String descriptor) {
@@ -1007,8 +1246,13 @@ public final class GuestJarRemap {
 					}
 					if (!node.fields.isEmpty()) {
 						java.util.Set<String> names = new java.util.HashSet<>(node.fields.size());
-						for (org.objectweb.asm.tree.FieldNode field : node.fields) names.add(field.name);
+						Map<String, List<String>> shapes = new HashMap<>();
+						for (org.objectweb.asm.tree.FieldNode field : node.fields) {
+							names.add(field.name);
+							shapes.computeIfAbsent(field.desc, key -> new ArrayList<>(2)).add(field.name);
+						}
 						declaredFields.put(internalOwner, names);
+						fieldShapes.put(internalOwner, shapes);
 					}
 					return byDescriptor;
 				} catch (IOException | RuntimeException unreadable) {
@@ -1036,6 +1280,24 @@ public final class GuestJarRemap {
 
 		@Override
 		public String mapMethodName(String owner, String name, String descriptor) {
+			// A Fabric mixin names its target the way its source did: net/minecraft/block/Block, not class_2248. The
+			// refmap data section supplied those pairs, so translate the owner and the member before the table sees
+			// them, and everything downstream (qualified lookup, inheritance fallback, descriptor answer) then works
+			// on the intermediary spelling it was written for.
+			String intermediaryOwner = yarn.classes.get(owner);
+			if (intermediaryOwner == null) intermediaryOwner = owner;
+			// The dictionary only speaks for Minecraft members. Applying it to a JDK owner renamed
+			// java/util/stream/Stream.toList into Stream.lambda$fromCodec$4 (yarn's table has that spelling for
+			// StreamCodec's own lambda), and the client died in ModResourcePackUtil with a NoSuchMethodError.
+			boolean minecraftOwner = mapInternal(intermediaryOwner).startsWith("net/minecraft/");
+			String intermediaryName = name;
+			String translated = minecraftOwner ? yarn.members.get(name) : null;
+			if (translated != null && !name.contains("_")) {
+				intermediaryName = translated;
+				yarnMembers++;
+			}
+			owner = intermediaryOwner;
+			name = intermediaryName;
 			String mapped = KernelMappingResolver.INSTANCE.mapMethodName("intermediary", owner, name, descriptor);
 			// A call site names the static receiver type, not the class that declares the method: fabric-api calls
 			// Registry.holderByNameCodec through DefaultedRegistry, and the table files that row under Registry — so a
@@ -1043,7 +1305,7 @@ public final class GuestJarRemap {
 			// only 10 names map to two different official names, and the resolver refuses those, so the unqualified
 			// lookup is safe; it is what turns method_40294 into holderByNameCodec instead of leaving the call to fail
 			// with NoSuchMethodError at Bootstrap.
-			String resolved = mapped.equals(name)
+			String resolved = mapped.equals(name) && minecraftOwner
 					? KernelMappingResolver.INSTANCE.mapMethodNameWithoutOwner("intermediary", name)
 					: mapped;
 			if (resolved.equals(name) && INTERMEDIARY_MEMBER.matcher(name).matches()) {
@@ -1056,7 +1318,40 @@ public final class GuestJarRemap {
 					return byShape;
 				}
 			}
-			return lambdaShape(owner, resolved, descriptor);
+			return verifyTheTableAgainstTheBase(owner, name, descriptor,
+					lambdaShape(owner, resolved, descriptor));
+		}
+
+		/**
+		 * Checks a name the table just handed out against what the base actually declares, and asks the base instead.
+		 *
+		 * <p>The table is a join between two namespaces, not a promise: measured rows name
+		 * {@code ResourceKey.location()} as {@code lambda$create$2}, {@code Util.sequence} as {@code lambda$allOf$8},
+		 * and a {@code Minecraft} getter as {@code getModelManager} with a {@code PackRepository} return type the base
+		 * does not have. A row that survives the lambda pass can therefore still be a name nothing accepts, and the
+		 * failure only shows up much later as a NoSuchMethodError from inside Bootstrap or resource loading. The
+		 * descriptor cannot be mis-joined, so when the mapped name is not declared anywhere the owner hierarchy with
+		 * that shape, and exactly one method is, take that one; otherwise leave the name and count it, because a
+		 * wrong guess would be worse than the error it hides.
+		 */
+		private String verifyTheTableAgainstTheBase(String owner, String name, String descriptor, String resolved) {
+			String officialOwner = mapInternal(owner);
+			if (resolved.equals(name) || !officialOwner.startsWith("net/minecraft/")) return resolved;
+			MethodIndex index = minecraftIndex;
+			if (index == null) return resolved;
+			String officialDescriptor = mapDesc(descriptor);
+			if (index.declares(officialOwner, officialDescriptor, resolved)) return resolved;
+			String byShape = byDescriptor(owner, name, descriptor, true);
+			if (byShape != null) {
+				tableNamesCorrected++;
+				return byShape;
+			}
+			tableNamesUnresolved++;
+			if (tableNamesUnresolved <= 5) {
+				ForbricLog.debug("[Forbric/Remap] the table names %s%s %s, which the base does not declare, and no"
+						+ " single method there takes its shape", officialOwner, officialDescriptor, resolved);
+			}
+			return resolved;
 		}
 
 		/**
@@ -1207,8 +1502,18 @@ public final class GuestJarRemap {
 
 		@Override
 		public String mapFieldName(String owner, String name, String descriptor) {
+			// Same two-hop translation as mapMethodName: a refmap entry can name a field in Yarn spelling, and the
+			// table only knows the intermediary one.
+			String intermediaryOwner = yarn.classes.get(owner);
+			if (intermediaryOwner != null) owner = intermediaryOwner;
+			boolean minecraftOwner = mapInternal(owner).startsWith("net/minecraft/");
+			String translated = minecraftOwner ? yarn.members.get(name) : null;
+			if (translated != null && !translated.startsWith("method_") && !name.contains("_")) {
+				name = translated;
+				yarnMembers++;
+			}
 			String mapped = KernelMappingResolver.INSTANCE.mapFieldName("intermediary", owner, name, descriptor);
-			return mapped.equals(name)
+			return mapped.equals(name) && minecraftOwner
 					? KernelMappingResolver.INSTANCE.mapFieldNameWithoutOwner("intermediary", name)
 					: mapped;
 		}

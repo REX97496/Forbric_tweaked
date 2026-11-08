@@ -1,11 +1,4 @@
-# RETIRED AS THE RUNTIME PRODUCER. The table KernelMappingResolver reads is now written by the descriptor-keyed
-# join: `python tools/namespace/join-keyed.py <out> --full`, wired as the emitRuntimeMappings task in
-# forbric-kernel/build.gradle and verified there through the resolver and against the merged base. This script is
-# kept ONLY so the numbers already recorded against its output stay reproducible: measured against the merged
-# base its table names something that is not at the stated owner+signature 22,861 times and maps 3,830 distinct
-# intermediary members onto a single Mojmap member (join-keyed.py: 0 and 0). Do not emit a runtime table with it.
-#
-# Emit the pre-joined mapping table KernelMappingResolver reads via -Dforbric.mappings=<file>.
+# Emit the pre-joined mapping table that KernelMappingResolver reads via -Dforbric.mappings=<file>.
 #
 # The resolver deliberately does not parse tiny or client.txt itself: that would put build tooling on the startup
 # path and give it a second implementation to drift from the one the join scripts assert against. This emits the
@@ -17,6 +10,10 @@
 #   F <intermediaryOwner> <intermediaryField>  <officialField>
 #
 # Field and method records stay separate because the obfuscated names are shared between the two kinds.
+#
+# Every dictionary below is ORDINAL. A PowerShell @{} is case-insensitive, and the obfuscator gives one class a
+# field `e` and methods `e`/`E`: measured, BuiltInRegistries dropped from BLOCK to LOOT_FUNCTION_TYPE because
+# `lt|f|e` and `lt|f|E` were the same key, and the client then cast a LootItemFunctionType to a Block.
 
 param(
     [string]$dir = 'E:\project\namespace-probe',
@@ -27,9 +24,28 @@ $ErrorActionPreference = 'Stop'
 $tiny = Join-Path $dir 'tiny-extract\mappings.tiny'
 $txt  = Join-Path $dir 'client-1.21.1.txt'
 
+# client.txt prints erased signatures with official type names; tiny prints them with obf class names. Turning both
+# into a JVM descriptor is what lets an overload keep its own name: Mojang reuses `c` for every overload, so the
+# name alone cannot tell `fromCodecWithRegistriesTrusted` from the three others in the same class.
+function ConvertTo-JvmType([string]$name) {
+    # Generic arguments are printed on the type (`CompletableFuture<List<V>>`); the JVM descriptor keeps only the
+    # erasure, and a leftover `<` used to make the whole row look unresolvable.
+    while ($name -match '<[^<>]*>') { $name = $name -replace '<[^<>]*>', '' }
+    $name = $name.Trim()
+    switch ($name) {
+        'void'    { return 'V' } 'boolean' { return 'Z' } 'byte' { return 'B' } 'char' { return 'C' }
+        'short'   { return 'S' } 'int'     { return 'I' } 'long' { return 'J' } 'float' { return 'F' }
+        'double'  { return 'D' }
+    }
+    if ($name.EndsWith('[]')) { return '[' + (ConvertTo-JvmType $name.Substring(0, $name.Length - 2)) }
+    if ($name -match '^[A-Z]$' -or $name.Contains('<') -or $name -eq '?') { return $null }
+    return 'L' + ($name -replace '\.', '/') + ';'
+}
 # --- tiny: intermediary class/member -> obf, with the field/method split ---------------------------------
-$intToObfOwner = @{}
-$memberIntToObf = @{}          # "intOwner|kind|intMember" -> obfMember
+$intToObfOwner = [hashtable]::new([System.StringComparer]::Ordinal)
+$memberIntToObf = [hashtable]::new([System.StringComparer]::Ordinal)   # "intOwner|kind|intMember" -> obfMember
+$memberIntDesc = [hashtable]::new([System.StringComparer]::Ordinal)  # same key -> descriptor in the obf namespace
+$memberSigToMoj = [hashtable]::new([System.StringComparer]::Ordinal) # "obfOwner|kind|descriptor|obfMember" -> mojmap member
 $curOwnerInt = $null; $curOwnerObf = $null
 $fields = 0; $methods = 0
 foreach ($line in [System.IO.File]::ReadLines($tiny)) {
@@ -41,7 +57,11 @@ foreach ($line in [System.IO.File]::ReadLines($tiny)) {
         if ($f.Count -lt 4 -or (-not $curOwnerInt)) { continue }
         $marker = $f[0]; $obfMember = $f[2]; $intWM = $f[3]
         if ($marker -ne 'f' -and $marker -ne 'm') { continue }
-        if ($obfMember -and $intWM) { $memberIntToObf["$curOwnerInt|$marker|$intWM"] = $obfMember }
+        $intDesc = $f[1]
+        if ($obfMember -and $intWM) {
+            $memberIntToObf["$curOwnerInt|$marker|$intWM"] = $obfMember
+            $memberIntDesc["$curOwnerInt|$marker|$intWM"] = $intDesc
+        }
         if ($marker -eq 'f') { $fields++ } else { $methods++ }
         continue
     }
@@ -54,8 +74,9 @@ foreach ($line in [System.IO.File]::ReadLines($tiny)) {
 Write-Host ("[tiny] member pairs={0:N0} (f={1:N0} m={2:N0})  classes={3:N0}" -f $memberIntToObf.Count, $fields, $methods, $intToObfOwner.Count)
 
 # --- client.txt: obf class -> mojmap, (obfOwner,kind,obfMember) -> mojmap member -------------------------
-$obfToMojmapClass = @{}
-$memberObfToMoj = @{}
+$obfToMojmapClass = [hashtable]::new([System.StringComparer]::Ordinal)
+$memberObfToMoj = [hashtable]::new([System.StringComparer]::Ordinal)
+$memberObfPoisoned = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 $curObf = $null
 foreach ($line in [System.IO.File]::ReadLines($txt)) {
     if ([string]::IsNullOrWhiteSpace($line)) { continue }
@@ -73,7 +94,36 @@ foreach ($line in [System.IO.File]::ReadLines($txt)) {
         if ($paren -ge 0) { $moj = $moj.Substring(0, $paren) }
         if (-not $moj -or $moj -eq '<init>' -or $moj -eq '<clinit>') { continue }
         $kind = if ($left -match '^\d+:\d+:') { 'm' } else { 'f' }
-        $memberObfToMoj["$curObf|$kind|$right"] = $moj
+        # Erased descriptor, so an overload can be joined to the one intermediary name that owns its shape.
+        $sig = $null
+        if ($kind -eq 'm') {
+            # The row starts with `line:column:`, and that prefix glues itself to the return type when the row is split.
+            $sigLeft = $left -replace '^\d+:\d+:', ''
+            $lp = $sigLeft.IndexOf('(')
+            if ($lp -gt 0 -and $sigLeft.EndsWith(')')) {
+                $ret = (($sigLeft.Substring(0, $lp)).Trim() -split '\s+')[0]
+                $argText = $sigLeft.Substring($lp + 1, $sigLeft.Length - $lp - 2).Trim()
+                $args = @()
+                if ($argText) { $args = $argText -split ',' | ForEach-Object { $_.Trim() } }
+                $retD = ConvertTo-JvmType $ret
+                $argD = @(); $ok = [bool]$retD
+                foreach ($a in $args) { $d = ConvertTo-JvmType $a; if (-not $d) { $ok = $false; break }; $argD += $d }
+                if ($ok) { $sig = '(' + ($argD -join '') + ')' + $retD }
+            }
+        } else {
+            $sig = ConvertTo-JvmType (($left -split '\s+')[0])
+        }
+        if ($sig) {
+            $sk = "$curObf|$kind|$sig|$right"
+            if (-not $memberSigToMoj.ContainsKey($sk)) { $memberSigToMoj[$sk] = $moj }
+        }
+        # One obf name can carry several official names (Mojang reuses `c` for every overload). FIRST wins,
+        # and rows read from a later class block are not allowed to steal the key: client.txt carries a
+        # `net.minecraft.nbt.NbtAccounter lambda$fromCodec$4() -> c` row inside the ByteBufCodecs block,
+        # which used to rename four ByteBufCodecs methods to a name their owner never declares. Guessing
+        # per overload is left to the runtime, which can ask the base by descriptor.
+        $mk = "$curObf|$kind|$right"
+        if (-not $memberObfToMoj.ContainsKey($mk)) { $memberObfToMoj[$mk] = $moj }
         continue
     }
     $arrow = $line.IndexOf(' -> ')
@@ -102,9 +152,29 @@ foreach ($k in $memberIntToObf.Keys) {
     $parts = $k.Split('|')
     $ownerInt = $parts[0]; $kind = $parts[1]; $intMember = $parts[2]
     if (-not $intToObfOwner.ContainsKey($ownerInt)) { continue }
-    $mk = "$($intToObfOwner[$ownerInt])|$kind|$($memberIntToObf[$k])"
-    if (-not $memberObfToMoj.ContainsKey($mk)) { continue }
-    $moj = $memberObfToMoj[$mk]
+    $obfOwner = $intToObfOwner[$ownerInt]
+    $obfMember = $memberIntToObf[$k]
+    $moj = $null
+    $desc = $memberIntDesc[$k]
+    if ($desc) {
+        $resolved = $desc
+        $missing = $false
+        foreach ($m in [regex]::Matches($desc, 'L([^;]+);')) {
+            $name = $m.Groups[1].Value
+            if ($obfToMojmapClass.ContainsKey($name)) { $resolved = $resolved.Replace('L' + $name + ';', 'L' + ($obfToMojmapClass[$name] -replace '\.', '/') + ';'); continue }
+            # `java/util/List` is printed with its separators already, and only a short lowercase token is an obf name.
+            if ($name -match '^[a-z]{1,4}\d*(\$[a-z0-9]+)*$') { $missing = $true; break }
+        }
+        if (-not $missing) {
+            $sk = "$obfOwner|$kind|$resolved|$obfMember"
+            if ($memberSigToMoj.ContainsKey($sk)) { $moj = $memberSigToMoj[$sk] }
+        }
+    }
+    if (-not $moj) {
+        $mk = "$obfOwner|$kind|$obfMember"
+        if (-not $memberObfToMoj.ContainsKey($mk)) { continue }
+        $moj = $memberObfToMoj[$mk]
+    }
     if ($kind -eq 'm') { $sw.WriteLine("M`t$ownerInt`t$intMember`t$moj"); $methodOut++ }
     else { $sw.WriteLine("F`t$ownerInt`t$intMember`t$moj"); $fieldOut++ }
 }
