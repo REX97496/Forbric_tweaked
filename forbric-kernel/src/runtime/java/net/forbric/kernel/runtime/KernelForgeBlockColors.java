@@ -16,4 +16,15 @@ public final class KernelForgeBlockColors {
 			ForgeHooksClient.onBlockColorsInit(registration.getBlockColors());
 		}
 	}
+
+	/**
+	 * Lines whose {@code BlockColors.createDefault} hands the live colours straight to NeoForge's own
+	 * {@code ClientHooks.onBlockColorsInit} never build a NeoForge event this kernel could wrap, so the Forge event is
+	 * posted here instead — before NeoForge's, over the same instance, which is what Forge's own hooks do.
+	 */
+	public static void postBlockTintColors(net.minecraft.client.color.block.BlockColors colors) {
+		if (!"off".equalsIgnoreCase(System.getProperty("forbric.forgeClientInit", "on"))) {
+			ForgeHooksClient.onBlockColorsInit(colors);
+		}
+	}
 }
