@@ -140,7 +140,10 @@ class ForgeRegistrationA2ContractTest {
         builder.environment().put("RUN_OLD", CANARY.toAbsolutePath().getParent().getParent().toString());
         assertEquals(0, execute(builder, result).exit());
         String seeded = Files.readString(temporary.resolve("options.txt"));
-        assertTrue(seeded.matches("version:[1-9][0-9]*\\nonboardAccessibility:false\\nkey_key\\.forbriclive\\.probe:key\\.keyboard\\.f6\\n"), seeded);
+        // The gate script writes options.txt with Python's Path.write_text, which opens in text mode and therefore
+        // writes the platform's line separator: on Windows the three lines end CRLF. The contract is about the
+        // lines, so fold the separator before matching instead of pinning LF and failing on one platform.
+        assertTrue(seeded.replace("\r\n", "\n").matches("version:[1-9][0-9]*\\nonboardAccessibility:false\\nkey_key\\.forbriclive\\.probe:key\\.keyboard\\.f6\\n"), seeded);
         for (Path gate : List.of(M21, M26)) {
             Result parsed = execute(new ProcessBuilder("bash", "-n", gate.toString()), result);
             assertEquals(0, parsed.exit(), parsed.output());

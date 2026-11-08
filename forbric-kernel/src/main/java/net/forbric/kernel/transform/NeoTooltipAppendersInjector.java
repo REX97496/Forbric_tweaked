@@ -35,6 +35,8 @@ import org.objectweb.asm.tree.VarInsnNode;
 public final class NeoTooltipAppendersInjector implements ClassTransformer {
 	static final String HANDLER = "net.neoforged.neoforge.common.tooltip.ItemTooltipHandler";
 	static final String EVENT = "net/neoforged/neoforge/event/RegisterTooltipAppendersEvent";
+	/** The phase poster, taken from the one table so the MinecraftForge half cannot be forgotten here. */
+	static final String MOD_LOADER = net.forbric.api.ForeignType.FML_MOD_LOADER.internal(net.forbric.api.Ecosystem.NEOFORGE);
 	static final String RUNTIME = "net/forbric/kernel/runtime/KernelNeoTooltips";
 	static final String APPENDER = "net/neoforged/neoforge/common/tooltip/TooltipAppender";
 	static final String AROUND_DESC = "(L" + APPENDER + ";Lnet/minecraft/core/component/DataComponentType;)L" + APPENDER + ";";
@@ -138,7 +140,7 @@ public final class NeoTooltipAppendersInjector implements ClassTransformer {
 			for (AbstractInsnNode insn : method.instructions) {
 				if (!(insn instanceof MethodInsnNode call)) continue;
 				if (call.owner.equals(RUNTIME)) return false;
-				if (call.getOpcode() == Opcodes.INVOKESTATIC && call.owner.equals("net/neoforged/fml/ModLoader")
+				if (call.getOpcode() == Opcodes.INVOKESTATIC && call.owner.equals(MOD_LOADER)
 						&& call.name.equals("postEvent") && call.desc.equals("(Lnet/neoforged/bus/api/Event;)V")) {
 					post = call;
 					posts++;

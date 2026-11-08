@@ -3793,7 +3793,11 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 						"net/forbric/kernel/interop/OptionalHolder", "unwrap",
 						"(Ljava/lang/Object;)Ljava/lang/Object;", false));
 				method.instructions.insert(call, unwrap);
-				ForbricLog.warn("[" + node.name + "] " + method.name + method.desc + " reads a Holder and casts it to "
+				// Debug, not warn: the staged base was built before this repair existed, so on both lines it fires
+				// at ~266 sites and would put a fifth of the startup log in one repair's mouth. The ledger counts the
+				// repair landing (claims()), and -Dforbric.debug brings the per-site detail back when the base is
+				// restaged and someone needs to see what the merge still leaves wrapped.
+				ForbricLog.debug("[" + node.name + "] " + method.name + method.desc + " reads a Holder and casts it to "
 						+ castTo + " — the merge left the value wrapped in an Optional, so it is unwrapped first");
 				changed = true;
 			}

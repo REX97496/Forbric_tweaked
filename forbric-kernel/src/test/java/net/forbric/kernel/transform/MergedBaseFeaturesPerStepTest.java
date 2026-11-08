@@ -54,8 +54,24 @@ class MergedBaseFeaturesPerStepTest {
             world.type.getMethod("refreshFeaturesPerStep").invoke(world.owner);((Supplier<?>)alias).getClass().getMethod("invalidate").invoke(alias);assertSame(changed,((Supplier<?>)alias).get());assertEquals(2,world.computations.get(),"the stale initial provider was not consulted");
         }
     }
+    /**
+     * A compat pass over the proved two-view merge adds one repair and then stops.
+     *
+     * <p>The staged base in {@code run/merged-base} was built on 2026-10-11; {@code unwrapOptionalHolderValues} was
+     * added on 2026-11-07 for a merge that leaves an {@code Optional} inside a {@code Holder}, and the base has not
+     * been restaged since (the merge aborts on {@code EnderDragon#getParts}, so it cannot be). So the honest
+     * contract is not "the first pass changes nothing" -- it changes exactly this -- but "the pass applies that one
+     * named repair and nothing else, and a second pass changes nothing". Any new repair that starts rewriting this
+     * class fails here and names itself instead of silently joining a set of unstated edits.
+     */
     @Test void aSecondPassLeavesTheRepairedClassAlone()throws Exception{
-        byte[] original=original();assertSame(original,new ForbricMergedBaseCompatTransformer().transform(BINARY,original,null),"there is no runtime descriptor patch over the proved two-view merge");
+        byte[] original=original();
+        List<String> hits=new ArrayList<>();
+        byte[] once=new ForbricMergedBaseCompatTransformer().transform(BINARY,original,null,hits::add);
+        assertEquals(List.of("forbric-merged-base-compat#unwrapOptionalHolderValues"),hits,
+                "the staged base predates the Optional-in-Holder repair and nothing else may touch this class");
+        assertSame(once,new ForbricMergedBaseCompatTransformer().transform(BINARY,once,null),
+                "a repair that already landed must not land twice");
     }
     private record World(URLClassLoader loader,Class<?> type,Object owner,Field strong,AtomicInteger computations)implements AutoCloseable{public void close()throws IOException{loader.close();}}
     private static World world()throws Exception{

@@ -126,12 +126,21 @@ class NeoScreenEventsInjectorExecutionTest {
 						}
 					}
 					""",
+			"net.neoforged.bus.api.EventPriority", """
+					package net.neoforged.bus.api;
+
+					public enum EventPriority {
+						HIGHEST, HIGH, NORMAL, LOW, LOWEST;
+					}
+					""",
 			"net.neoforged.neoforge.common.NeoForge", """
 					package net.neoforged.neoforge.common;
 
 					import java.util.ArrayList;
 					import java.util.List;
 					import java.util.function.Consumer;
+
+					import net.neoforged.bus.api.EventPriority;
 
 					public class NeoForge {
 						public static class Bus {
@@ -140,6 +149,17 @@ class NeoScreenEventsInjectorExecutionTest {
 							public <T> T post(T event) {
 								for (Consumer<Object> listener : listeners) listener.accept(event);
 								return event;
+							}
+
+							/**
+							 * The typed, prioritised overload: the game-side hook registers on it so its listener runs
+							 * ahead of everyone else's. The stand-in keeps arrival order, which is what the assertion
+							 * about MinecraftForge's hooks running first measures.
+							 */
+							public <T> void addListener(EventPriority priority, Class<T> type, Consumer<T> listener) {
+								listeners.add(event -> {
+									if (type.isInstance(event)) listener.accept(type.cast(event));
+								});
 							}
 						}
 

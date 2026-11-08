@@ -68,7 +68,7 @@ final class ForgeEventPost {
 
 		// EventBus 7 (26.2): ModLoader resolves the per-event bus from each mod's group and delivers in mod order.
 		try {
-			Class<?> modLoader = Class.forName("net.minecraftforge.fml.ModLoader", false, loader);
+			Class<?> modLoader = Class.forName(ForeignType.FML_MOD_LOADER.binary(Ecosystem.FORGE), false, loader);
 			Object instance = modLoader.getMethod("get").invoke(null);
 			java.lang.reflect.Method postEvent = singleArgumentMethod(modLoader, "postEvent");
 			postEvent.invoke(instance, event);

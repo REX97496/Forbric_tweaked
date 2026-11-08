@@ -187,6 +187,17 @@ public final class KernelRuntimeClasses {
 				new Call("afterClose", void.class, Object.class, Throwable.class),
 				new Call("fabricFinal", void.class, Object.class, Object.class), new Call("neoFinal", void.class, Object.class))));
 		CLASSES.put("net.forbric.kernel.runtime.KernelForgeReload", new Entry(Origin.COMPILED, List.of()));
+		// The nine the seam test found named from the boot side but missing from here. Each is a real class in
+		// src/runtime that boot-side code reaches through a string, which is exactly what this registry exists to pin.
+		CLASSES.put("net.forbric.kernel.runtime.ForbricRegistryHolders", new Entry(Origin.COMPILED, List.of()));
+		CLASSES.put("net.forbric.kernel.runtime.ForbricModuleLayerManager", new Entry(Origin.COMPILED, List.of()));
+		CLASSES.put("net.forbric.kernel.runtime.ForbricItemComponentGate", new Entry(Origin.COMPILED, List.of()));
+		CLASSES.put("net.forbric.kernel.runtime.ForbricJarVersionGate", new Entry(Origin.COMPILED, List.of()));
+		CLASSES.put("net.forbric.kernel.runtime.ForbricNullSafe", new Entry(Origin.COMPILED, List.of()));
+		CLASSES.put("net.forbric.kernel.runtime.ForbricLoadingOverlay", new Entry(Origin.COMPILED, List.of()));
+		CLASSES.put("net.forbric.kernel.runtime.ForbricVanillaNamespaces", new Entry(Origin.COMPILED, List.of()));
+		CLASSES.put("net.forbric.kernel.runtime.ForbricRegistryRoot", new Entry(Origin.COMPILED, List.of()));
+		CLASSES.put("net.forbric.kernel.runtime.KernelItemTooltip", new Entry(Origin.COMPILED, List.of()));
 		CLASSES.put("net.forbric.kernel.runtime.KernelLootBridge", new Entry(Origin.COMPILED, List.of(
 				new Call("install", void.class))));
 		CLASSES.put("net.forbric.kernel.runtime.KernelLootModifiers", new Entry(Origin.COMPILED, List.of()));
