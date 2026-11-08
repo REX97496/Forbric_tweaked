@@ -45,6 +45,15 @@ public final class SpawnerFinalizeInjector implements ClassTransformer {
 			+ "Lnet/minecraft/world/entity/SpawnGroupData;Lnet/neoforged/neoforge/common/extensions/IOwnedSpawner;Z)"
 			+ "Lnet/neoforged/neoforge/event/entity/living/FinalizeSpawnEvent;";
 	static final String NEW_DESC = OLD_DESC.replace(")", INPUT + ")");
+	/**
+	 * The same hook spelled with the spawn-reason type this line actually has. 26.2 names it
+	 * {@code EntitySpawnReason}; 1.21.1 has no such class and calls the parameter {@code MobSpawnType}, so a base
+	 * built from 1.21.1 carries the second spelling and the first one matches nothing.
+	 */
+	static final String REASON_TYPES = "Lnet/minecraft/world/entity/EntitySpawnReason;";
+	static final String TYPE_ALTERNATIVE = "Lnet/minecraft/world/entity/MobSpawnType;";
+	static final String OLD_DESC_LEGACY = OLD_DESC.replace(REASON_TYPES, TYPE_ALTERNATIVE);
+	static final String NEW_DESC_LEGACY = OLD_DESC_LEGACY.replace(")", INPUT + ")");
 	static final String CREATE_DESC = "(Lnet/minecraft/util/ProblemReporter;Lnet/minecraft/core/HolderLookup$Provider;"
 			+ "Lnet/minecraft/nbt/CompoundTag;)" + INPUT;
 	static final String ENTITY_LOAD_DESC = "(" + INPUT + "Lnet/minecraft/world/level/Level;"
@@ -71,10 +80,11 @@ public final class SpawnerFinalizeInjector implements ClassTransformer {
 		int count = 0;
 		for (AbstractInsnNode instruction : host.instructions) {
 			if (!(instruction instanceof MethodInsnNode call) || !call.name.equals("finalizeMobSpawnSpawner")) continue;
-			if (call.owner.equals(RUNTIME) && call.desc.equals(NEW_DESC)) return bytes;
+			if (call.owner.equals(RUNTIME) && (call.desc.equals(NEW_DESC) || call.desc.equals(NEW_DESC_LEGACY))) return bytes;
 			if (call.owner.equals(RUNTIME) || call.owner.equals(NEO)) { target = call; count++; }
 		}
-		if (count != 1 || target.getOpcode() != Opcodes.INVOKESTATIC || target.itf || !target.desc.equals(OLD_DESC)) {
+		if (count != 1 || target.getOpcode() != Opcodes.INVOKESTATIC || target.itf
+				|| !(target.desc.equals(OLD_DESC) || target.desc.equals(OLD_DESC_LEGACY))) {
 			return declined(bytes, "expected exactly one descriptor-matching native or legacy hook");
 		}
 		if (nextReal(target) == null || nextReal(target).getOpcode() != Opcodes.POP) return declined(bytes, "the native event result is no longer discarded at this caller");
@@ -83,7 +93,7 @@ public final class SpawnerFinalizeInjector implements ClassTransformer {
 		catch (AnalyzerException malformed) { return declined(bytes, "cannot establish the caller's data flow: " + malformed.getMessage()); }
 		if (inputSlot < 0) return declined(bytes, "no unique live ValueInput from TagValueInput.create reaches the hook");
 		host.instructions.insertBefore(target, new VarInsnNode(Opcodes.ALOAD, inputSlot));
-		target.owner = RUNTIME; target.desc = NEW_DESC;
+		target.owner = RUNTIME; target.desc = target.desc.replace(")", INPUT + ")");
 		host.maxStack++;
 		ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS); node.accept(writer);
 		ForbricLog.info("[Forbric/Spawner] finalization now supplies the proven ValueInput before both event families decide");

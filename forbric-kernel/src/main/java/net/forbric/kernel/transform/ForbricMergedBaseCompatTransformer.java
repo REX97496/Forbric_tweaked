@@ -4289,7 +4289,8 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESTATIC
 						|| !NEO_EVENT_HOOKS.equals(call.owner)
 						|| !"finalizeMobSpawnSpawner".equals(call.name)
-						|| !SpawnerFinalizeInjector.OLD_DESC.equals(call.desc)) {
+						|| !(SpawnerFinalizeInjector.OLD_DESC.equals(call.desc)
+								|| SpawnerFinalizeInjector.OLD_DESC_LEGACY.equals(call.desc))) {
 					continue;
 				}
 				call.owner = KERNEL_SPAWNER_FINALIZE;

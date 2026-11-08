@@ -47,6 +47,7 @@ public final class SpawnPositionCallsInjector implements ClassTransformer {
 	static final String DECIDE_DESC = "(Lnet/minecraft/world/entity/Mob;Lnet/minecraft/world/level/ServerLevelAccessor;"
 			+ "Lnet/minecraft/world/entity/EntitySpawnReason;Lnet/minecraft/world/level/BaseSpawner;)I";
 	static final String MOB = "net/minecraft/world/entity/Mob";
+	static final String SPAWN_DATA = "Lnet/minecraft/world/level/SpawnData;";
 	static final String CHECK_RULES = "checkSpawnRules", CHECK_RULES_DESC = "(Lnet/minecraft/world/level/LevelAccessor;Lnet/minecraft/world/entity/EntitySpawnReason;)Z";
 	static final String CHECK_OBSTRUCTION = "checkSpawnObstruction", CHECK_OBSTRUCTION_DESC = "(Lnet/minecraft/world/level/LevelReader;)Z";
 
@@ -85,14 +86,14 @@ public final class SpawnPositionCallsInjector implements ClassTransformer {
 			if (hosts.size() != 1) return declined(className, bytes, "serverTick is missing or ambiguous");
 			MethodNode host = hosts.getFirst();
 			if (callsCheckRules(host)) return bytes;   // vanilla's shape already
-			List<MethodInsnNode> hooks = hooks(host, NEO_NAME, NEO_DESC);
+			List<MethodInsnNode> hooks = hooks(host, NEO_NAME, 5);
 			if (hooks.size() != 1) return declined(className, bytes, "expected exactly one NeoForge spawner position hook, found " + hooks.size());
 			inline(host, hooks.getFirst(), true);
 			restored++;
 		}
 		for (MethodNode method : node.methods) {
 			if (callsCheckRules(method)) continue;
-			for (MethodInsnNode hook : hooks(method, NEO_POSITION, NEO_POSITION_DESC)) {
+			for (MethodInsnNode hook : hooks(method, NEO_POSITION, 3)) {
 				inline(method, hook, false);
 				restored++;
 			}
@@ -119,13 +120,52 @@ public final class SpawnPositionCallsInjector implements ClassTransformer {
 		return false;
 	}
 
-	private static List<MethodInsnNode> hooks(MethodNode method, String name, String desc) {
+	/**
+	 * Finds the hook by its name and parameter count rather than by one exact descriptor, because the type that
+	 * names a spawn reason differs between lines: 26.2 calls it {@code EntitySpawnReason}, and 1.21.1 has no such
+	 * class at all — there the same parameter is {@code MobSpawnType}. Matching the literal descriptor made this
+	 * repair report "found 0" on every 1.21.1 launch while the hook was sitting right there.
+	 */
+	private static List<MethodInsnNode> hooks(MethodNode method, String name, int parameters) {
 		List<MethodInsnNode> found = new java.util.ArrayList<>();
 		for (AbstractInsnNode insn : method.instructions) {
 			if (insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESTATIC && call.owner.equals(NEO)
-					&& call.name.equals(name) && call.desc.equals(desc)) found.add(call);
+					&& call.name.equals(name) && parametersOf(call.desc) == parameters
+					&& call.desc.endsWith(")Z")) found.add(call);
 		}
 		return found;
+	}
+
+	private static int parametersOf(String desc) {
+		String body = desc.substring(1, desc.indexOf(')'));
+		int count = 0;
+		for (int i = 0; i < body.length(); i++) if (body.charAt(i) == ';' || body.charAt(i) == '[') count++;
+		return body.isEmpty() ? 0 : count - countOfArrays(body);
+	}
+
+	private static int countOfArrays(String body) {
+		int arrays = 0;
+		for (int i = 0; i < body.length(); i++) if (body.charAt(i) == '[') arrays++;
+		return arrays;
+	}
+
+	/**
+	 * The kernel's own entry takes the same arguments as the hook minus the spawn data, and returns an int: a
+	 * negative value means "no listener decided, run vanilla's rules", 0 or 1 is the event's answer. Derived from
+	 * the hook's own descriptor so the reason type is whatever this line declares.
+	 */
+	private static String decideDesc(String hookDesc) {
+		String body = hookDesc.substring(1, hookDesc.indexOf(')'));
+		StringBuilder out = new StringBuilder("(");
+		int start = 0;
+		for (int i = 0; i < body.length(); i++) {
+			if (body.charAt(i) != ';') continue;
+			String param = body.substring(start, i + 1);
+			start = i + 1;
+			if (param.equals(SPAWN_DATA)) continue;
+			out.append(param);
+		}
+		return out.append(")I").toString();
 	}
 
 	/**
@@ -143,7 +183,7 @@ public final class SpawnPositionCallsInjector implements ClassTransformer {
 		code.add(new VarInsnNode(Opcodes.ALOAD, mob)); code.add(new VarInsnNode(Opcodes.ALOAD, level));
 		code.add(new VarInsnNode(Opcodes.ALOAD, reason));
 		code.add(spawner ? new VarInsnNode(Opcodes.ALOAD, spawnerSlot) : new InsnNode(Opcodes.ACONST_NULL));
-		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "decide", DECIDE_DESC, false));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RUNTIME, "decide", decideDesc(hook.desc), false));
 		code.add(new InsnNode(Opcodes.DUP)); code.add(new JumpInsnNode(Opcodes.IFLT, byVanilla));
 		code.add(new JumpInsnNode(Opcodes.GOTO, done));                 // 1 or 0: the listeners decided
 		code.add(byVanilla); code.add(new InsnNode(Opcodes.POP));
