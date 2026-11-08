@@ -46,8 +46,23 @@ import net.forbric.kernel.util.ForbricLog;
  */
 public final class MethodBodyNeuter implements ClassTransformer {
 
-	/** A method to neuter, addressed by owning class (binary name), method name, and descriptor. */
-	public record Target(String ownerBinaryName, String methodName, String descriptor, String reason) {}
+	/**
+	 * A method to neuter, addressed by owning class (binary name), method name, and descriptor.
+	 *
+	 * <p>{@code optional} marks a target that a line may legitimately not declare at all. Every ecosystem loader
+	 * reshapes this part of its lifecycle between lines: 26.2's {@code ClientModLoader} has {@code finish()V} and
+	 * {@code completeModLoading()Z}, while 1.21.1 has {@code finishModLoading(Executor, Executor)V} and
+	 * {@code completeModLoading(Runnable)Runnable} instead, so there is nothing on that line to neuter and nothing
+	 * left running that the kernel meant to hide. Reporting those as "the anchor is gone" claimed a lost feature
+	 * every boot for a method that does not exist — the exact false alarm these flags exist to remove.
+	 */
+	public record Target(String ownerBinaryName, String methodName, String descriptor, String reason,
+			boolean optional) {
+
+		public Target(String ownerBinaryName, String methodName, String descriptor, String reason) {
+			this(ownerBinaryName, methodName, descriptor, reason, false);
+		}
+	}
 
 	private final Set<Target> targets = new LinkedHashSet<>();
 	/**
@@ -85,13 +100,20 @@ public final class MethodBodyNeuter implements ClassTransformer {
 		java.util.List<AnchorSet.Anchor> anchors = new java.util.ArrayList<>();
 		for (String owner : owners) {
 			java.util.List<String> methods = new java.util.ArrayList<>();
+			boolean allOptional = true;
 			for (Target t : targets) {
-				if (t.ownerBinaryName().equals(owner)) methods.add(t.methodName() + t.descriptor());
+				if (!t.ownerBinaryName().equals(owner)) continue;
+				methods.add(t.methodName() + t.descriptor());
+				allOptional &= t.optional();
 			}
-			anchors.add(new AnchorSet.Anchor(owner, AnchorSet.Severity.REQUIRED,
-					"the neuter for " + String.join(", ", methods) + " would not be applied, and a neuter is a "
-							+ "promise that the method cannot work here -- so the method it was hiding runs again "
-							+ "and throws where nothing expects it to"));
+			anchors.add(new AnchorSet.Anchor(owner, allOptional ? AnchorSet.Severity.HEDGE
+					: AnchorSet.Severity.REQUIRED,
+					allOptional
+							? "this line does not declare " + String.join(", ", methods) + ", so there is nothing to "
+									+ "neuter — its loader finishes through differently shaped methods instead"
+							: "the neuter for " + String.join(", ", methods) + " would not be applied, and a neuter is "
+									+ "a promise that the method cannot work here -- so the method it was hiding runs "
+									+ "again and throws where nothing expects it to"));
 		}
 		return AnchorSet.of(anchors.toArray(new AnchorSet.Anchor[0]));
 	}

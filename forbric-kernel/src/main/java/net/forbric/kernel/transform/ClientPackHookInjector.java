@@ -73,10 +73,21 @@ public final class ClientPackHookInjector implements ClassTransformer {
 		// MinecraftForge's has no setupModResourcePacks on the staged carrier at all, and that entry is kept
 		// deliberately so it starts working by itself if a base ever flips which family wins here. Reporting the
 		// second one every boot is how a reader learns to skip the first.
+		//
+		// The first half is a HEDGE rather than a REQUIRED claim because on the 1.21.1 line the repository reaches
+		// the kernel by a different road, measured in the launch log: that base's ClientModLoader has no
+		// setupModResourcePacks at all, and LifecycleHookInjector redirects its
+		// begin(Minecraft, PackRepository, ReloadableResourceManager) to KernelLifecycle.onClientBeginReached, which
+		// calls onClientResourcePacks. The evidence is "[Forbric/Begin] the client entry reached the kernel: ...
+		// repository=net.minecraft.server.packs.repository.PackRepository" followed by "served 3 ecosystem asset
+		// pack(s)". 26.2 has no PackRepository in begin() and needs THIS seam, which
+		// ClientPackHookInjectorTest still asserts against the staged 26.2 carrier — so the 26.2 guarantee does not
+		// rest on this ledger entry.
 		return AnchorSet.of(
-				new AnchorSet.Anchor(OWNERS[0], AnchorSet.Severity.REQUIRED,
-						"the kernel would never receive the live PackRepository, so no mod's client assets are "
-								+ "served -- missing textures and models, with nothing in the log naming the loader"),
+				new AnchorSet.Anchor(OWNERS[0], AnchorSet.Severity.HEDGE,
+						"26.2 hands the live PackRepository through setupModResourcePacks; a base whose begin(...) "
+								+ "carries it is served by LifecycleHookInjector's redirect to onClientBeginReached "
+								+ "instead, so this seam is legitimately absent there"),
 				new AnchorSet.Anchor(OWNERS[1], AnchorSet.Severity.HEDGE,
 						"nothing today: this carrier has no setupModResourcePacks. Kept so that a base which "
 								+ "flips this seam to MinecraftForge is noticed rather than silently unhooked"));

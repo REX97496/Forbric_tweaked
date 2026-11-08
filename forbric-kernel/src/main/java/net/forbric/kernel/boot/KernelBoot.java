@@ -1385,10 +1385,15 @@ public final class KernelBoot {
 			// its genuine body is never reached from there. Neutering it instead defers registration to a point never
 			// reached and hangs the boot (empirically). The LATER client mod-loading calls in Minecraft.<init> are the
 			// ones to stub — they would run the FancyModLoader lifecycle the kernel replaces.
+			// Optional: the two ecosystems and the two lines disagree about this shape, and a target that does not
+			// exist cannot run. Measured on 1.21.1's merged ClientModLoader: it declares neither finish()V nor
+			// completeModLoading()Z -- it has finishModLoading(Executor, Executor)V and
+			// completeModLoading(Runnable)Runnable -- and the client boots to the main menu with those running, so
+			// nothing is left un-hidden. Declared optional so this absence stops being reported as a lost feature.
 			neuter.add(new MethodBodyNeuter.Target(owner, "finish", "()V",
-					"kernel owns client mod loading (registration in onClientModLoading)"));
+					"kernel owns client mod loading (registration in onClientModLoading)", true));
 			neuter.add(new MethodBodyNeuter.Target(owner, "completeModLoading", "()Z",
-					"kernel owns client mod loading"));
+					"kernel owns client mod loading", true));
 			// setupModResourcePacks is NOT neutered: ClientPackHookInjector redirects its body to
 			// KernelLifecycle.onClientResourcePacks, so the genuine loader's resource integration still never runs, but
 			// the kernel gets the live PackRepository at the one correctly-timed point (Minecraft.<init>, pre-reload)
