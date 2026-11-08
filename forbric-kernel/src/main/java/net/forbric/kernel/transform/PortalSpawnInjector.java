@@ -50,7 +50,11 @@ public final class PortalSpawnInjector implements ClassTransformer {
 	@Override public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("switched off by -D" + PROPERTY
 				+ "; a restored MinecraftForge call is removed so the legacy forward posts it once");
-		return AnchorSet.of(new AnchorSet.Anchor(TARGET, AnchorSet.Severity.REQUIRED,
+		// HEDGE, not REQUIRED: measured on the 1.21.1 merged base, BaseFireBlock.onPlace already chains both hooks by
+		// itself — findEmptyPortalShape, EventHooks.onTrySpawnPortal, astore 6, isPresent guard,
+		// ForgeEventFactory.onTrySpawnPortal with that same Optional, astore 6, isPresent guard, get().createPortalBlocks().
+		// MinecraftForge's answer therefore already reaches the block, and the injector's job is done by the body itself.
+		return AnchorSet.of(new AnchorSet.Anchor(TARGET, AnchorSet.Severity.HEDGE,
 				"the portal hook result cannot reach BaseFireBlock through an event-only forward"));
 	}
 

@@ -70,12 +70,17 @@ public final class FabricFuelValuesInjector implements ClassTransformer {
 
 	@Override public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("Fabric fuels left out of NeoForge's fuel values with -D" + PROPERTY + "=off");
-		List<AnchorSet.Anchor> anchors = new ArrayList<>(List.of(new AnchorSet.Anchor(HOOKS, AnchorSet.Severity.REQUIRED,
-				"a Fabric mod's fuels cannot go in a furnace")));
+		// HEDGE, not REQUIRED: 1.21.1 has no net.minecraft.world.level.block.entity.FuelValues at all — that class
+		// arrives in 1.21.2 — and DataMapHooks declares no populateFuelValues. Fuels on this line come from
+		// AbstractFurnaceBlockEntity.getBurnDuration through net.neoforged.neoforge.event.furnace.FurnaceFuelBurnTimeEvent,
+		// so there is no fuel-values builder for a Fabric fuel to join and nothing is lost by its absence.
+		List<AnchorSet.Anchor> anchors = new ArrayList<>(List.of(new AnchorSet.Anchor(HOOKS, AnchorSet.Severity.HEDGE,
+				"if a base declares FuelValues/DataMapHooks.populateFuelValues, a Fabric mod's fuels cannot go in a "
+						+ "furnace there; 1.21.1 has neither and burns fuels through FurnaceFuelBurnTimeEvent")));
 		if (returnHooksEnabled()) {
-			anchors.add(new AnchorSet.Anchor(FUEL_VALUES_CLASS, AnchorSet.Severity.REQUIRED,
-					"a mod's mixin on vanillaBurnTimes' return (torrential's Angling Table fuel) never reaches the fuel "
-							+ "values the merged server uses"));
+			anchors.add(new AnchorSet.Anchor(FUEL_VALUES_CLASS, AnchorSet.Severity.HEDGE,
+					"if a base declares FuelValues.vanillaBurnTimes, a mod's mixin on its return (torrential's Angling Table "
+							+ "fuel) would never reach the fuel values; 1.21.1 has no such class"));
 		}
 		return AnchorSet.of(anchors.toArray(new AnchorSet.Anchor[0]));
 	}
