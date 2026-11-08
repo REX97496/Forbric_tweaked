@@ -375,12 +375,15 @@ public final class GuestJarRemap {
 		if (targets.isEmpty()) return remapped;
 		java.util.Map<String, String> byDescriptor = new java.util.HashMap<>();
 		for (MethodNode method : node.methods) {
-			if (!INTERMEDIARY_MEMBER.matcher(method.name).matches() && !method.name.startsWith("lambda$")) continue;
 			if (!hasAnnotation(method, "Lorg/spongepowered/asm/mixin/Shadow;")
 					&& !hasAnnotation(method, "Lorg/spongepowered/asm/mixin/Overwrite;")) {
 				continue;
 			}
 			for (String target : targets) {
+				// The name may already look official and still be wrong: the table mapped class_3288.method_56933
+				// onto getChatLink, while the base declares location() and a getChatLink(boolean) of another shape.
+				// The base is the only authority on "is this member here", so the check is by name *and* shape.
+				if (declaresName(index, target, method.desc, method.name)) break;
 				String picked = pickBaseName(index, target, method.desc, method.name);
 				if (picked != null) {
 					byDescriptor.put(method.name + method.desc, picked);
@@ -439,6 +442,14 @@ public final class GuestJarRemap {
 			if (method.invisibleAnnotations != null) lists.add(method.invisibleAnnotations);
 		}
 		return lists;
+	}
+
+	/** Whether the base declares exactly this name with exactly this shape. */
+	private static boolean declaresName(MethodIndex index, String owner, String descriptor, String name) {
+		for (BaseMethod method : index.declaredByType(owner, descriptor)) {
+			if (method.name().equals(name)) return true;
+		}
+		return false;
 	}
 
 	/** The one name of that shape on {@code owner}, or the hint when the base declares it. */
