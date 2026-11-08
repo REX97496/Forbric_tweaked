@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -321,6 +321,11 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				"NeoForge's DeferredHolder resolves its registry through BuiltInRegistries.REGISTRY, which is "
 						+ "Forge-wrapped on this base while the registration window writes to the plain "
 						+ "WRITABLE_REGISTRY behind it, so a registered entry is not found by its key"));
+		out.add(scanned("keyTheColourMapByWhatItStores",
+				"BlockColors and ItemColors file each handler under the Block or ItemLike register was handed, "
+						+ "while the merged getColor asks ForgeRegistries.getDelegateOrThrow for a Holder.Reference "
+						+ "— two different keys, so every lookup misses and every tinted sprite draws its raw "
+						+ "greyscale texture instead of its colour"));
 		return List.copyOf(out);
 	}
 
@@ -426,6 +431,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			changed |= claim(reporter, "answerTheLoadingOverlayWhenNoEarlyWindowExists", answerTheLoadingOverlayWhenNoEarlyWindowExists(node));
 			changed |= claim(reporter, "serveEveryNamespaceTheMergedBaseCarries", serveEveryNamespaceTheMergedBaseCarries(node));
 			changed |= claim(reporter, "resolveDeferredHoldersThroughTheWritableRoot", resolveDeferredHoldersThroughTheWritableRoot(node));
+			changed |= claim(reporter, "keyTheColourMapByWhatItStores", keyTheColourMapByWhatItStores(node));
 			changed |= namedOldLoader && adoptInteropHooksTheBaseStillNamesAfterTheOldLoader(node);
 
 			byte[] result = classBytes;
@@ -2703,6 +2709,53 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		out.add(new TypeInsnNode(Opcodes.CHECKCAST, internal(toDesc)));
 		out.add(new FieldInsnNode(Opcodes.PUTFIELD, node.name, name, toDesc));
 		return out;
+	}
+
+	private static final String BLOCK_COLORS_CLASS = "net/minecraft/client/color/block/BlockColors";
+	private static final String ITEM_COLORS_CLASS = "net/minecraft/client/color/item/ItemColors";
+	private static final String FORGE_REGISTRIES_CLASS = "net/minecraftforge/registries/ForgeRegistries";
+	private static final String FORGE_DELEGATE_DESC = "(Ljava/lang/Object;)Lnet/minecraft/core/Holder$Reference;";
+
+	/**
+	 * Both colour tables file a handler under the thing {@code register} was handed — a {@code Block} for
+	 * {@code BlockColors}, an {@code ItemLike} for {@code ItemColors} — but the merged {@code getColor} asks
+	 * {@code ForgeRegistries.*.getDelegateOrThrow(...)} first and looks up the resulting
+	 * {@code Holder.Reference}. The map is keyed one way and queried another, so <em>every</em> lookup misses and
+	 * every tinted sprite draws its raw greyscale texture: grass_block_top grey, leaves grey, redstone dust and
+	 * spawn eggs white. Dropping the delegate step leaves the single key both halves already agree on; the
+	 * delegate carried nothing the map read needed.
+	 */
+	private static boolean keyTheColourMapByWhatItStores(ClassNode node) {
+		if (!BLOCK_COLORS_CLASS.equals(node.name) && !ITEM_COLORS_CLASS.equals(node.name)) return false;
+		boolean changed = false;
+		for (MethodNode method : node.methods) {
+			if (!"getColor".equals(method.name) || method.instructions.size() == 0) continue;
+			for (AbstractInsnNode insn = method.instructions.getFirst(), next; insn != null; insn = next) {
+				next = insn.getNext();
+				if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKEINTERFACE) continue;
+				if (!"getDelegateOrThrow".equals(call.name) || !FORGE_DELEGATE_DESC.equals(call.desc)) continue;
+				// The registry load and the call are NOT adjacent: the argument is computed between them
+				// (aload_1; invokevirtual BlockState.getBlock), so the GETSTATIC has to be found by walking back.
+				AbstractInsnNode registry = call.getPrevious();
+				for (int back = 0; registry != null && back < 8; back++) {
+					if (registry instanceof FieldInsnNode field && field.getOpcode() == Opcodes.GETSTATIC
+							&& FORGE_REGISTRIES_CLASS.equals(field.owner)) {
+						break;
+					}
+					registry = registry.getPrevious();
+				}
+				if (!(registry instanceof FieldInsnNode field) || field.getOpcode() != Opcodes.GETSTATIC
+						|| !FORGE_REGISTRIES_CLASS.equals(field.owner)) continue;
+				method.instructions.remove(registry);
+				method.instructions.remove(call);
+				changed = true;
+				ForbricLog.warn("[" + node.name + "] getColor looked its handler up as a Holder.Reference through "
+						+ FORGE_REGISTRIES_CLASS + " while register stores it under the block or item itself, so every "
+						+ "tint missed and every tinted sprite drew its raw greyscale texture; the delegate step is "
+						+ "gone and the lookup now uses the key the map is written with");
+			}
+		}
+		return changed;
 	}
 
 	/** {@code Lsome/Type;} to {@code some/Type}. */
