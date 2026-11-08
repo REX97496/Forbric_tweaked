@@ -100,25 +100,31 @@ public final class NeoClientSetupHookInjector implements ClassTransformer {
 
 		boolean changed = false;
 		for (MethodNode method : node.methods) {
-			if (!"<init>".equals(method.name) || method.instructions == null) continue;
+			if (method.instructions == null) continue;
 
 			for (AbstractInsnNode insn : method.instructions.toArray()) {
 				if (!(insn instanceof MethodInsnNode call)) continue;
 				if (call.getOpcode() != Opcodes.INVOKESTATIC) continue;
-				if (!CLIENT_MOD_LOADER.equals(call.owner) || !FINISH.equals(call.name)) continue;
+				if (!CLIENT_MOD_LOADER.equals(call.owner)) continue;
+				// `finish` is the 26.2 completion call; `completeModLoading` is what 1.21.1 has instead, both
+				// measured in this base (Minecraft.buildInitialScreens calls completeModLoading(Runnable)).
+				if (!FINISH.equals(call.name) && !"completeModLoading".equals(call.name)) continue;
 
 				method.instructions.insertBefore(call,
 						new MethodInsnNode(Opcodes.INVOKESTATIC, HOOK_OWNER, HOOK_NAME, "()V", false));
 				changed = true;
-				ForbricLog.debug("[Forbric/Transform] NeoForge client-setup hook installed at ClientModLoader.completeModLoading");
+				ForbricLog.debug("[Forbric/Transform] NeoForge client-setup hook installed before ClientModLoader."
+						+ call.name + " in " + method.name);
 				break; // one call site; a second hook would only re-enter the once-only guard
 			}
+			if (changed) break;
 		}
 		if (!changed) {
 			// Not fatal on its own — KernelLifecycle's guard means the phases simply never fire — but it is the
 			// difference between mods being set up and silently not, so it must not pass unnoticed.
-			ForbricLog.warn("[Forbric/Transform] no ClientModLoader.completeModLoading() call in Minecraft.<init> — the NeoForge "
-					+ "client setup lifecycle will NOT fire; mods that set up from FMLClientSetupEvent will do nothing");
+			ForbricLog.warn("[Forbric/Transform] no ClientModLoader.finish() or completeModLoading() call in Minecraft — the "
+					+ "NeoForge client setup lifecycle will NOT fire; mods that set up from FMLClientSetupEvent will do "
+					+ "nothing");
 			return classBytes;
 		}
 

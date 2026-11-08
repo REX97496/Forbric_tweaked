@@ -452,6 +452,13 @@ public final class KernelLifecycle {
 			registry.getMethod("setup").invoke(null);
 			ForbricLog.info("[Forbric/Lifecycle] %s.setup() — payload handlers registered%s",
 					registryClass.substring(registryClass.lastIndexOf('.') + 1), describePayloadRegistrations(registry));
+		} catch (ClassNotFoundException split) {
+			// Not a failure: this line has no separate client registry at all. NeoForge 1.21.1 keeps both halves in
+			// the single net.neoforged.neoforge.network.registration.NetworkRegistry (its Dist.CLIENT handlers live
+			// there), so the setup() already run above registered the client handlers too. Saying "join may fail" here
+			// would be a false alarm on every launch of this line.
+			ForbricLog.info("[Forbric/Lifecycle] %s does not exist on this line — client payload handlers come from the "
+					+ "single NetworkRegistry.setup() already run", registryClass);
 		} catch (Throwable t) {
 			ForbricLog.warn("[Forbric/Lifecycle] " + registryClass + ".setup() failed — NeoForge payloads incomplete "
 					+ "(join may fail 'No Handler for …')", unwrap(t));
