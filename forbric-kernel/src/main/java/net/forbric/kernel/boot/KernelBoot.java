@@ -152,17 +152,7 @@ public final class KernelBoot {
 		// `invokespecial Pack.<init>` at 181. SAFE is the documented option that stops at the first super()/this()
 		// call, which is where an instance initialiser belongs. Set before Mixin reads its options.
 		System.setProperty("mixin.initialiserInjectionMode", "SAFE");
-		// Load the runtime namespace table now, not at the first lookup: a whole fabric-api's worth of mixin targets
-		// asks for class_XXXX names during preparation, and a table that is absent or unreadable has to say so at a
-		// point a reader can connect to the launch rather than in the middle of fifty mixin errors. Nothing was
-		// consulting the resolver during startup at all (measured: with -Dforbric.mappings set, the "loaded ..."
-		// line did not appear in a 3,213-line launch), which is why this call exists.
-		try {
-			net.forbric.kernel.fabric.KernelMappingResolver.INSTANCE.getNamespaces();
-		} catch (RuntimeException | LinkageError unreadable) {
-			net.forbric.kernel.util.ForbricLog.warn("[Forbric/Mappings] the runtime mapping table could not be"
-					+ " reported at startup; lookups will answer without it", unreadable);
-		}
+
 		net.forbric.api.CompatibilityFindings.reset();
 		net.forbric.kernel.discovery.MetadataFailures.reset();
 		net.forbric.kernel.ui.CompatibilityDecision.reset();
@@ -223,6 +213,28 @@ public final class KernelBoot {
 
 		Path gameDir = extractGameDir(gameArgs, side.stripGameDir);
 		String gameVersion = detectGameVersion(gameJar);
+
+		// The namespace table has to be found without a launcher flag: a player starts the game from their launcher,
+		// which knows nothing about -Dforbric.mappings, and without the table every guest name stays intermediary
+		// (measured: 268 "Error loading class" lines and a crash inside the first Fabric entrypoint). A shipped
+		// install therefore carries the table inside its own .forbric-kernel directory, next to the remap cache the
+		// kernel already writes there; the property stays the way to point at another table (a dev probe, a
+		// different line). Loaded before anything else reads a name, which is why the announcement moved here from
+		// the top of this method.
+		if (System.getProperty(net.forbric.kernel.fabric.KernelMappingResolver.TABLE_PROPERTY) == null) {
+			Path shipped = shippedMappingTable(gameDir, gameVersion);
+			if (shipped != null) {
+				System.setProperty(net.forbric.kernel.fabric.KernelMappingResolver.TABLE_PROPERTY, shipped.toString());
+				net.forbric.kernel.util.ForbricLog.info("[Forbric/Mappings] using the table shipped beside the"
+						+ " instance: %s", shipped);
+			}
+		}
+		try {
+			net.forbric.kernel.fabric.KernelMappingResolver.INSTANCE.getNamespaces();
+		} catch (RuntimeException | LinkageError unreadable) {
+			net.forbric.kernel.util.ForbricLog.warn("[Forbric/Mappings] the runtime mapping table could not be"
+					+ " reported at startup; lookups will answer without it", unreadable);
+		}
 
 		// After a crash the last run attributed, offer to start without its suspects. Here, before arbitration,
 		// because "start without" is a line in forbric-disabled.txt and arbitration is what reads that file.
@@ -1985,6 +1997,29 @@ public final class KernelBoot {
 	 * Returns {@code --gameDir <path>} (or the working dir if none), removing it from {@code gameArgs} in place
 	 * only when {@code strip} is set — the dedicated server rejects {@code --gameDir}, the client requires it.
 	 */
+	/**
+	 * The namespace table that ships with an install, or null. Two layouts are looked for, both already used by the
+	 * kernel for its own files: {@code <gameDir>/.forbric-kernel/mappings-<version>.tsv} for an install that keeps
+	 * everything under the version directory, and the same path one and two levels up for the launcher layout where
+	 * {@code .forbric-kernel} sits beside {@code versions/} and holds the launch scripts. A table is accepted by name
+	 * only; whether it loads is the resolver's question, and it reports that in its own line.
+	 */
+	private static Path shippedMappingTable(Path gameDir, String gameVersion) {
+		if (gameDir == null || gameVersion == null || gameVersion.isBlank()) return null;
+		String name = "mappings-" + gameVersion + ".tsv";
+		List<Path> roots = new ArrayList<>();
+		roots.add(gameDir);
+		if (gameDir.getParent() != null) roots.add(gameDir.getParent());
+		if (gameDir.getParent() != null && gameDir.getParent().getParent() != null) {
+			roots.add(gameDir.getParent().getParent());
+		}
+		for (Path root : roots) {
+			Path table = root.resolve(".forbric-kernel").resolve(name);
+			if (java.nio.file.Files.isRegularFile(table)) return table;
+		}
+		return null;
+	}
+
 	private static Path extractGameDir(List<String> gameArgs, boolean strip) {
 		Path dir = new File(System.getProperty("user.dir", ".")).toPath();
 		for (int i = 0; i < gameArgs.size(); i++) {

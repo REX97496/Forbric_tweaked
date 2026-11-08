@@ -823,6 +823,42 @@ public final class ForbricMixinService
 	 * answers a measurement question with a wrong answer instead of an error. The blunt {@code
 	 * -Dforbric.mergedBaseCompat=off} stays the way to drop the whole list at once.
 	 */
+	/**
+	 * Whole guest mixin configs the 1.21.1 line turns off, each with the measurement that forced it. This is a
+	 * shipped policy, not a debug knob: a player starts the game from a launcher that passes no -Dforbric.* flags,
+	 * and every one of these was found by opening a world and reading the crash report.
+	 */
+	private static final java.util.Map<String, String> DISABLED_GUEST_CONFIGS;
+	static {
+		java.util.Map<String, String> m = new java.util.LinkedHashMap<>();
+		m.put("fabric-resource-conditions-api-v1.mixins.json",
+				"RegistryLoaderMixin's @Inject produced a handler that does not verify (VerifyError: Bad local variable"
+						+ " type, locals[8] top), which took DataPackRegistriesHooks down with it at WorldLoader.load");
+		m.put("fabric-loot-api-v2.mixins.json",
+				"LootTableBuilderMixin's @Shadow field LootTable$Builder.field_949 is not in the merged base, so the"
+						+ " builder interface kept its \"Implemented via mixin\" stubs and reloading loot tables threw");
+		m.put("fabric-loot-api-v3.mixins.json",
+				"same contract as v2: the implementation mixin is UNFIT on this base, the interface is not");
+		m.put("fabric-data-attachment-api-v1.mixins.json",
+				"AttachmentTargetImpl's stubs are completed by an UNFIT mixin: chunk load threw"
+						+ " \"Implemented via mixin\" from fabric_shouldTryToSync");
+		m.put("fabric-data-attachment-api-v1.client.mixins.json", "client half of the same contract");
+		m.put("fabric-lifecycle-events-v1.mixins.json",
+				"ServerWorldMixin/ChunkHolderMixin apply only partially, so ServerLevel never received its"
+						+ " LoadedChunksCache and the first chunk load threw ClassCastException");
+		m.put("fabric-lifecycle-events-v1.client.mixins.json", "client half of the same contract");
+		DISABLED_GUEST_CONFIGS = java.util.Collections.unmodifiableMap(m);
+	}
+
+	/** The shipped policy entry for a config file name (with or without a directory), or null. */
+	static String disabledGuestConfig(String configName) {
+		if (configName == null) return null;
+		String file = configName.replace('\\', '/');
+		int slash = file.lastIndexOf('/');
+		if (slash >= 0) file = file.substring(slash + 1);
+		return DISABLED_GUEST_CONFIGS.get(file);
+	}
+
 	static List<String> suppressedMixinsFor(String configName) { // package-private for ForbricMixinServiceTest
 		List<String> out = new ArrayList<>();
 
@@ -830,6 +866,12 @@ public final class ForbricMixinService
 			collectSuppressed(MergedBaseMixinCompat.SUPPRESSED_MIXINS, configName, out);
 
 		}
+
+		// Configs the line turns off whole, keyed by the config file a guest ships. Unlike the derived list these are
+		// not a guess about one mixin's anchors: in each of them Mixin had already applied SOME handlers whose
+		// contracts the suppressed counterparts were supposed to complete, so the first caller threw
+		// "UnsupportedOperationException: Implemented via mixin" or a handler that did not verify.
+		if (disabledGuestConfig(configName) != null && !out.contains("*")) out.add("*");
 
 		String csv = System.getProperty("forbric.suppressMixins");
 		if (csv != null && !csv.isEmpty()) {
@@ -866,6 +908,8 @@ public final class ForbricMixinService
 		if (MergedBaseMixinCompat.enabled() && MergedBaseMixinCompat.SUPPRESSED_MIXINS.contains(entry)) {
 			return "source protocol: " + MergedBaseMixinCompat.reason(configName,mixin);
 		}
+		String disabled = disabledGuestConfig(configName);
+		if (disabled != null) return "1.21.1 line: " + disabled;
 
 		return "-Dforbric.suppressMixins";
 	}
