@@ -582,7 +582,7 @@ public final class GuestJarRemap {
 						if (!"method".equals(annotation.values.get(i))) continue;
 						Object written = annotation.values.get(i + 1);
 						if (written instanceof String single) {
-							String fixed = unqualified(selectorFrom(mine, single), targets);
+							String fixed = resolveSelector(mine, single);
 							if (fixed != null) {
 								annotation.values.set(i + 1, fixed);
 								changed = true;
@@ -591,7 +591,7 @@ public final class GuestJarRemap {
 							@SuppressWarnings("unchecked")
 							List<String> selectors = (List<String>) many;
 							for (int s = 0; s < selectors.size(); s++) {
-								String fixed = unqualified(selectorFrom(mine, selectors.get(s)), targets);
+								String fixed = resolveSelector(mine, selectors.get(s));
 								if (fixed != null) {
 									selectors.set(s, fixed);
 									changed = true;
@@ -695,22 +695,46 @@ public final class GuestJarRemap {
 	}
 
 	/**
-	 * Drops the owner from a selector that names this mixin's own target class.
+	 * Drops the owner from a selector; {@code @Inject}'s {@code method} names a method of the target class.
 	 *
 	 * <p>Mixin reads an owner-qualified selector in {@code @Inject} as a request to target another class and refuses
 	 * it outright: measured on {@code CreativeInventoryScreenMixin}, {@code method = "Lnet/minecraft/class_481;
 	 * method_25426()V"} produced {@code InvalidInjectionException: @Inject annotation on init specifies a target class
 	 * 'net/minecraft/class_481', which is not supported}. The bare form is what the annotation means.
+	 *
+	 * <p>The owner is dropped even when it does not match one of this mixin's targets. Measured on
+	 * fabric-rendering-v1's {@code WorldRendererMixin}, whose refmap answered with {@code class_12098} for a method
+	 * that lives on {@code LevelRenderer}: keeping the qualifier because it "belongs to some other class" made Mixin
+	 * reject the whole mixin and drop every one of its nine injections, while the bare name leaves a single missing
+	 * anchor that the caller can report and skip.
 	 */
-	private static String unqualified(String selector, List<String> targets) {
+	private static String unqualified(String selector) {
 		if (selector == null || !selector.startsWith("L")) return selector;
 		int close = selector.indexOf(';');
 		if (close < 0) return selector;
-		String owner = selector.substring(1, close);
-		for (String target : targets) {
-			if (target != null && target.equals(owner)) return selector.substring(close + 1);
-		}
-		return selector;
+		String rest = selector.substring(close + 1);
+		if (rest.indexOf('(') < 0) return selector;
+		return rest;
+	}
+
+	/**
+	 * The spelling to write for one authored selector, or null when it already reads that way.
+	 *
+	 * <p>Three sources answer in order, and the strip happens after all of them: the refmap (what the author meant),
+	 * the table read straight off the selector (for a mixin whose refmap key the refmap itself does not carry), and
+	 * the string as written. The last one matters: measured on fabric-rendering-v1's {@code WorldRendererMixin},
+	 * {@code onReload} already held {@code Lnet/minecraft/client/render/WorldRenderer;reload()V} — official, but
+	 * qualified — and because neither of the first two sources had anything to add, the qualifier survived and Mixin
+	 * rejected the whole mixin with "specifies a target class 'net/minecraft/client/render/WorldRenderer', which is
+	 * not supported", dropping all nine of its injections.
+	 */
+	private static String resolveSelector(Map<String, String> mine, String written) {
+		if (written == null || written.isEmpty()) return null;
+		String answer = selectorFrom(mine, written);
+		if (answer == null) answer = officialSelector(written);
+		if (answer == null) answer = written;
+		String bare = unqualified(answer);
+		return bare.equals(written) ? null : bare;
 	}
 
 	/** One authored selector, or a semicolon-separated run of them, in the base's own spelling. */
@@ -2104,7 +2128,7 @@ public final class GuestJarRemap {
 	}
 
 	/** The cache salt: bump {@code CACHE_VERSION} whenever the rewriting itself changes. */
-	private static final String CACHE_VERSION = "7";
+	private static final String CACHE_VERSION = "8";
 
 	private static byte[] fingerprintOf(byte[] jarBytes) {
 		String table = System.getProperty(KernelMappingResolver.TABLE_PROPERTY, "");
