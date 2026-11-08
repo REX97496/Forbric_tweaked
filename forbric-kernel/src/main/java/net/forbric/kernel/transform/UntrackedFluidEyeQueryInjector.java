@@ -16,8 +16,12 @@ public final class UntrackedFluidEyeQueryInjector implements ClassTransformer {
     private static boolean enabled() { return !"off".equalsIgnoreCase(System.getProperty(PROPERTY, "on")); }
     @Override public AnchorSet anchors() {
         if (!enabled()) return AnchorSet.scanned("untracked fluid eye queries left native by request");
-        return AnchorSet.of(new AnchorSet.Anchor(ENTITY, AnchorSet.Severity.REQUIRED, "a Fabric mod's untracked fluid tag query throws while rendering"),
-                new AnchorSet.Anchor(INTERACTION, AnchorSet.Severity.REQUIRED, "vanilla's untracked fluid tag query must answer false"));
+        // Measured on the merged 1.21.1 base: it carries 0 entries for net/minecraft/world/entity/EntityFluidInteraction,
+        // and Entity.isEyeInFluid(TagKey) is water/lava through isEyeInFluidType plus a plain Set.contains on
+        // fluidOnEyes — no tracker lookup exists to throw. The hazard belongs to 1.21.2's fluid rework, so on this line
+        // there is nothing to guard; the anchors stay as hedges rather than claiming a loss that cannot happen.
+        return AnchorSet.of(new AnchorSet.Anchor(ENTITY, AnchorSet.Severity.HEDGE, "before 1.21.2 an eye-in-fluid tag query is a Set.contains and cannot throw"),
+                new AnchorSet.Anchor(INTERACTION, AnchorSet.Severity.HEDGE, "EntityFluidInteraction arrives in 1.21.2, so the tracker query this guards is unreachable here"));
     }
     @Override public byte[] transform(String name, byte[] bytes, TransformContext context) {
         if (!enabled() || bytes == null || (!ENTITY.equals(name) && !INTERACTION.equals(name))) return bytes;

@@ -21,7 +21,12 @@ public final class FabricFluidBreathingInjector implements ClassTransformer {
 	private static final String DESC="(L"+LIVING+";Lnet/minecraft/server/level/ServerLevel;II)V";
 	private static boolean enabled(){return !"off".equalsIgnoreCase(System.getProperty(PROPERTY,"on"))&&!"off".equalsIgnoreCase(System.getProperty(FabricFluidBehaviorInjector.PROPERTY,"on"));}
 	@Override public String name(){return "forbric-foreign-fluid-breathing";}
-	@Override public AnchorSet anchors(){return enabled()?AnchorSet.of(new AnchorSet.Anchor(TARGET,AnchorSet.Severity.REQUIRED,"non-drowning foreign fluid adapters hold their air supply instead of refilling")):AnchorSet.scanned("foreign adapter default refill disabled");}
+	// Measured on the merged 1.21.1 base: it carries 0 entries for both net/neoforged/neoforge/fluids/InFluidPredicate
+	// and net/minecraft/world/entity/EntityFluidInteraction — the predicate this seam observes and the class that
+	// carries the native boolean it guards. 1.21.1's onLivingBreathe decides refill from LivingEntity.canDrownInFluidType(FluidType)
+	// and hands the amounts to LivingBreatheEvent, so a foreign adapter is steered through the event rather than
+	// through a predicate this repair could wrap. Nothing is lost here; the machinery is simply newer than the line.
+	@Override public AnchorSet anchors(){return enabled()?AnchorSet.of(new AnchorSet.Anchor(TARGET,AnchorSet.Severity.HEDGE,"1.21.1 has no InFluidPredicate/EntityFluidInteraction refill seam to observe; refill is decided by canDrownInFluidType and LivingBreatheEvent")):AnchorSet.scanned("foreign adapter default refill disabled");}
 	@Override public byte[]transform(String name,byte[]bytes,TransformContext context){
 		if(!enabled()||!TARGET.equals(name)||bytes==null||bytes.length==0)return bytes;
 		ClassNode node=new ClassNode();new ClassReader(bytes).accept(node,ClassReader.EXPAND_FRAMES);if(!repair(node))return bytes;
