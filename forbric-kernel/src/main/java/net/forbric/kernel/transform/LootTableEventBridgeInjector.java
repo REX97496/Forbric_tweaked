@@ -78,11 +78,30 @@ public final class LootTableEventBridgeInjector implements ClassTransformer {
 	public static final String PROPERTY = "forbric.lootBridge";
 
 	static final String TARGET = "net.minecraft.server.ReloadableServerRegistries";
+
+	/**
+	 * 1.21.1's home for the same call.
+	 *
+	 * <p>Measured on the 1.21.1 merged base: {@code LootDataType} names {@code EventHooks.loadLootTable} and nothing
+	 * else in the base does (a constant-pool scan of all 8,220 classes), while {@code ReloadableServerRegistries}
+	 * carries neither the loot call nor {@code TagLoader.loadTagsForRegistry} — the tag seam this bridge also routes
+	 * on 26.2 simply does not exist on that line. Leaving the loot call unrouted there meant every
+	 * {@code LootTableEvents.REPLACE}/{@code MODIFY} listener stayed registered and never called, which is the
+	 * anchor's own claim; routing it costs one owner swap because the 1.21.1 {@code KernelLootBridge} declares the
+	 * same name and the same {@code ResourceLocation} descriptor this call already uses.
+	 */
+	static final String TARGET_1211 = "net.minecraft.world.level.storage.loot.LootDataType";
+
 	static final String BRIDGE = "net/forbric/kernel/runtime/KernelLootBridge";
 
 	static final String LOAD_LOOT_TABLE = "loadLootTable";
 	static final String LOAD_LOOT_TABLE_DESC =
 			"(Lnet/minecraft/core/HolderLookup$Provider;Lnet/minecraft/resources/Identifier;"
+					+ "Lnet/minecraft/world/level/storage/loot/LootTable;)Lnet/minecraft/world/level/storage/loot/LootTable;";
+
+	/** The same call as 1.21.1 spells its identifier: {@code ResourceLocation}, not {@code Identifier}. */
+	static final String LOAD_LOOT_TABLE_DESC_1211 =
+			"(Lnet/minecraft/core/HolderLookup$Provider;Lnet/minecraft/resources/ResourceLocation;"
 					+ "Lnet/minecraft/world/level/storage/loot/LootTable;)Lnet/minecraft/world/level/storage/loot/LootTable;";
 	static final String TAG_LOADER = "net/minecraft/tags/TagLoader";
 	static final String LOAD_TAGS = "loadTagsForRegistry";
@@ -93,6 +112,23 @@ public final class LootTableEventBridgeInjector implements ClassTransformer {
 	static final String EVENT_HOOKS = ForeignType.EVENT_FACTORY.internal(Ecosystem.NEOFORGE);
 
 	private int routed;
+
+	/**
+	 * Whether this line loads loot tables in {@link #TARGET_1211} and has no tag seam at all.
+	 *
+	 * <p>It decides the anchors, not the bytecode: which class is edited follows from the class the chain hands over,
+	 * but which claim the ledger may make about the result cannot, and saying "REPLACE/MODIFY are never called" while
+	 * routing them would be a false alarm in the one place that is supposed to be honest.
+	 */
+	private final boolean lootLivesInLootDataType;
+
+	public LootTableEventBridgeInjector() {
+		this(false);
+	}
+
+	public LootTableEventBridgeInjector(boolean lootLivesInLootDataType) {
+		this.lootLivesInLootDataType = lootLivesInLootDataType;
+	}
 
 	public static boolean enabled() {
 		return !"off".equalsIgnoreCase(System.getProperty(PROPERTY, "on"));
@@ -106,13 +142,24 @@ public final class LootTableEventBridgeInjector implements ClassTransformer {
 	@Override
 	public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("switched off by -D" + PROPERTY);
+		if (lootLivesInLootDataType) {
+			// Two claims for two mechanisms: the loot seam is routable here, the tag seam does not exist in this base.
+			return AnchorSet.of(
+					new AnchorSet.Anchor(TARGET_1211, AnchorSet.Severity.REQUIRED,
+							"every Fabric mod's LootTableEvents.REPLACE/MODIFY listener is registered and never called"),
+					new AnchorSet.Anchor(TARGET, AnchorSet.Severity.REQUIRED,
+							"every Fabric mod's LootTableEvents.ALL_LOADED listener is registered and never called "
+									+ "(1.21.1 has no TagLoader.loadTagsForRegistry for the bridge to fire it from)"));
+		}
 		return AnchorSet.of(new AnchorSet.Anchor(TARGET, AnchorSet.Severity.REQUIRED,
 				"every Fabric mod's LootTableEvents.REPLACE/MODIFY/ALL_LOADED listener is registered and never called"));
 	}
 
 	@Override
 	public byte[] transform(String className, byte[] classBytes, TransformContext context) {
-		if (!enabled() || classBytes == null || classBytes.length == 0 || !TARGET.equals(className)) return classBytes;
+		if (!enabled() || classBytes == null || classBytes.length == 0) return classBytes;
+		boolean lootOnly = TARGET_1211.equals(className);
+		if (!TARGET.equals(className) && !lootOnly) return classBytes;
 
 		ClassNode node = new ClassNode();
 		new ClassReader(classBytes).accept(node, 0);
@@ -123,26 +170,38 @@ public final class LootTableEventBridgeInjector implements ClassTransformer {
 			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
 				if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESTATIC) continue;
 				if (BRIDGE.equals(call.owner)) return classBytes;    // already routed
-				if (EVENT_HOOKS.equals(call.owner) && LOAD_LOOT_TABLE.equals(call.name) && LOAD_LOOT_TABLE_DESC.equals(call.desc)) {
+				if (EVENT_HOOKS.equals(call.owner) && LOAD_LOOT_TABLE.equals(call.name)
+						&& (LOAD_LOOT_TABLE_DESC.equals(call.desc) || LOAD_LOOT_TABLE_DESC_1211.equals(call.desc))) {
 					loot.add(call);
 				} else if (TAG_LOADER.equals(call.owner) && LOAD_TAGS.equals(call.name) && LOAD_TAGS_DESC.equals(call.desc)) {
 					tags.add(call);
 				}
 			}
 		}
-		if (loot.size() != 1 || tags.size() != 1) {
-			ForbricLog.warn("[Forbric/LootBridge] %s has %d loot-table load site(s) and %d tag-load site(s), not one of "
-					+ "each — the seam has drifted, so Fabric LootTableEvents stay unfired", className, loot.size(),
-					tags.size());
+		// Two shapes, one rule each: where the line has both seams the pair is routed together (ALL_LOADED depends on
+		// the tag site), where it has only the loot seam the loot call alone is routed and the loss is said out loud.
+		int wantTags = lootOnly ? 0 : 1;
+		if (loot.size() != 1 || tags.size() != wantTags) {
+			ForbricLog.warn("[Forbric/LootBridge] %s has %d loot-table load site(s) and %d tag-load site(s), not %d of "
+					+ "the loot call and %d of the tag call — the seam has drifted, so Fabric LootTableEvents stay "
+					+ "unfired", className, loot.size(), tags.size(), 1, wantTags);
 			return classBytes;
 		}
 
 		loot.get(0).owner = BRIDGE;
-		tags.get(0).owner = BRIDGE;
-		routed += 2;
-		ForbricLog.info("[Forbric/LootBridge] routed %d loot-table load site(s) and %d tag-load site(s) in "
-				+ "ReloadableServerRegistries through the kernel — fabric-loot-api-v3's mixin cannot fit the merged "
-				+ "base, so LootTableEvents fire from NeoForge's own LootTableLoadEvent seam", 1, 1);
+		if (wantTags == 1) {
+			tags.get(0).owner = BRIDGE;
+			routed += 2;
+			ForbricLog.info("[Forbric/LootBridge] routed %d loot-table load site(s) and %d tag-load site(s) in "
+					+ "ReloadableServerRegistries through the kernel — fabric-loot-api-v3's mixin cannot fit the merged "
+					+ "base, so LootTableEvents fire from NeoForge's own LootTableLoadEvent seam", 1, 1);
+		} else {
+			routed += 1;
+			ForbricLog.info("[Forbric/LootBridge] routed the loot-table load site in LootDataType through the kernel — "
+					+ "this line loads loot tables there and has no TagLoader.loadTagsForRegistry anywhere in the base, "
+					+ "so REPLACE and MODIFY now fire where they never did, and ALL_LOADED still has no site to fire "
+					+ "from");
+		}
 
 		// Owner swaps only: no instruction, frame or stack change.
 		ClassWriter writer = new ClassWriter(0);

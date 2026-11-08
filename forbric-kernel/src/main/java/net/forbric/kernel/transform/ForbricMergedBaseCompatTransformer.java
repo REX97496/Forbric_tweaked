@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
@@ -93,7 +94,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores", "makeTheGeneratedDispatcherTargetsPublic", "mirrorTheDefaultedRegistriesTheMergeWidened", "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", "answerTheStreamCodecCastTheGuestCalls");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores", "makeTheGeneratedDispatcherTargetsPublic", "mirrorTheDefaultedRegistriesTheMergeWidened", "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", "answerTheStreamCodecCastTheGuestCalls", "readTheStageIdTheGuestRebuiltAsTheIdItAlreadyIs");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -382,6 +383,14 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				"fabric-transfer-api-v1 builds its item packet codec with StreamCodec.cast(codec, getter, codec,"
 						+ " getter, constructor), the name that method has on newer bases; on this line the same shape is"
 						+ " called composite, so the call died with NoSuchMethodError during Bootstrap"));
+		// scanned(): the call site only exists once fabric-rendering-v1's ShaderProgramMixin has modified the local,
+		// and a base run without that guest keeps vanilla's own path through the same instruction. A fixed() anchor
+		// would then report the repair absent on a base that has nothing to repair.
+		out.add(scanned("readTheStageIdTheGuestRebuiltAsTheIdItAlreadyIs",
+				"ShaderInstance.getOrCreate, where fabric-rendering-v1's modifyStageId hands back a full id because it"
+						+ " was written against Yarn's one-argument Identifier.of, and this base's two-argument"
+						+ " fromNamespaceAndPath prefixes the namespace a second time — the shader then has an invalid"
+						+ " ResourceLocation and the first resource reload never finishes"));
 
 		return List.copyOf(out);
 	}
@@ -493,6 +502,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		changed |= claim(reporter, "mirrorTheDefaultedRegistriesTheMergeWidened", mirrorTheDefaultedRegistriesTheMergeWidened(node));
 		changed |= claim(reporter, "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", aliasTheVanillaLambdaTheGuestCallsByItsOfficialName(node));
 		changed |= claim(reporter, "answerTheStreamCodecCastTheGuestCalls", answerTheStreamCodecCastTheGuestCalls(node));
+		changed |= claim(reporter, "readTheStageIdTheGuestRebuiltAsTheIdItAlreadyIs", readTheStageIdTheGuestRebuiltAsTheIdItAlreadyIs(node));
 			changed |= namedOldLoader && adoptInteropHooksTheBaseStillNamesAfterTheOldLoader(node);
 
 			byte[] result = classBytes;
@@ -666,6 +676,9 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			"net/minecraft/world/level/Level");
 	/** {@code org.slf4j.Logger}, the one unwritten static the merge leaves that has an obvious correct value. */
 	private static final String LOGGER_DESC = "Lorg/slf4j/Logger;";
+	/** The two names the one resource-id type carries across the lines this transformer serves. */
+	private static final Set<String> ID_TYPES = Set.of("net/minecraft/resources/ResourceLocation",
+			"net/minecraft/resources/Identifier");
 	/** {@code EntitySpawnReason}, the type of both of the merged {@code Mob}'s spawn fields. */
 	private static final String SPAWN_REASON = "Lnet/minecraft/world/entity/EntitySpawnReason;";
 	private static final String NAME_KEYED = "Ljava/util/Map;";
@@ -4700,7 +4713,55 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		return true;
 	}
 
-	static boolean makeTheGeneratedDispatcherTargetsPublic(ClassNode node) {		if (!node.name.startsWith("net/minecraftforge/")) return false;
+	/**
+	 * Reads the stage id {@code fabric-rendering-v1} already rebuilt as a full id, instead of gluing the shader's
+	 * namespace onto the front of it a second time.
+	 *
+	 * <p>Measured: {@code Exception caught during firing event: Invalid
+	 * shaders/core/rendertype_entity_unlit_translucent.json: Non [a-z0-9/._-] character in path of location:
+	 * neoforge:neoforge:shaders/core/rendertype_entity_unlit_translucent.vsh}, thrown from
+	 * {@code ShaderInstance.getOrCreate} while NeoForge registered its shaders, and the client then never left the
+	 * loading overlay — no crash report, render ticks still forwarding.
+	 *
+	 * <p>The mixin ({@code ShaderProgramMixin.modifyStageId}) is written against Yarn's shape, where the step after it
+	 * is a ONE-argument {@code Identifier.of(String)}; the merged 1.21.1 base is Mojmap plus NeoForge's patches and
+	 * reads {@code ResourceLocation.fromNamespaceAndPath(location.getNamespace(), stageId)} there. The mixin modifies
+	 * the local, so it applies either way and hands a full id to a call expecting a path. Pointing that one call at
+	 * {@code KernelShaders.stageId} keeps the namespace-less case on the base's own path and parses the case the
+	 * mixin already resolved.
+	 */
+	static boolean readTheStageIdTheGuestRebuiltAsTheIdItAlreadyIs(ClassNode node) {
+		if (!"net/minecraft/client/renderer/ShaderInstance".equals(node.name)) return false;
+		final String desc = "(Lnet/minecraft/server/packs/resources/ResourceProvider;"
+				+ "Lcom/mojang/blaze3d/shaders/Program$Type;Ljava/lang/String;)Lcom/mojang/blaze3d/shaders/Program;";
+		MethodNode getOrCreate = findMethod(node, "getOrCreate", desc);
+		if (getOrCreate == null) return false;
+		boolean changed = false;
+		for (AbstractInsnNode insn : getOrCreate.instructions) {
+			if (!(insn instanceof MethodInsnNode call)) continue;
+			// 1.21.x calls the type ResourceLocation, 26.x calls it Identifier. Both spell this factory the same
+			// way and both take (namespace, path), so the rewrite keeps whatever descriptor it found.
+			if (!ID_TYPES.contains(call.owner)) continue;
+			if (!"fromNamespaceAndPath".equals(call.name)) continue;
+			if (!call.desc.startsWith("(Ljava/lang/String;Ljava/lang/String;)L")) continue;
+			if (!call.desc.endsWith("L" + call.owner + ";")) continue;
+			// Same descriptor, same two operands on the stack: only the owner and name change.
+			call.owner = "net/forbric/kernel/runtime/KernelShaders";
+			call.name = "stageId";
+			call.itf = false;
+			changed = true;
+		}
+		if (changed) {
+			ForbricLog.info("[Forbric/MergedBaseCompat] ShaderInstance.getOrCreate builds its stage id through"
+					+ " KernelShaders.stageId - fabric-rendering-v1 hands that step a full id (it is written against"
+					+ " the one-argument Identifier.of of Yarn), and prefixing the namespace again made every"
+					+ " neoforge and forge shader an invalid id inside RegisterShadersEvent");
+		}
+		return changed;
+	}
+
+	static boolean makeTheGeneratedDispatcherTargetsPublic(ClassNode node) {
+		if (!node.name.startsWith("net/minecraftforge/")) return false;
 		if (!node.name.endsWith("$EventDispatcher")) return false;
 		if ((node.access & Opcodes.ACC_PUBLIC) != 0) return false;
 		node.access = (node.access & ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED)) | Opcodes.ACC_PUBLIC;

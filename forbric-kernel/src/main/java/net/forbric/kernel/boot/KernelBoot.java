@@ -200,6 +200,11 @@ public final class KernelBoot {
 			}
 		}
 
+		// Temporary measurement: which game arguments actually reach Main (a launcher flag the kernel drops is
+		// invisible otherwise, and quick-play is the only way to load a world without driving the GUI).
+		java.util.List<String> flagNames = new ArrayList<>();
+		for (String g : gameArgs) if (g.startsWith("--")) flagNames.add(g);
+		ForbricLog.info("[Forbric/Args] %d forwarded game argument(s), of which %d are flags: %s", gameArgs.size(), flagNames.size(), flagNames);
 		if (owned.isEmpty()) {
 			System.err.println("forbric-kernel: no --gameJar given (need the merged base jar)");
 			System.exit(2);
@@ -1084,10 +1089,13 @@ public final class KernelBoot {
 		// GuiLayerManager, which a dedicated server never loads.
 		chain.register(TransformPhase.COREMOD, new HudElementBridgeInjector());
 
-		// Both sides: route ReloadableServerRegistries' two loot seams through the kernel so fabric-loot-api-v3's
-		// LootTableEvents fire from NeoForge's own LootTableLoadEvent point — its mixin cannot fit the merged base.
+		// Both sides: route the loot load seam through the kernel so fabric-loot-api-v3's LootTableEvents fire from
+		// NeoForge's own LootTableLoadEvent point — its mixin cannot fit the merged base. Where that seam lives is a
+		// property of the line (26.2: two calls in ReloadableServerRegistries; 1.21.1: one in LootDataType, no tag
+		// seam in the whole base), so the line is handed over and the anchors follow it.
 		if (net.forbric.kernel.transform.LootTableEventBridgeInjector.enabled()) {
-			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.LootTableEventBridgeInjector());
+			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.LootTableEventBridgeInjector(
+					gameVersion != null && gameVersion.startsWith("1.21.1")));
 		} else {
 			ForbricLog.warn("[Forbric/LootBridge] -D%s=off — Fabric LootTableEvents.REPLACE/MODIFY/ALL_LOADED never fire; "
 					+ "loot tables load exactly as NeoForge returns them",
