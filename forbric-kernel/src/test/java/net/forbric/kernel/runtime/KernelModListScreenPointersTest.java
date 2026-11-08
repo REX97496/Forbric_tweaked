@@ -63,4 +63,21 @@ class KernelModListScreenPointersTest {
 		assertTrue(all.stream().anyMatch(s -> s.contains("not tied to one mod (see .forbric-kernel/load-report.txt)")),
 				all.toString());
 	}
+
+	@Test
+	void theTwoStatusesAreSaidAsTwoDifferentSentences() throws Exception {
+		// ModCatalog.failures() returns FAILED *and* DEGRADED. Telling them as one sentence read "31 did not finish
+		// loading" on a measured launch where every one of those 31 was loaded and running with one mixin left out
+		// -- and the same file's rows said "part of this mod did not run" about each of them. Both sentences have to
+		// be present, because a row of one status alone must still be able to say its own thing.
+		// The literals arrive from javac's string-concat recipe as concat arguments, so they are matched by content:
+		// each sentence has to be somewhere in the class, and the two have to be different constants.
+		List<String> all = strings();
+		List<String> partial = all.stream().filter(s -> s.contains("running with part left out")).toList();
+		List<String> missing = all.stream().filter(s -> s.contains("did not finish loading")).toList();
+		assertTrue(!partial.isEmpty() && !missing.isEmpty(),
+				"partial=" + partial + " missing=" + missing);
+		assertTrue(partial.stream().noneMatch(s -> s.contains("did not finish loading")),
+				"one sentence for both statuses is the bug being prevented: " + partial);
+	}
 }
