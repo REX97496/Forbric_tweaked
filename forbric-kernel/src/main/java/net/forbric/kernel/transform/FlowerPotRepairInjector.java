@@ -46,6 +46,11 @@ public final class FlowerPotRepairInjector implements ClassTransformer {
 			+ "Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/entity/player/Player;"
 			+ "Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/phys/BlockHitResult;)Lnet/minecraft/world/InteractionResult;";
 	static final String ADD_PLANT = "(Lnet/minecraft/resources/Identifier;Ljava/util/function/Supplier;)V";
+	/** 1.21.1 names the registry key {@code ResourceLocation} and the interaction result
+	 *  {@code ItemInteractionResult}; the branch this repair was written for spelled them the other way. */
+	static final String ADD_PLANT_LOCATION = "(Lnet/minecraft/resources/ResourceLocation;Ljava/util/function/Supplier;)V";
+	static final String USE_ITEM_ON_RESULT = USE_ITEM_ON.substring(0, USE_ITEM_ON.length() - "Lnet/minecraft/world/InteractionResult;".length())
+			+ "Lnet/minecraft/world/ItemInteractionResult;";
 	static final String RUNTIME = "net/forbric/kernel/runtime/KernelFlowerPots";
 	static final String FULL_POT_FOR = "(Ljava/util/Map;L" + OWNER + ";L" + BLOCK + ";)L" + BLOCK + ";";
 	static final String FORGE_BLOCKS = "net/minecraftforge/registries/ForgeRegistries";
@@ -122,7 +127,7 @@ public final class FlowerPotRepairInjector implements ClassTransformer {
 	 */
 	static int lookUpAllFamilies(ClassNode node) {
 		int publicLookup = decoratePublicLookup(node);
-		MethodNode use = method(node, "useItemOn", USE_ITEM_ON);
+		MethodNode use = methodAny(node, "useItemOn", USE_ITEM_ON, USE_ITEM_ON_RESULT);
 		if (use == null) return publicLookup;
 		for(AbstractInsnNode i:use.instructions)if(i instanceof MethodInsnNode call&&call.owner.equals(RUNTIME)&&call.name.equals("legacyPotOrNative"))return publicLookup;
 		// Real instructions only: a line-number label may sit inside the expression.
@@ -163,7 +168,7 @@ public final class FlowerPotRepairInjector implements ClassTransformer {
 
 	/** {@code addPlant}: after NeoForge's check, {@code fullPots.put(id, supplier)}, as MinecraftForge's body does. */
 	static int recordAddedPlant(ClassNode node) {
-		MethodNode add = method(node, "addPlant", ADD_PLANT);
+		MethodNode add = methodAny(node, "addPlant", ADD_PLANT, ADD_PLANT_LOCATION);
 		if (add == null || references(add, "fullPots")) return 0;
 		AbstractInsnNode last = add.instructions.getLast();
 		while (last != null && last.getOpcode() < 0) last = last.getPrevious();
@@ -193,6 +198,12 @@ public final class FlowerPotRepairInjector implements ClassTransformer {
 	private static boolean hasField(ClassNode node, String name, String desc) {
 		for (FieldNode field : node.fields) if (field.name.equals(name) && field.desc.equals(desc)) return true;
 		return false;
+	}
+
+	/** Either spelling of a method whose descriptor drifted between the two lines. */
+	private static MethodNode methodAny(ClassNode node, String name, String first, String second) {
+		MethodNode found = method(node, name, first);
+		return found != null ? found : method(node, name, second);
 	}
 
 	private static MethodNode method(ClassNode node, String name, String desc) {
