@@ -66,8 +66,12 @@ public final class RegistryDirectoryOwnerInjector implements ClassTransformer {
 	static final String HOOK_OWNER = "net/forbric/kernel/boot/KernelRegistryDirectories";
 	static final String HOOK_DESC = "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
 
+	/** 1.21.1 has no {@code registryDirPath}: the body that needs this answer is {@code elementsDirPath},
+	 *  and {@code ResourceKey} answers {@code location()} with a {@code ResourceLocation} there. */
+	static final String ELEMENTS_METHOD = "elementsDirPath";
 	private static final String RESOURCE_KEY = "net/minecraft/resources/ResourceKey";
 	private static final String IDENTIFIER = "net/minecraft/resources/Identifier";
+	private static final String RESOURCE_LOCATION = "net/minecraft/resources/ResourceLocation";
 
 	public static boolean enabled() {
 		return !"off".equalsIgnoreCase(System.getProperty(PROPERTY, "on"));
@@ -93,17 +97,29 @@ public final class RegistryDirectoryOwnerInjector implements ClassTransformer {
 		ClassNode node = new ClassNode();
 		new ClassReader(classBytes).accept(node, 0);
 
+		// 26.2 names the body registryDirPath and ResourceKey.identifier; 1.21.1 names it elementsDirPath and
+		// answers location(), because the accessor rename arrived with the method rename. Either shape, one repair.
 		MethodNode body = null;
-		for (MethodNode m : node.methods) {
-			if (METHOD.equals(m.name) && METHOD_DESC.equals(m.desc) && (m.access & Opcodes.ACC_STATIC) != 0) {
-				body = m;
-				break;
+		String method = METHOD;
+		String accessor = "identifier";
+		String idType = IDENTIFIER;
+		for (String[] shape : new String[][] { { METHOD, "identifier", IDENTIFIER },
+				{ ELEMENTS_METHOD, "location", RESOURCE_LOCATION } }) {
+			for (MethodNode m : node.methods) {
+				if (shape[0].equals(m.name) && METHOD_DESC.equals(m.desc) && (m.access & Opcodes.ACC_STATIC) != 0) {
+					body = m;
+					method = shape[0];
+					accessor = shape[1];
+					idType = shape[2];
+					break;
+				}
 			}
+			if (body != null) break;
 		}
 		if (body == null) {
-			ForbricLog.warn("[Forbric/Registries] %s has no static %s%s — a Fabric mod that keeps its registry "
-					+ "directory unprefixed (WorldWeaver) will read nothing; re-derive RegistryDirectoryOwnerInjector",
-					className, METHOD, METHOD_DESC);
+			ForbricLog.warn("[Forbric/Registries] %s has no static %s or %s with %s — a Fabric mod that keeps its "
+					+ "registry directory unprefixed (WorldWeaver) will read nothing; re-derive "
+					+ "RegistryDirectoryOwnerInjector", className, METHOD, ELEMENTS_METHOD, METHOD_DESC);
 			return classBytes;
 		}
 
@@ -117,13 +133,13 @@ public final class RegistryDirectoryOwnerInjector implements ClassTransformer {
 		for (AbstractInsnNode ret : returns) {
 			InsnList owned = new InsnList();
 			owned.add(new VarInsnNode(Opcodes.ALOAD, 0));
-			owned.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, RESOURCE_KEY, "identifier",
-					"()L" + IDENTIFIER + ";", false));
+			owned.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, RESOURCE_KEY, accessor,
+					"()L" + idType + ";", false));
 			owned.add(new InsnNode(Opcodes.DUP));
-			owned.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, IDENTIFIER, "getNamespace", "()Ljava/lang/String;",
+			owned.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, idType, "getNamespace", "()Ljava/lang/String;",
 					false));
 			owned.add(new InsnNode(Opcodes.SWAP));
-			owned.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, IDENTIFIER, "getPath", "()Ljava/lang/String;",
+			owned.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, idType, "getPath", "()Ljava/lang/String;",
 					false));
 			owned.add(new MethodInsnNode(Opcodes.INVOKESTATIC, HOOK_OWNER, "registryDirPath", HOOK_DESC, false));
 			body.instructions.insertBefore(ret, owned);
@@ -131,7 +147,7 @@ public final class RegistryDirectoryOwnerInjector implements ClassTransformer {
 
 		ForbricLog.info("[Forbric/Registries] %s.%s now answers as each registry's owner's loader does — the merged "
 				+ "body is NeoForge's, and a Fabric mod's registry gets vanilla's directory for fabric-registry-sync "
-				+ "to prefix, or for WorldWeaver's own mixin to keep as it is", className, METHOD);
+				+ "to prefix, or for WorldWeaver's own mixin to keep as it is", className, method);
 
 		ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 		node.accept(writer);
