@@ -79,6 +79,15 @@ public final class ForgeClientConsumersInjector implements ClassTransformer {
 		new ClassReader(original).accept(node, 0);
 		MethodNode method = node.methods.stream().filter(candidate -> candidate.name.equals(rule.method())
 				&& candidate.desc.equals(rule.methodDescriptor())).findFirst().orElse(null);
+		if (method == null && rule.method().startsWith("lambda$")) {
+			// javac numbers a constructor's lambdas by the order it emits them, and the merge emits lambdas of its
+			// own, so the same body is lambda$new$3 on one line and lambda$new$0 on another. The body's own
+			// descriptor is the stable half of its identity.
+			method = node.methods.stream().filter(candidate -> candidate.name.startsWith("lambda$")
+					&& candidate.desc.equals(rule.methodDescriptor())).findFirst().orElse(null);
+			if (method != null) ForbricLog.info("[Forbric/ClientConsumers] %s's consumer is %s on this line, not %s"
+					+ " — matched it by its descriptor", rule.host(), method.name, rule.method());
+		}
 		if (method == null) return miss(rule, original, "the host method moved");
 		int neo = references(method, rule, rule.owner(Ecosystem.NEOFORGE), rule.call(), rule.handle());
 		// A native dual-family consumer or our existing funnel must not be called twice.
