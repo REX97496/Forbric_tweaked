@@ -66,9 +66,11 @@ public final class RecipeSyncFailSoftInjector implements ClassTransformer {
 	@Override
 	public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("switched off by -D" + PROPERTY);
-		return AnchorSet.of(new AnchorSet.Anchor(COMMON_HOOKS, AnchorSet.Severity.REQUIRED,
-				"one recipe whose serializer cannot network-encode it disconnects every player as they join, once any mod "
-						+ "asks NeoForge to sync that recipe type"));
+		// HEDGE, not REQUIRED: 1.21.1's NeoForge ships no net.neoforged.neoforge.network.payload.RecipeContentPayload at
+		// all — recipes travel by the vanilla mechanism on this line — so there is no forced-encode site to soften.
+		return AnchorSet.of(new AnchorSet.Anchor(COMMON_HOOKS, AnchorSet.Severity.HEDGE,
+				"if this line carries NeoForge's RecipeContentPayload, one recipe whose serializer cannot network-encode "
+						+ "it disconnects every player as they join; 1.21.1 has no such payload class"));
 	}
 
 	@Override

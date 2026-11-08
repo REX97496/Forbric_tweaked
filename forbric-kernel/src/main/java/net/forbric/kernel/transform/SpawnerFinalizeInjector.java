@@ -62,8 +62,12 @@ public final class SpawnerFinalizeInjector implements ClassTransformer {
 	@Override public String name() { return "forbric-spawner-finalize-input"; }
 	@Override public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("spawner input repair explicitly disabled with -D" + PROPERTY + "=off");
-		return AnchorSet.of(new AnchorSet.Anchor(TARGET, AnchorSet.Severity.REQUIRED,
-				"Forge spawner listeners need the actual ValueInput before the only mob initialization"));
+		// HEDGE, not REQUIRED: 1.21.1 has no net.minecraft.world.level.storage.ValueInput — the type does not exist on
+		// this line, so there is no input to supply — and MinecraftForge's spawner listeners are already reached through
+		// the kernel redirect of NeoForge's own finalizeMobSpawnSpawner call.
+		return AnchorSet.of(new AnchorSet.Anchor(TARGET, AnchorSet.Severity.HEDGE,
+				"if a base declares ValueInput, Forge spawner listeners need the real one before mob initialization; "
+						+ "1.21.1 has no ValueInput type and reaches them through the redirected finalize hook"));
 	}
 
 	@Override public byte[] transform(String className, byte[] bytes, TransformContext context) {

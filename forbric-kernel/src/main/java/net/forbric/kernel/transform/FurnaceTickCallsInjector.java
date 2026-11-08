@@ -45,8 +45,13 @@ public final class FurnaceTickCallsInjector implements ClassTransformer {
 
 	@Override public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("furnace tick calls explicitly left as merged with -D" + PROPERTY + "=off");
-		return AnchorSet.of(new AnchorSet.Anchor(FURNACE, AnchorSet.Severity.REQUIRED,
-				"every furnace, smoker and blast furnace throws on its first smelt"));
+		// HEDGE, not REQUIRED: measured on 1.21.1 the only instance-shaped self-INVOKESTATIC in
+		// AbstractFurnaceBlockEntity.serverTick is setChanged(Level, BlockPos, BlockState) at offset 441, and BlockEntity
+		// declares that static form beside public void setChanged(), so the call resolves into the superclass and no
+		// furnace throws. The repair is here for a base where that resolution really is missing.
+		return AnchorSet.of(new AnchorSet.Anchor(FURNACE, AnchorSet.Severity.HEDGE,
+				"if a base ever calls an instance-shaped self-method that no superclass declares, every furnace, smoker "
+						+ "and blast furnace throws on its first smelt; 1.21.1 resolves setChanged into BlockEntity's static"));
 	}
 
 	@Override public byte[] transform(String className, byte[] bytes, TransformContext context) {

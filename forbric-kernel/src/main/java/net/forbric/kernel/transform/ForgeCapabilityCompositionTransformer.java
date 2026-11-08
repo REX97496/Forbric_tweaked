@@ -216,10 +216,15 @@ public final class ForgeCapabilityCompositionTransformer implements ClassTransfo
 						"every chunk getCapability/invalidateCaps/writeCapsToNBT NPEs on a null capProvider"),
 				new AnchorSet.Anchor(LIVING_ENTITY.replace('/', '.'), AnchorSet.Severity.REQUIRED,
 						"LivingEntity.handlers stays null: every mob death NPEs in invalidateCaps and every ITEM_HANDLER ask on a living entity NPEs"),
-				new AnchorSet.Anchor(ABSTRACT_FURNACE.replace('/', '.'), AnchorSet.Severity.REQUIRED,
-						"furnace.handlers stays null: every Forge pipe or hopper asking a furnace for ITEM_HANDLER NPEs"),
-				new AnchorSet.Anchor(CHISELED_BOOKSHELF.replace('/', '.'), AnchorSet.Severity.REQUIRED,
-						"bookshelf.itemHandler stays null: every Forge ITEM_HANDLER ask on a chiseled bookshelf NPEs"));
+				// HEDGE, not REQUIRED: measured on 1.21.1 both of these already carry their handlers — the furnace's
+				// constructor fills handlers at offset 68 from SidedInvWrapper.create and getCapability reads
+				// handlers[0|1|2]; the bookshelf's constructor fills itemHandler from LazyOptional.of. Nothing is null.
+				new AnchorSet.Anchor(ABSTRACT_FURNACE.replace('/', '.'), AnchorSet.Severity.HEDGE,
+						"if a base ever leaves furnace.handlers unassigned, every Forge pipe or hopper asking a furnace for "
+								+ "ITEM_HANDLER NPEs; 1.21.1 assigns it from SidedInvWrapper.create"),
+				new AnchorSet.Anchor(CHISELED_BOOKSHELF.replace('/', '.'), AnchorSet.Severity.HEDGE,
+						"if a base ever leaves bookshelf.itemHandler unassigned, every Forge ITEM_HANDLER ask on a chiseled "
+								+ "bookshelf NPEs; 1.21.1 assigns it from LazyOptional.of"));
 	}
 
 	/** The switch: whether capability dispatch is on. It never decides whether the roots are composed. */

@@ -82,9 +82,12 @@ public final class TooltipOrderScrapeInjector implements ClassTransformer {
 	@Override
 	public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("switched off by -D" + PROPERTY);
-		return AnchorSet.of(new AnchorSet.Anchor(ITEM_STACK, AnchorSet.Severity.REQUIRED,
-				"any Fabric mod touching fabric-item-api's tooltip-order registry dies with ExceptionInInitializerError "
-						+ "(\"Found no component types\")"));
+		// HEDGE, not REQUIRED: 1.21.1's ItemStack has no addDetailsToTooltip and the whole TooltipDisplay type it takes
+		// does not exist on this line — the component order lives inline in getTooltipLines — so there is no method to
+		// scrape a 20-entry order table out of.
+		return AnchorSet.of(new AnchorSet.Anchor(ITEM_STACK, AnchorSet.Severity.HEDGE,
+				"if this line declares addDetailsToTooltip(...TooltipDisplay...), a Fabric mod reading fabric-item-api's "
+						+ "tooltip-order registry gets no component types; 1.21.1 declares neither the method nor the type"));
 	}
 
 	@Override
