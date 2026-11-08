@@ -130,12 +130,12 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				"monster rooms never generate — the NeoForge data map they ask has no vanilla fallback"));
 		out.add(randomSourcePrecisionEnabled()
 				? new Claim(claimId("restoreDoublePrecisionToTheRandomSources"), AnchorSet.of(
-						new AnchorSet.Anchor(XOROSHIRO_RANDOM_SOURCE.replace('/', '.'), AnchorSet.Severity.REQUIRED,
-								"every noise octave's origin is off — the merged nextDouble() rounds through float, so no "
-										+ "world generates the way the same seed does in vanilla"),
-						new AnchorSet.Anchor(BIT_RANDOM_SOURCE.replace('/', '.'), AnchorSet.Severity.REQUIRED,
-								"WorldgenRandom's nextDouble() rounds through float and can return exactly 1.0 — out of "
-										+ "the [0,1) range every caller assumes")))
+						new AnchorSet.Anchor(XOROSHIRO_RANDOM_SOURCE.replace('/', '.'), AnchorSet.Severity.HEDGE,
+								"if this base ever assembles nextDouble() out of floats, every noise octave's origin moves "
+										+ "with it; measured on 1.21.1 it already multiplies 53 random bits by 1.1102230246251565E-16"),
+						new AnchorSet.Anchor(BIT_RANDOM_SOURCE.replace('/', '.'), AnchorSet.Severity.HEDGE,
+								"if this base ever assembles nextDouble() out of floats, it can return exactly 1.0; measured "
+										+ "on 1.21.1 it builds a 53-bit long from two ints and scales by 1.1102230246251565E-16")))
 				: scanned("restoreDoublePrecisionToTheRandomSources", "-D" + RANDOM_PRECISION_PROPERTY + "=off"));
 		out.add(fixed("convertRadiansWithVanillasFoldedConstant", "net/minecraft/world/entity/Entity",
 				"every angle the game computes from a vector is off in the eighth digit — the merged base divides by "
@@ -209,8 +209,10 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 						+ "five-parameter shape instead — posting both would double every tooltip line"));
 		out.add(fixed("askNeoForgeWhatAnItemsAttributesAre", ITEM_STACK,
 				"an item's attributes are read off the raw component — elytra flight and every NeoForge attribute modifier stop working"));
-		out.add(fixed("readTheSpawnReasonThatIsActuallyWritten", "net/minecraft/world/entity/Mob",
-				"Mob.getSpawnReason() reads a field the game never writes — spawn-reason logic sees null"));
+		out.add(new Claim(claimId("readTheSpawnReasonThatIsActuallyWritten"), AnchorSet.of(
+				new AnchorSet.Anchor("net.minecraft.world.entity.Mob", AnchorSet.Severity.HEDGE,
+						"if a base ever declares getSpawnReason() next to a field nothing writes, spawn-reason logic would "
+								+ "read null; 1.21.1 declares getSpawnType() over spawnType and no getSpawnReason() at all"))));
 		out.add(scanned("giveTheUnwrittenLoggerAValue", "any class with a static final Logger the merge left unassigned"));
 		// The capability composition (E) runs first in the same phase and composes the three roots itself on every
 		// launch — -Dforbric.forgeCapabilities=off turns off its dispatch, not the composition the roots' merged
