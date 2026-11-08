@@ -58,7 +58,7 @@ public final class KernelRegistryViews {
 		if (registry == null) return null;
 		Class<?> type = defaultedType(registry.getClass().getClassLoader());
 		if (type == null) return registry;
-		if (type.isInstance(registry)) return registry;
+		if (type.isInstance(registry) && answers(registry)) return registry;
 		// The mirrored slot is read by code that then treats the value as the registry it knows (measured:
 		// RegisterEvent casts it to WritableRegistry at Registry.register). A proxy that only declares
 		// DefaultedRegistry fails that cast, so it declares every interface the wrapped registry implements.
@@ -89,10 +89,18 @@ public final class KernelRegistryViews {
 	 */
 	public static Object listenable(Object registry) {
 		if (registry == null) return null;
-		ClassLoader loader = registry.getClass().getClassLoader();
+		// The registry is loaded by the game loader, which does not necessarily see fabric-api: measured on
+		// 1.21.1, every fabric registry type looked absent from there, this method returned the registry
+		// untouched, and the caller then registered a listener on a null event (NullPointerException in
+		// StateIdTracker.register during Bootstrap). The kernel loader sees both sides.
+		ClassLoader loader = KernelRegistryViews.class.getClassLoader();
 		Class<?> type = type(LISTENABLE, loader);
+		if (type == null) {
+			loader = registry.getClass().getClassLoader();
+			type = type(LISTENABLE, loader);
+		}
 		if (type == null) return registry;
-		if (type.isInstance(registry)) return registry;
+		if (type.isInstance(registry) && answers(registry)) return registry;
 		// A mirrored defaulted slot hands this class its own view; wrapping the view would implement only the
 		// interfaces the view declares (measured: `$Proxy34 cannot be cast to WritableRegistry` once that view
 		// reached a registry callback), so the proxy always wraps the registry behind the view.
@@ -111,6 +119,26 @@ public final class KernelRegistryViews {
 	 * The registry's own add-object event, created with Fabric's own {@code EventFactory} so a listener registered
 	 * through it is invoked by {@link #fire(Object, Object)} and by whoever else asks for the same registry.
 	 */
+	/**
+	 * Whether the registry that claims {@code ListenableRegistry} actually answers with an event.
+	 *
+	 * <p>Claiming the interface is not the same as answering for it. fabric-registry-sync supplies the interface
+	 * through a mixin on {@code MappedRegistry}; when that mixin applies only partially — measured on the merged
+	 * base as 12 of 15 anchors — the interface is present but the field its getter returns was never
+	 * initialised, so {@code RegistryEntryAddedCallback.event(registry)} comes back null and the first listener
+	 * registration dies with {@code NullPointerException: Cannot invoke "Event.register(Object)"} inside
+	 * {@code Bootstrap}. A registry that cannot answer is wrapped exactly like one that never had the interface.
+	 */
+	private static boolean answers(Object registry) {
+		try {
+			java.lang.reflect.Method event = methodOn(registry.getClass(), "fabric_getAddObjectEvent", new Class<?>[0]);
+			if (event == null) return false;
+			return invokeOn(event, registry, new Object[0]) != null;
+		} catch (Throwable unanswered) {
+			return false;
+		}
+	}
+
 	public static Object addObjectEvent(Object registry) {
 		return eventFor(registry, ADDED, "net.fabricmc.fabric.api.event.registry.RegistryEntryAddedCallback");
 	}
@@ -134,7 +162,10 @@ public final class KernelRegistryViews {
 		try {
 			Class<?> factory = type(EVENT_FACTORY, loader);
 			Class<?> callback = type(callbackName, loader);
-			if (factory == null || callback == null) return null;
+			if (factory == null || callback == null) {
+				net.forbric.kernel.util.ForbricLog.warn("[Forbric/RegistryViews] " + (factory == null ? EVENT_FACTORY : callbackName) + " is not on " + loader + ", so no event can be made");
+				return null;
+			}
 			Method create = null;
 			for (Method candidate : factory.getMethods()) {
 				if (!candidate.getName().equals("createArrayBacked")) continue;
@@ -143,10 +174,14 @@ public final class KernelRegistryViews {
 				create = candidate;
 				break;
 			}
-			if (create == null) return null;
+			if (create == null) {
+				net.forbric.kernel.util.ForbricLog.warn("[Forbric/RegistryViews] " + factory.getName() + " has no createArrayBacked(Class, Function)");
+				return null;
+			}
 			java.util.function.Function<Object[], Object> invoker = listeners -> dispatch(callback, listeners);
 			return create.invoke(null, callback, invoker);
 		} catch (ReflectiveOperationException | LinkageError unreadable) {
+			net.forbric.kernel.util.ForbricLog.warn("[Forbric/RegistryViews] the event for " + callbackName + " could not be built", unreadable);
 			return null;
 		}
 	}

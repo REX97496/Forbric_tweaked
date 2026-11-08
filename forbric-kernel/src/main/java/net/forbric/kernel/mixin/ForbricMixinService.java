@@ -847,6 +847,9 @@ public final class ForbricMixinService
 				"ServerWorldMixin/ChunkHolderMixin apply only partially, so ServerLevel never received its"
 						+ " LoadedChunksCache and the first chunk load threw ClassCastException");
 		m.put("fabric-lifecycle-events-v1.client.mixins.json", "client half of the same contract");
+		m.put("fabric-biome-api-v1.mixins.json",
+				"the biome sources keep a hook whose backing field is never assigned, and opening a world then"
+				+ " died with NullPointerException in TheEndBiomeSource.fabric_modifyBiomeSet (overrides null)");
 		DISABLED_GUEST_CONFIGS = java.util.Collections.unmodifiableMap(m);
 	}
 

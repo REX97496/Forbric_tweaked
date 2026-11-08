@@ -120,48 +120,77 @@ public final class GuestJarRemap {
 		private static final YarnNames EMPTY = new YarnNames();
 		private final Map<String, String> classes = new HashMap<>();
 		private final Map<String, String> members = new HashMap<>();
+		/** Mixin class (internal name) to its own refmap: the selector the author wrote, and the selector it means. */
+		private final Map<String, Map<String, String>> selectors = new HashMap<>();
 	}
 
 	/** A named-to-intermediary pair inside a refmap's {@code data} section. */
 	private static final Pattern YARN_PAIR = Pattern.compile(
 			"\"([^\"]*)\"\\s*:\\s*\"L([A-Za-z0-9_$/]+);([A-Za-z0-9_$<>]+)([:(][^\"\\r\\n]*)?\"");
 
-	private static YarnNames readYarnNames(byte[] jarBytes) {
-		YarnNames names = new YarnNames();
-		try (ZipInputStream in = new ZipInputStream(new java.io.ByteArrayInputStream(jarBytes))) {
-			for (ZipEntry entry; (entry = in.getNextEntry()) != null; ) {
-				if (entry.isDirectory() || !entry.getName().endsWith("-refmap.json")) continue;
-				String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-				int at = text.indexOf("\"data\"");
-				if (at < 0) continue;
-				Matcher matcher = YARN_PAIR.matcher(text.substring(at));
-				while (matcher.find()) {
-					String key = matcher.group(1);
-					String intermediaryOwner = matcher.group(2);
-					String intermediaryMember = matcher.group(3);
-					if (!intermediaryOwner.contains("class_")) continue;
-					int semicolon = key.indexOf(';');
-					String namedOwner = key.startsWith("L") && semicolon > 0 ? key.substring(1, semicolon) : null;
-					if (namedOwner != null && namedOwner.startsWith("net/minecraft/")
-							&& !namedOwner.contains("class_")) {
-						names.classes.putIfAbsent(namedOwner, intermediaryOwner);
-					}
-					String namedMember = namedOwner != null ? key.substring(semicolon + 1) : key;
-					int cut = namedMember.indexOf('(') >= 0 ? namedMember.indexOf('(') : namedMember.indexOf(':');
-					if (cut >= 0) namedMember = namedMember.substring(0, cut);
-					if (namedMember.matches("[A-Za-z_$][A-Za-z0-9_$]*") && !namedMember.contains("class_")
-							&& intermediaryMember.matches("(?:method|field)_\\d+")
-							&& !namedMember.equals(intermediaryMember)) {
-						names.members.putIfAbsent(namedMember, intermediaryMember);
-					}
+	/** A mixin class's own block inside a refmap's {@code mappings} section. */
+	private static final Pattern MIXIN_BLOCK = Pattern.compile(
+			"\"([A-Za-z0-9_$/]+)\"\\s*:\\s*\\{([^{}]*)\\}");
+	/** One entry inside such a block: the authored selector, and the selector it means. */
+	private static final Pattern SELECTOR_ENTRY = Pattern.compile("\"([^\"]+)\"\\s*:\\s*\"([^\"]+)\"");
+
+	/**
+	 * Reads what each mixin class in this jar wrote down about its own targets.
+	 *
+	 * <p>A refmap's {@code mappings} block is keyed by mixin class, and each entry is
+	 * {@code "the selector the author wrote": "Lowner;name(desc)ret"}. That is the guest's own statement about what
+	 * its {@code @Inject(method = …)} meant, and it is the only place that statement exists: {@code ItemGroupMixin}
+	 * injects into {@code updateEntries}, which is Yarn for {@code CreativeModeTab.buildContents}, and nothing in the
+	 * class file itself says so. Measured on 1.21.1: the anchors analysis resolved the name literally, reported
+	 * "@Inject target CreativeModeTab.updateEntries" as missing, relaxed the injection away — and opening the
+	 * creative inventory then died with {@code IllegalStateException: Item group has no page}, because the injection
+	 * that would have set it had been switched off by us rather than failing on its own.
+	 */
+	private static Map<String, Map<String, String>> readMixinSelectors(String refmap) {
+		int start = refmap.indexOf("\"mappings\"");
+		if (start < 0) return new HashMap<>();
+		int data = refmap.indexOf("\"data\"", start);
+		String official = data > start ? refmap.substring(start, data) : refmap.substring(start);
+		String intermediate = data > start ? refmap.substring(data) : "";
+		Map<String, Map<String, String>> byOfficial = selectorBlocks(official);
+		Map<String, Map<String, String>> byIntermediary = selectorBlocks(intermediate);
+		Map<String, Map<String, String>> found = new HashMap<>();
+		for (Map.Entry<String, Map<String, String>> mixin : byOfficial.entrySet()) {
+			Map<String, String> answers = new HashMap<>(mixin.getValue());
+			Map<String, String> intermediary = byIntermediary.get(mixin.getKey());
+			if (intermediary != null) {
+				// The annotation no longer carries the authored name by the time this pass sees it: the remapper has
+				// already rewritten the string into its intermediary selector. Measured on ItemGroupMixin:
+				// method = "updateEntries" arrives as "Lnet/minecraft/class_1761;method_47306(…)V".
+				for (Map.Entry<String, String> entry : mixin.getValue().entrySet()) {
+					String asIntermediary = intermediary.get(entry.getKey());
+					if (asIntermediary != null) answers.put(asIntermediary, entry.getValue());
 				}
 			}
-		} catch (IOException unreadable) {
-			return names;
+			found.put(mixin.getKey(), answers);
 		}
-		return names;
+		return found;
 	}
 
+	/** One refmap section, as mixin class to authored selector to the selector it stands for. */
+	private static Map<String, Map<String, String>> selectorBlocks(String section) {
+		Map<String, Map<String, String>> found = new HashMap<>();
+		Matcher outer = MIXIN_BLOCK.matcher(section);
+		while (outer.find()) {
+			Map<String, String> entries = null;
+			Matcher inner = SELECTOR_ENTRY.matcher(outer.group(2));
+			while (inner.find()) {
+				String from = inner.group(1);
+				String to = inner.group(2);
+				// A selector is the Lowner;member form. A bare number pair or a plain name is not one.
+				if (!to.startsWith("L") || to.indexOf(';') < 0) continue;
+				if (entries == null) entries = new HashMap<>();
+				entries.put(from, to);
+			}
+			if (entries != null) found.put(outer.group(1), entries);
+		}
+		return found;
+	}
 	/** Off switch, for a launch that needs to see the unwritten jar. */
 	public static final String SWITCH = "forbric.remapGuestJars";
 
@@ -169,6 +198,8 @@ public final class GuestJarRemap {
 	private static final Pattern INTERMEDIARY = Pattern.compile(
 			"(?<![A-Za-z0-9_$/.\\-])((?:[A-Za-z0-9_$]+[./])*class_\\d+(?:\\$[A-Za-z0-9_$]+)*)");
 
+	/** A class token inside a descriptor. */
+	private static final Pattern DESCRIPTOR_CLASS = Pattern.compile("L([A-Za-z0-9_$/]+);");
 	/** A refmap method selector value: {@code "Lowner;name(args)ret"}. */
 	private static final Pattern REFMAP_METHOD = Pattern.compile(
 			"\"L([A-Za-z0-9_$/]+);([A-Za-z0-9_$<>]+)\\(([^)]*)\\)([A-Za-z0-9_$/;\\[\\$]+)\"");
@@ -297,6 +328,50 @@ public final class GuestJarRemap {
 			out.add(jar.startsWith(under) ? remapOneOrKeep(jar, cacheDir) : jar);
 		}
 		return out;
+	}
+
+	/**
+	 * Reads a jar's refmaps into the two dictionaries the class pass needs.
+	 *
+	 * <p>A refmap's {@code data} section is exactly the set of named references that jar writes down, so the guest's
+	 * own dictionary answers for its own names and no external Yarn table is needed. Rebuilt per jar; guest jars are
+	 * rewritten one at a time.
+	 */
+	private static YarnNames readYarnNames(byte[] jarBytes) {
+		YarnNames names = new YarnNames();
+		try (ZipInputStream in = new ZipInputStream(new java.io.ByteArrayInputStream(jarBytes))) {
+			for (ZipEntry entry; (entry = in.getNextEntry()) != null; ) {
+				if (entry.isDirectory() || !entry.getName().endsWith("-refmap.json")) continue;
+				String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+				names.selectors.putAll(readMixinSelectors(text));
+				int at = text.indexOf("\"data\"");
+				if (at < 0) continue;
+				Matcher matcher = YARN_PAIR.matcher(text.substring(at));
+				while (matcher.find()) {
+					String key = matcher.group(1);
+					String intermediaryOwner = matcher.group(2);
+					String intermediaryMember = matcher.group(3);
+					if (!intermediaryOwner.contains("class_")) continue;
+					int semicolon = key.indexOf(';');
+					String namedOwner = key.startsWith("L") && semicolon > 0 ? key.substring(1, semicolon) : null;
+					if (namedOwner != null && namedOwner.startsWith("net/minecraft/")
+							&& !namedOwner.contains("class_")) {
+						names.classes.putIfAbsent(namedOwner, intermediaryOwner);
+					}
+					String namedMember = namedOwner != null ? key.substring(semicolon + 1) : key;
+					int cut = namedMember.indexOf('(') >= 0 ? namedMember.indexOf('(') : namedMember.indexOf(':');
+					if (cut >= 0) namedMember = namedMember.substring(0, cut);
+					if (namedMember.matches("[A-Za-z_$][A-Za-z0-9_$]*") && !namedMember.contains("class_")
+							&& intermediaryMember.matches("(?:method|field)_\\d+")
+							&& !namedMember.equals(intermediaryMember)) {
+						names.members.putIfAbsent(namedMember, intermediaryMember);
+					}
+				}
+			}
+		} catch (IOException unreadable) {
+			return names;
+		}
+		return names;
 	}
 
 	private static Path remapOneOrKeep(Path jar, Path cacheDir) {
@@ -466,6 +541,276 @@ public final class GuestJarRemap {
 	}
 
 	/** One class through {@link ClassRemapper}, with every name the resolver knows. */
+	/**
+	 * Rewrites the selectors a guest wrote in its own injection annotations into the ones the base answers to.
+	 *
+	 * <p>A mixin's {@code @Inject(method = "updateEntries")} names a Yarn member; the base has no such member, and the
+	 * only statement of what the guest meant is the jar's own refmap. Rewriting the annotation here means our anchor
+	 * analysis and Mixin's own binding both read the same selector, so a mixin cannot be judged unfit by us and then be
+	 * silently relaxed away — measured on 1.21.1 as {@code IllegalStateException: Item group has no page} when
+	 * opening the creative inventory.
+	 */
+	private static byte[] rewriteInjectionSelectors(byte[] bytes) {
+		if (yarn.selectors.isEmpty()) return bytes;
+		ClassNode node = new ClassNode();
+		// Frames are kept: renaming a string constant moves no instruction.
+		new ClassReader(bytes).accept(node, 0);
+		Map<String, String> mine = yarn.selectors.get(node.name);
+		if (mine == null) return bytes;
+		List<String> targets = new ArrayList<>();
+		for (List<org.objectweb.asm.tree.AnnotationNode> list : annotationLists(node)) {
+			if (list == null) continue;
+			for (org.objectweb.asm.tree.AnnotationNode annotation : list) {
+				if (!"Lorg/spongepowered/asm/mixin/Mixin;".equals(annotation.desc)) continue;
+				collectTargets(annotation, targets);
+			}
+		}
+		boolean changed = false;
+		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+			for (List<org.objectweb.asm.tree.AnnotationNode> list : annotationLists(method)) {
+				if (list == null) continue;
+				for (org.objectweb.asm.tree.AnnotationNode annotation : list) {
+					if (annotation.desc == null || !annotation.desc.startsWith("Lorg/spongepowered/asm/mixin/injection/")) {
+						continue;
+					}
+					if (annotation.values == null) continue;
+					// Off by default: rewriting @At targets turned mixins Mixin used to drop softly into 52 hard
+					// InvalidInjectionException failures, and the half-applied hooks it left behind threw while a world
+					// opened (TheEndBiomeSource.fabric_modifyBiomeSet on a null overrides).
+				if (Boolean.getBoolean("forbric.rewriteAtTargets") && rewriteAtTargets(annotation)) changed = true;
+					for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
+						if (!"method".equals(annotation.values.get(i))) continue;
+						Object written = annotation.values.get(i + 1);
+						if (written instanceof String single) {
+							String fixed = unqualified(selectorFrom(mine, single), targets);
+							if (fixed != null) {
+								annotation.values.set(i + 1, fixed);
+								changed = true;
+							}
+						} else if (written instanceof List<?> many) {
+							@SuppressWarnings("unchecked")
+							List<String> selectors = (List<String>) many;
+							for (int s = 0; s < selectors.size(); s++) {
+								String fixed = unqualified(selectorFrom(mine, selectors.get(s)), targets);
+								if (fixed != null) {
+									selectors.set(s, fixed);
+									changed = true;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		if (!changed) return bytes;
+		ClassWriter writer = new ClassWriter(0);
+		node.accept(writer);
+		return writer.toByteArray();
+	}
+
+	/**
+	 * Rewrites the {@code target} of every {@code @At} nested in an injection annotation.
+	 *
+	 * <p>A guest writes INVOKE targets in intermediary form, e.g. {@code @Redirect(at = @At(value = "INVOKE", target =
+	 * "Lnet/minecraft/class_1309;method_6043(Lnet/minecraft/world/damagesource/DamageSource;)V"))}, and Mixin refuses
+	 * the qualified intermediary spelling outright: measured on fabric-entity-events-v1's {@code LivingEntityMixin},
+	 * {@code @Redirect annotation on beforeEntityKilled specifies a target class 'net/minecraft/class_1309', which is
+	 * not supported}. Sixty such failures in one boot came from this one hole.
+	 */
+	private static boolean rewriteAtTargets(org.objectweb.asm.tree.AnnotationNode annotation) {
+		if (annotation.values == null) return false;
+		boolean changed = false;
+		for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
+			Object value = annotation.values.get(i + 1);
+			if (value instanceof org.objectweb.asm.tree.AnnotationNode nested) {
+				if (nested.desc != null && nested.desc.endsWith("/At;") && nested.values != null) {
+					for (int n = 0; n + 1 < nested.values.size(); n += 2) {
+						if (!"target".equals(nested.values.get(n))) continue;
+						if (!(nested.values.get(n + 1) instanceof String text)) continue;
+						String fixed = officialTarget(text);
+						if (fixed != null && !fixed.equals(text)) {
+							nested.values.set(n + 1, fixed);
+							changed = true;
+						}
+					}
+				}
+				if (rewriteAtTargets(nested)) changed = true;
+			} else if (value instanceof List<?> many) {
+				for (Object each : many) {
+					if (each instanceof org.objectweb.asm.tree.AnnotationNode nested && rewriteAtTargets(nested)) {
+						changed = true;
+					}
+				}
+			}
+		}
+		return changed;
+	}
+
+	/** An {@code @At} target rewritten into the base's spelling, or null when it is already there. */
+	private static String officialTarget(String target) {
+		if (target == null || target.isEmpty()) return null;
+		if (!target.startsWith("L") || target.indexOf(';') <= 0) {
+			if (!target.contains("class_")) return null;
+			String slash = target.replace('.', '/');
+			String mapped = mapInternal(slash);
+			return mapped.equals(slash) ? null : mapped.replace('/', '.');
+		}
+		int close = target.indexOf(';');
+		String owner = target.substring(1, close);
+		String rest = target.substring(close + 1);
+		int paren = rest.indexOf('(');
+		int colon = rest.indexOf(':');
+		String officialOwner = mapInternal(owner);
+		if (paren >= 0) {
+			String name = rest.substring(0, paren);
+			String descriptor = rest.substring(paren);
+			String official = KernelMappingResolver.INSTANCE.mapMethodName("intermediary", owner, name, descriptor);
+			if (official.equals(name)) {
+				String ownerless = KernelMappingResolver.INSTANCE.mapMethodNameWithoutOwner("intermediary", name);
+				if (ownerless != null && !ownerless.isEmpty() && !ownerless.equals(name)) official = ownerless;
+			}
+			if (officialOwner.equals(owner) && official.equals(name)) return null;
+			String officialParameters = officialDescriptor(descriptor);
+			if (!baseDeclares(officialOwner, official, officialParameters)) return null;
+			return "L" + officialOwner + ';' + official + officialParameters;
+		}
+		if (colon > 0) {
+			String name = rest.substring(0, colon);
+			String descriptor = rest.substring(colon);
+			String official = KernelMappingResolver.INSTANCE.mapFieldName("intermediary", owner, name, descriptor);
+			if (officialOwner.equals(owner) && official.equals(name)) return null;
+			return "L" + officialOwner + ';' + official + officialDescriptor(descriptor);
+		}
+		return officialOwner.equals(owner) ? null : "L" + officialOwner + ';' + rest;
+	}
+
+	/** Whether the base really declares this member with this shape, so an answer can be written. */
+	private static boolean baseDeclares(String owner, String name, String descriptor) {
+		MethodIndex index = minecraftIndex;
+		if (index == null || descriptor == null || descriptor.isEmpty()) return true;
+		for (BaseMethod method : index.declaredByType(owner, descriptor)) {
+			if (method.name().equals(name)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Drops the owner from a selector that names this mixin's own target class.
+	 *
+	 * <p>Mixin reads an owner-qualified selector in {@code @Inject} as a request to target another class and refuses
+	 * it outright: measured on {@code CreativeInventoryScreenMixin}, {@code method = "Lnet/minecraft/class_481;
+	 * method_25426()V"} produced {@code InvalidInjectionException: @Inject annotation on init specifies a target class
+	 * 'net/minecraft/class_481', which is not supported}. The bare form is what the annotation means.
+	 */
+	private static String unqualified(String selector, List<String> targets) {
+		if (selector == null || !selector.startsWith("L")) return selector;
+		int close = selector.indexOf(';');
+		if (close < 0) return selector;
+		String owner = selector.substring(1, close);
+		for (String target : targets) {
+			if (target != null && target.equals(owner)) return selector.substring(close + 1);
+		}
+		return selector;
+	}
+
+	/** One authored selector, or a semicolon-separated run of them, in the base's own spelling. */
+	private static String selectorFrom(Map<String, String> mine, String written) {
+		if (written == null || written.isEmpty()) return null;
+		if (!written.contains(";")) {
+			return answerFor(mine, written);
+		}
+		StringBuilder out = new StringBuilder();
+		boolean any = false;
+		for (String part : written.split(";")) {
+			String answer = answerFor(mine, part);
+			if (answer == null) answer = part;
+			else any = true;
+			if (out.length() > 0) out.append(';');
+			out.append(answer);
+		}
+		return any ? out.toString() : null;
+	}
+
+	/**
+	 * The table's answer for one selector, or null when it has none that differs.
+	 *
+	 * <p>A jar's refmap frequently records the intermediary selector on both sides of its own dictionary, so a hit
+	 * is not yet an answer: measured on ItemGroupMixin, the entry is
+	 * {@code "Lnet/minecraft/class_1761;method_47306(…)V": "Lnet/minecraft/class_1761;method_47306(…)V"}. The
+	 * selector only becomes usable once the table has turned the member name into the official one.
+	 */
+	private static String answerFor(Map<String, String> mine, String written) {
+		String candidate = mine.get(written);
+		if (candidate == null) candidate = mine.get(memberOf(written));
+		if (candidate == null) return officialSelector(written);
+		String official = officialSelector(candidate);
+		if (official != null) return official;
+		// Never hand back a selector the table could not finish. An intermediary owner in an @Inject selector is a
+		// hard Mixin failure ("specifies a target class …, which is not supported"), while leaving the authored name
+		// in place lets the refmap answer it exactly as it did before this pass existed.
+		return looksIntermediary(candidate) ? null : candidate;
+	}
+
+	/** Whether a selector still spells a class or member in intermediary names. */
+	private static boolean looksIntermediary(String selector) {
+		if (selector.contains("class_")) return true;
+		String head = selector;
+		int paren = head.indexOf('(');
+		if (paren >= 0) head = head.substring(0, paren);
+		int semicolon = head.lastIndexOf(';');
+		if (semicolon >= 0) head = head.substring(semicolon + 1);
+		return INTERMEDIARY_MEMBER.matcher(head).matches();
+	}
+
+	/** An intermediary selector rewritten into the official spelling, or null when it is not one. */
+	private static String officialSelector(String selector) {
+		if (!selector.startsWith("L") || selector.indexOf(';') < 0) return null;
+		int close = selector.indexOf(';');
+		String owner = selector.substring(1, close);
+		String rest = selector.substring(close + 1);
+		int paren = rest.indexOf('(');
+		if (paren < 0) return null;
+		String name = rest.substring(0, paren);
+		String descriptor = rest.substring(paren);
+		if (!INTERMEDIARY_MEMBER.matcher(name).matches()) return null;
+		String officialName = KernelMappingResolver.INSTANCE.mapMethodName("intermediary", owner, name, descriptor);
+		if (officialName.equals(name)) {
+			// The selector may name a subclass of the class that declares the member: method_25426 (`init`) is
+			// recorded under class_437 (Screen) alone, so an owner-aware lookup answers "unchanged" while the
+			// owner-less table knows the name. Measured on CreativeInventoryScreenMixin, where writing the
+			// intermediary result was a hard Mixin failure.
+			String ownerless = KernelMappingResolver.INSTANCE.mapMethodNameWithoutOwner("intermediary", name);
+			if (ownerless == null || ownerless.isEmpty() || ownerless.equals(name)) return null;
+			officialName = ownerless;
+		}
+		String officialOwner = mapInternal(owner);
+		String officialParameters = officialDescriptor(descriptor);
+		// The table's keys carry no descriptor, so an overloaded name can map to a name the base does not declare with
+		// this shape. Only an answer the base confirms may be written: measured on the 1.21.1 line, writing the
+		// unconfirmed ones turned refmap-resolvable injections into hard InvalidInjectionException failures.
+		if (!baseDeclares(officialOwner, officialName, officialParameters)) return null;
+		return "L" + officialOwner + ';' + officialName + officialParameters;
+	}
+
+	/** Rewrites every intermediary class token inside a descriptor. */
+	private static String officialDescriptor(String descriptor) {
+		Matcher matcher = DESCRIPTOR_CLASS.matcher(descriptor);
+		StringBuilder out = new StringBuilder();
+		while (matcher.find()) {
+			matcher.appendReplacement(out, Matcher.quoteReplacement("L" + mapInternal(matcher.group(1)) + ';'));
+		}
+		matcher.appendTail(out);
+		return out.toString();
+	}
+	/** The bare member name of a selector: everything before its descriptor, minus any owner prefix. */
+	private static String memberOf(String selector) {
+		int cut = selector.indexOf('(');
+		if (cut < 0) cut = selector.length();
+		String head = selector.substring(0, cut);
+		int semicolon = head.lastIndexOf(';');
+		return semicolon >= 0 ? head.substring(semicolon + 1) : head;
+	}
+
 	private static byte[] mapClass(byte[] content, Set<String> seen) {
 		ClassReader reader = new ClassReader(content);
 		// COMPUTE_MAXS, never COMPUTE_FRAMES: renaming does not change a single instruction, and recomputing frames
@@ -478,7 +823,7 @@ public final class GuestJarRemap {
 		// class_2591"). Measured after the first pass, which only handled descriptors: 251 "Error loading class:
 		// net/minecraft/class_2591" lines survived a jar that had been rewritten top to bottom.
 		reader.accept(new StringConstants(remapper, seen, owners), 0);
-		return renameOverrides(patchListenableRegistry(renameShadows(writer.toByteArray())));
+		return rewriteInjectionSelectors(renameOverrides(patchListenableRegistry(renameShadows(writer.toByteArray()))));
 	}
 
 	/**
@@ -1059,7 +1404,7 @@ public final class GuestJarRemap {
 		MethodIndex index = minecraftIndex;
 		if (index == null) return null;
 		List<BaseMethod> byDescriptor = index.declaredByType(officialOwner, officialDescriptor);
-		if (debugShapes-- > 0) {
+		if (debugShapes-- > 0 && Boolean.getBoolean("forbric.debugShapes")) {
 			ForbricLog.info("[Forbric/Shape] ref " + mapped + " " + officialOwner + officialDescriptor + " -> "
 					+ byDescriptor);
 		}
@@ -1548,11 +1893,13 @@ public final class GuestJarRemap {
 		private String byDescriptor(String owner, String name, String descriptor, boolean method) {
 			MethodIndex index = minecraftIndex;
 			if (index == null) {
-				if (shapeProbes-- > 0) ForbricLog.info("[Forbric/Shape] no index for " + owner);
+				if (shapeProbes-- > 0 && Boolean.getBoolean("forbric.debugShapes")) {
+					ForbricLog.info("[Forbric/Shape] no index for " + owner);
+				}
 				return null;
 			}
 			List<BaseMethod> candidates = index.declaredByType(mapInternal(owner), mapDesc(descriptor));
-			if (shapeProbes-- > 0) {
+			if (shapeProbes-- > 0 && Boolean.getBoolean("forbric.debugShapes")) {
 				ForbricLog.info("[Forbric/Shape] " + owner + " " + name + " " + descriptor + " -> "
 						+ mapInternal(owner) + mapDesc(descriptor) + " : " + candidates);
 			}

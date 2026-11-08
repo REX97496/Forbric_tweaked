@@ -43,19 +43,19 @@ import net.neoforged.neoforge.event.EventHooks;
  * five-argument call). The throw is not an invention: 1.21.1's own method already throws it for a tab that is
  * not registered, and {@code buildContents} only ever runs on a registered tab.
  *
- * <p>The public signature is unchanged, because {@code ForgeCreativeTabsInjector} redirects the merged
- * {@code CreativeModeTab.buildContents} call site to it by descriptor, and that descriptor is the four-argument
- * one on this line as well. What the injector will need on 1.21.1 is a separate matter and is not decided here:
- * its {@code HOOK_DESC} matches only the four-argument carrier call, and 1.21.1's carrier call has five.
+ * <p>{@code ForgeCreativeTabsInjector} redirects the merged {@code CreativeModeTab.buildContents} call site to
+ * this class and keeps that call's descriptor. On this line the call carries the tab's registry key, so the
+ * five-argument shape is the one the injector lands on; the four-argument shape stays for call sites with no
+ * key and delegates to it. Both were needed: the injector rewrote the owner of a five-argument call to a class
+ * that only had four, and opening the creative inventory died with {@code NoSuchMethodError}.
  */
 public final class KernelForgeCreativeTabs {
 	private KernelForgeCreativeTabs() { }
 
-	/** Same descriptor as both carriers' onCreativeModeTabBuildContents. */
-	public static void buildContents(CreativeModeTab tab, CreativeModeTab.DisplayItemsGenerator generator,
-			CreativeModeTab.ItemDisplayParameters parameters, CreativeModeTab.Output output) {
-		ResourceKey<CreativeModeTab> key = BuiltInRegistries.CREATIVE_MODE_TAB.getResourceKey(tab)
-				.orElseThrow(() -> new IllegalStateException("Creative mode tab not registered: " + tab));
+	/** Same descriptor as both carriers' onCreativeModeTabBuildContents on this line. */
+	public static void buildContents(CreativeModeTab tab, ResourceKey<CreativeModeTab> key,
+			CreativeModeTab.DisplayItemsGenerator generator, CreativeModeTab.ItemDisplayParameters parameters,
+			CreativeModeTab.Output output) {
 		if ("off".equalsIgnoreCase(System.getProperty("forbric.forgeCreativeTabs", "on"))) {
 			EventHooks.onCreativeModeTabBuildContents(tab, key, generator, parameters, output);
 			return;
@@ -65,5 +65,17 @@ public final class KernelForgeCreativeTabs {
 		// its existing empty-stack tolerance still runs before anything reaches Forge's collector.
 		ForgeHooks.onCreativeModeTabBuildContents(tab, key,
 				(p, o) -> EventHooks.onCreativeModeTabBuildContents(tab, key, generator, p, o), parameters, output);
+	}
+
+	/**
+	 * The four-argument shape, for a call site that has no key to hand. It resolves the key the way the game's
+	 * own patched {@code CreativeModeTab.buildContents} does, then takes the five-argument path above, so both
+	 * shapes dispatch exactly the same events.
+	 */
+	public static void buildContents(CreativeModeTab tab, CreativeModeTab.DisplayItemsGenerator generator,
+			CreativeModeTab.ItemDisplayParameters parameters, CreativeModeTab.Output output) {
+		ResourceKey<CreativeModeTab> key = BuiltInRegistries.CREATIVE_MODE_TAB.getResourceKey(tab)
+				.orElseThrow(() -> new IllegalStateException("Creative mode tab not registered: " + tab));
+		buildContents(tab, key, generator, parameters, output);
 	}
 }
