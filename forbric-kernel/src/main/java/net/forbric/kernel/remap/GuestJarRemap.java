@@ -1019,27 +1019,48 @@ public final class GuestJarRemap {
 				}
 			}
 		}
-		if (byDescriptor.isEmpty() && fieldByDescriptor.isEmpty()) return remapped;
+		// The `@Shadow` passes answer only for members DECLARED on the mixin. A mixin that reads an inherited member
+		// names it on itself with no declaration at all, so an empty map here does not mean there is nothing to do:
+		// leaving early skipped those references entirely and the client died on the very next inherited field
+		// (ServerGamePacketListenerImpl does not have member field ... field_45013).
+		boolean changed = !byDescriptor.isEmpty() || !fieldByDescriptor.isEmpty();
 		for (MethodNode method : node.methods) {
 			String renamed = byDescriptor.get(method.name + method.desc);
-			if (renamed != null) method.name = renamed;
+			if (renamed != null) {
+				method.name = renamed;
+				changed = true;
+			}
 			for (org.objectweb.asm.tree.AbstractInsnNode insn : method.instructions) {
 				if (insn instanceof org.objectweb.asm.tree.MethodInsnNode call
 						&& node.name.equals(call.owner)) {
 					String called = byDescriptor.get(call.name + call.desc);
-					if (called != null) call.name = called;
+					if (called == null) called = reachableName(index, node.superName, call.name, call.desc, true);
+					if (called != null) {
+						call.name = called;
+						changed = true;
+					}
 				}
 				if (insn instanceof org.objectweb.asm.tree.FieldInsnNode access
 						&& node.name.equals(access.owner)) {
 					String called = fieldByDescriptor.get(access.name + ' ' + access.desc);
-					if (called != null) access.name = called;
+					if (called == null) {
+						called = reachableName(index, node.superName, access.name, access.desc, false);
+					}
+					if (called != null) {
+						access.name = called;
+						changed = true;
+					}
 				}
 			}
 		}
 		for (org.objectweb.asm.tree.FieldNode field : node.fields) {
 			String renamed = fieldByDescriptor.get(field.name + ' ' + field.desc);
-			if (renamed != null) field.name = renamed;
+			if (renamed != null) {
+				field.name = renamed;
+				changed = true;
+			}
 		}
+		if (!changed) return remapped;
 		ClassWriter writer = new ClassWriter(0);
 		node.accept(writer);
 		return writer.toByteArray();
@@ -1099,6 +1120,32 @@ public final class GuestJarRemap {
 			if (method.name().equals(name)) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Answers a member a mixin names on <em>itself</em> but inherits from the game class it is written against.
+	 *
+	 * <p>Measured: {@code net.fabricmc.fabric.mixin.networking.ServerConfigurationNetworkHandlerMixin} reads
+	 * {@code getfield field_45012:Lnet/minecraft/server/MinecraftServer;} on its own type — Yarn for the
+	 * {@code server} field of {@code ServerCommonPacketListenerImpl}, which is the mixin's superclass and not one of
+	 * its {@code @Mixin} targets. No {@code @Shadow} declaration exists, so the passes above never saw it, the name
+	 * stayed intermediary, and the player was kicked at the configuration handshake with
+	 * {@code NoSuchFieldError: ServerConfigurationPacketListenerImpl does not have member field ... field_45012}.
+	 *
+	 * <p>The table's by-name answer is accepted only when a supertype of the mixin really declares that name with
+	 * that shape; otherwise the name is left alone and the failure stays visible.
+	 */
+	private static String reachableName(MethodIndex index, String superName, String name, String descriptor,
+			boolean method) {
+		if (superName == null || !INTERMEDIARY_MEMBER.matcher(name).matches()) return null;
+		String mapped = method
+				? KernelMappingResolver.INSTANCE.mapMethodNameWithoutOwner("intermediary", name)
+				: KernelMappingResolver.INSTANCE.mapFieldNameWithoutOwner("intermediary", name);
+		if (mapped.equals(name)) return null;
+		boolean declared = method
+				? index.declares(superName, descriptor, mapped)
+				: index.fieldsOfShape(superName, descriptor).contains(mapped);
+		return declared ? mapped : null;
 	}
 
 	private static boolean declaresFieldName(MethodIndex index, String owner, String descriptor, String name) {
@@ -2057,7 +2104,7 @@ public final class GuestJarRemap {
 	}
 
 	/** The cache salt: bump {@code CACHE_VERSION} whenever the rewriting itself changes. */
-	private static final String CACHE_VERSION = "6";
+	private static final String CACHE_VERSION = "7";
 
 	private static byte[] fingerprintOf(byte[] jarBytes) {
 		String table = System.getProperty(KernelMappingResolver.TABLE_PROPERTY, "");

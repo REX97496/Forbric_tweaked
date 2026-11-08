@@ -525,9 +525,11 @@ public final class PayloadInterop {
 		Class<?> registryClass = load(loader, FABRIC_REGISTRY);
 		if (registryClass == null) return null;
 
-		String field = fabricRegistryField(protocol, packetFlow);
-		if (field == null) return null;
-		Object registry = staticField(registryClass, field);
+		Object registry = null;
+		for (String field : fabricRegistryFields(protocol, packetFlow)) {
+			registry = staticField(registryClass, field);
+			if (registry != null) break;
+		}
 		if (registry == null) return null;
 		Object existing = invoke(registry, "get", id);
 		if (existing != null) return existing;
@@ -1257,22 +1259,43 @@ public final class PayloadInterop {
 		Class<?> registryClass = load(loader, FABRIC_REGISTRY);
 		if (registryClass == null) return null;
 
-		String field = fabricRegistryField(protocol, packetFlow);
-		if (field == null) return null;
-		Object registry = staticField(registryClass, field);
+		Object registry = null;
+		for (String field : fabricRegistryFields(protocol, packetFlow)) {
+			registry = staticField(registryClass, field);
+			if (registry != null) break;
+		}
 		if (registry == null) return null;
 		Object entry = invoke(registry, "get", id);
 		return entry != null ? entry : mirrorNeoPayloadIntoFabricRegistry(loader, id, protocol, packetFlow);
 	}
 
-	private static String fabricRegistryField(Object protocol, Object packetFlow) {
+	/**
+	 * Fabric names its four payload registries differently per line, and only one spelling was asked for.
+	 *
+	 * <p>Measured: on 1.21.1 {@code PayloadTypeRegistryImpl} declares {@code CONFIGURATION_C2S}, {@code
+	 * CONFIGURATION_S2C}, {@code PLAY_C2S}, {@code PLAY_S2C} (protocol first, flow second), while this method asked
+	 * for {@code CLIENTBOUND_PLAY} and friends. The field was never found, so {@code fabricTypeAndCodec} answered
+	 * null for every channel, the codec proxy fell back to NeoForge's, and Fabric's registration payload was cast to
+	 * NeoForge's class at encode time: {@code EncoderException: Failed to encode packet
+	 * 'clientbound/minecraft:custom_payload'} → {@code ClassCastException: RegistrationPayload cannot be cast to
+	 * MinecraftRegisterPayload}, which kicked the client during its configuration handshake.
+	 */
+	private static java.util.List<String> fabricRegistryFields(Object protocol, Object packetFlow) {
 		String protocolName = enumName(protocol);
 		String flowName = enumName(packetFlow);
-		if ("CONFIGURATION".equals(protocolName) && "CLIENTBOUND".equals(flowName)) return "CLIENTBOUND_CONFIGURATION";
-		if ("CONFIGURATION".equals(protocolName) && "SERVERBOUND".equals(flowName)) return "SERVERBOUND_CONFIGURATION";
-		if ("PLAY".equals(protocolName) && "CLIENTBOUND".equals(flowName)) return "CLIENTBOUND_PLAY";
-		if ("PLAY".equals(protocolName) && "SERVERBOUND".equals(flowName)) return "SERVERBOUND_PLAY";
-		return null;
+		if ("CONFIGURATION".equals(protocolName) && "CLIENTBOUND".equals(flowName)) {
+			return java.util.List.of("CLIENTBOUND_CONFIGURATION", "CONFIGURATION_S2C");
+		}
+		if ("CONFIGURATION".equals(protocolName) && "SERVERBOUND".equals(flowName)) {
+			return java.util.List.of("SERVERBOUND_CONFIGURATION", "CONFIGURATION_C2S");
+		}
+		if ("PLAY".equals(protocolName) && "CLIENTBOUND".equals(flowName)) {
+			return java.util.List.of("CLIENTBOUND_PLAY", "PLAY_S2C");
+		}
+		if ("PLAY".equals(protocolName) && "SERVERBOUND".equals(flowName)) {
+			return java.util.List.of("SERVERBOUND_PLAY", "PLAY_C2S");
+		}
+		return java.util.List.of();
 	}
 
 	private static Object neoCodec(Object id, Object protocol, Object packetFlow) {
