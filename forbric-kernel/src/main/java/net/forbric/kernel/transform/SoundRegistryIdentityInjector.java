@@ -12,6 +12,10 @@ public final class SoundRegistryIdentityInjector implements ClassTransformer {
 	public static final String TARGET = "net.minecraftforge.registries.ForgeRegistry";
 	private static final String HOOK = "net/forbric/kernel/runtime/IdentityValueBiMap";
 	private static final Set<String> INDEXES = Set.of("ids", "names", "keys", "owners");
+	/** 26.2 spells the registry key {@code Identifier}; 1.21.1 spells it {@code ResourceLocation}. One repair
+	 *  covers both, because the constructor takes the key and nothing else selects on it. */
+	static final String CTOR_IDENTIFIER = "(Lnet/minecraftforge/registries/RegistryManager;Lnet/minecraft/resources/Identifier;Lnet/minecraftforge/registries/RegistryBuilder;)V";
+	static final String CTOR_LOCATION = "(Lnet/minecraftforge/registries/RegistryManager;Lnet/minecraft/resources/ResourceLocation;Lnet/minecraftforge/registries/RegistryBuilder;)V";
 
 	@Override public AnchorSet anchors() {
 		return AnchorSet.of(new AnchorSet.Anchor(TARGET, AnchorSet.Severity.REQUIRED,
@@ -24,7 +28,7 @@ public final class SoundRegistryIdentityInjector implements ClassTransformer {
 		new ClassReader(bytes).accept(node, 0);
 		boolean changed = false;
 		for (MethodNode method : node.methods) {
-			if (!method.name.equals("<init>") || !method.desc.equals("(Lnet/minecraftforge/registries/RegistryManager;Lnet/minecraft/resources/Identifier;Lnet/minecraftforge/registries/RegistryBuilder;)V")) continue;
+			if (!method.name.equals("<init>") || !(method.desc.equals(CTOR_IDENTIFIER) || method.desc.equals(CTOR_LOCATION))) continue;
 			var fields = new java.util.ArrayList<FieldInsnNode>();
 			for (AbstractInsnNode instruction : method.instructions.toArray()) {
 				if (!(instruction instanceof FieldInsnNode field) || field.getOpcode() != Opcodes.PUTFIELD

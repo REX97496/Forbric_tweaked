@@ -64,6 +64,9 @@ public final class RegistryAliasParityInjector implements ClassTransformer {
 	private static final String HOOK_OWNER = "net/forbric/kernel/boot/KernelRegistryAliases";
 	private static final String HOOK_DESC = "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;";
 	private static final String IDENTIFIER = "net/minecraft/resources/Identifier";
+	/** 1.21.1 spells an id {@code ResourceLocation}; 26.2 spells it {@code Identifier}. The wrapper overrides
+	 * the id-keyed lookups under whichever name its own line uses, so both spellings have to select. */
+	private static final String RESOURCE_LOCATION = "net/minecraft/resources/ResourceLocation";
 	private static final String RESOURCE_KEY = "net/minecraft/resources/ResourceKey";
 
 	/** fabric-api's Identifier-keyed list, plus the two the wrapper overrides out of {@code Registry}'s defaults. */
@@ -106,7 +109,7 @@ public final class RegistryAliasParityInjector implements ClassTransformer {
 
 			String param = args[0].getInternalName();
 			String hook;
-			if (IDENTIFIER.equals(param) && BY_IDENTIFIER.contains(m.name)) {
+			if ((IDENTIFIER.equals(param) || RESOURCE_LOCATION.equals(param)) && BY_IDENTIFIER.contains(m.name)) {
 				hook = "resolveId";
 			} else if (RESOURCE_KEY.equals(param) && BY_RESOURCE_KEY.contains(m.name)) {
 				hook = "resolveKey";
