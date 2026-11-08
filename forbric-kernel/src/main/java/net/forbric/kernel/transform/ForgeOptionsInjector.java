@@ -29,8 +29,14 @@ public final class ForgeOptionsInjector implements ClassTransformer {
 	}
 	@Override public List<Claim> claims() {
 		if ("off".equalsIgnoreCase(System.getProperty("forbric.forgeClientInit", "on"))) return List.of();
-		return List.of(new Claim(CLAIM, AnchorSet.of(new AnchorSet.Anchor(TARGET, AnchorSet.Severity.REQUIRED,
-				"saved Forge key bindings are erased before their keys are registered"))));
+		// Scanned, not required: the field this repair preserves does not exist on 1.21.1, in either ecosystem's
+		// own base. javap of $(neo.forge)'s staged Options: no `unknownKeys` field at all, and both staged bases
+		// already carry `processOptionsForge(Options$FieldAccess)` (the KeyModifier-aware pass) alongside vanilla's
+		// `processOptions`. The unknown-key retention this repairs is 26.x shape, so an absent edit here means the
+		// merge changed nothing — not that a Forge mod's keys are being erased.
+		return List.of(new Claim(CLAIM, AnchorSet.scanned(
+				"neither 1.21.1 base declares Options.unknownKeys, so there is no retention mechanism to restore — "
+						+ "both carry processOptionsForge instead, identically")));
 	}
 	@Override public byte[] transform(String className, byte[] bytes, TransformContext context, ClaimReporter reporter) {
 		byte[] result = transform(className, bytes, context);

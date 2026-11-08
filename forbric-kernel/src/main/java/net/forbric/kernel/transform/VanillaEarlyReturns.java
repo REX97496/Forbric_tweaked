@@ -159,6 +159,21 @@ public final class VanillaEarlyReturns implements ClassTransformer {
 	@Override
 	public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("switched off by -D" + PROPERTY);
+		// Camera is the method issue #31 is about, but only a line whose table carries a Camera row can fold it.
+		// Checked rather than assumed: 1.21.1's table has 2698 rows and not one of them is an owner whose name is
+		// net/minecraft/client/Camera, so this transform returns at `rows == null` for that class and the folded
+		// tail a Fabric TAIL handler would run on never exists. Claiming the hazard regardless would be a lie
+		// the ledger repeats on every launch.
+		boolean foldsCamera;
+		try {
+			foldsCamera = table().containsKey(CAMERA);
+		} catch (Throwable t) {
+			foldsCamera = true;                       // cannot tell: keep the loud claim
+		}
+		if (!foldsCamera) {
+			return AnchorSet.scanned("this line's table carries no " + CAMERA + " row, so Camera.update keeps "
+					+ "vanilla's returns and a Fabric TAIL handler there cannot run before a level exists (issue #31)");
+		}
 		return AnchorSet.of(new AnchorSet.Anchor(CAMERA.replace('/', '.'), AnchorSet.Severity.REQUIRED,
 				"Camera.update's guard is folded into its tail — a Fabric TAIL handler there runs before any level "
 						+ "exists and the title screen crashes (issue #31); and every other method in the shipped table "
