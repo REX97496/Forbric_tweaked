@@ -355,6 +355,17 @@ public final class KernelBoot {
 		modJars = net.forbric.kernel.remap.GuestJarRemap.remapUnder(modJars,
 				gameDir.resolve(".forbric-kernel").resolve("candidates"),
 				gameDir.resolve(".forbric-kernel").resolve("remapped"));
+		// The members those guests asked the loader to open. Fabric mods do not @Shadow a class they do not target:
+		// they ship an accessWidener and expect the loader to widen the member before the injected code reads it.
+		// Measured with this missing: fabric-resource-loader-v0's handler read FolderRepositorySource.packSource and
+		// the client died with IllegalAccessError while PackRepository.<init> was still running.
+		try {
+			java.util.List<Path> widening = new java.util.ArrayList<>(fabricJars);
+			widening.addAll(modJars);
+			net.forbric.kernel.remap.AccessWideners.install(widening);
+		} catch (RuntimeException cannotReadWideners) {
+			ForbricLog.warn("[Forbric/AW] the guests' access wideners could not be read: " + cannotReadWideners);
+		}
 		// Which custom entrypoint keys the Fabric mods just declared only a build arbitration did NOT load would have
 		// dispatched; the lifecycle dispatches them in its place (ArbitratedAwayDispatchers says when and why).
 		try {

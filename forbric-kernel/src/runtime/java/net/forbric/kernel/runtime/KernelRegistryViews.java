@@ -72,7 +72,9 @@ public final class KernelRegistryViews {
 			if (target == null) {
 				target = methodOn(type, name, method.getParameterTypes());
 				if (target == null) throw new NoSuchMethodException(name);
-				return target.invoke(this, arguments);
+				// On the proxy, not on this handler: the method is a default of the interface the proxy implements,
+				// so the proxy is the receiver it was written for.
+				return target.invoke(proxy, arguments);
 			}
 			return invokeOn(target, registry, arguments);
 		}
@@ -113,10 +115,14 @@ public final class KernelRegistryViews {
 					if (!Arrays.equals(candidate.getParameterTypes(), parameters)) continue;
 					return candidate;
 				}
-			}
-			for (Class<?> implemented : owner.getInterfaces()) {
-				Method found = methodOn(implemented, name, parameters);
-				if (found != null) return found;
+				// Interfaces are searched per class in the chain, not once at the end: holderByNameCodec is a default
+				// on Registry, which a wrapper reaches through its superclass, and looking only at the subclass's own
+				// interfaces missed it — the call then fell through to the proxy and died with "object is not an
+				// instance of declaring class".
+				for (Class<?> implemented : current.getInterfaces()) {
+					Method found = methodOn(implemented, name, parameters);
+					if (found != null) return found;
+				}
 			}
 			return null;
 		}

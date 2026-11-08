@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores", "makeTheGeneratedDispatcherTargetsPublic", "mirrorTheDefaultedRegistriesTheMergeWidened", "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores", "makeTheGeneratedDispatcherTargetsPublic", "mirrorTheDefaultedRegistriesTheMergeWidened", "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", "answerTheStreamCodecCastTheGuestCalls");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -376,6 +376,12 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				"fabric-api-base calls lambda$read$0(String, String), the shape that base's read() had, and on this line"
 						+ " the only lambda$read$0 takes (String, ResourceLocationException) — NoSuchMethodError in"
 						+ " Event.<clinit> during Bootstrap. Lines that call the class Identifier have nothing to alias."));
+		// scanned() for the same reason as the resource-location alias above: one hop to a method this interface
+		// already declares, and the census should not treat a line that keeps the name from failing on it.
+		out.add(scanned("answerTheStreamCodecCastTheGuestCalls",
+				"fabric-transfer-api-v1 builds its item packet codec with StreamCodec.cast(codec, getter, codec,"
+						+ " getter, constructor), the name that method has on newer bases; on this line the same shape is"
+						+ " called composite, so the call died with NoSuchMethodError during Bootstrap"));
 
 		return List.copyOf(out);
 	}
@@ -410,7 +416,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			boolean namedOldLoader = stillNamesTheOldLoader(classBytes);
 			ClassNode node = new ClassNode();
 			new ClassReader(classBytes).accept(node, 0);
-			boolean changed = false;
+			boolean changed = net.forbric.kernel.remap.AccessWideners.widen(node);
 			changed |= claim(reporter, "repairLambdaBootstrapHandles", repairLambdaBootstrapHandles(node));
 			changed |= claim(reporter, "addBlockStateModelConflictResolvers", addBlockStateModelConflictResolvers(node));
 			changed |= claim(reporter, "addBlockStateAppearanceResolver", addBlockStateAppearanceResolver(node));
@@ -486,6 +492,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			changed |= claim(reporter, "makeTheGeneratedDispatcherTargetsPublic", makeTheGeneratedDispatcherTargetsPublic(node));
 		changed |= claim(reporter, "mirrorTheDefaultedRegistriesTheMergeWidened", mirrorTheDefaultedRegistriesTheMergeWidened(node));
 		changed |= claim(reporter, "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", aliasTheVanillaLambdaTheGuestCallsByItsOfficialName(node));
+		changed |= claim(reporter, "answerTheStreamCodecCastTheGuestCalls", answerTheStreamCodecCastTheGuestCalls(node));
 			changed |= namedOldLoader && adoptInteropHooksTheBaseStillNamesAfterTheOldLoader(node);
 
 			byte[] result = classBytes;
@@ -4659,6 +4666,37 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		ForbricLog.info("[Forbric/MergedBaseCompat] net.minecraft.resources.ResourceLocation answers"
 				+ " lambda$read$0(String, String) by handing it to fromNamespaceAndPath — a guest compiled against the"
 				+ " older read() shape resolves the call instead of dying in Bootstrap");
+		return true;
+	}
+
+	/**
+	 * fabric-transfer-api-v1 builds its item packet codec as
+	 * {@code StreamCodec.cast(first, getter, second, getter, constructor)} — the name that method carries on newer
+	 * bases. On 1.21.1 the same five-argument shape is {@code composite}, so the guest's call found no method and
+	 * Bootstrap died with NoSuchMethodError before any window existed. The alias answers the guest's spelling and
+	 * hands it straight to the shape this line declares.
+	 */
+	static boolean answerTheStreamCodecCastTheGuestCalls(ClassNode node) {
+		if (!"net/minecraft/network/codec/StreamCodec".equals(node.name)) return false;
+		final String desc = "(Lnet/minecraft/network/codec/StreamCodec;Ljava/util/function/Function;"
+				+ "Lnet/minecraft/network/codec/StreamCodec;Ljava/util/function/Function;"
+				+ "Ljava/util/function/BiFunction;)Lnet/minecraft/network/codec/StreamCodec;";
+		for (MethodNode method : node.methods) {
+			if (method.name.equals("cast") && method.desc.equals(desc)) return false;
+		}
+		MethodNode composite = findMethod(node, "composite", desc);
+		if (composite == null || (composite.access & Opcodes.ACC_STATIC) == 0) return false;
+		MethodNode alias = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+				"cast", desc, null, null);
+		for (int slot = 0; slot < 5; slot++) alias.instructions.add(new VarInsnNode(Opcodes.ALOAD, slot));
+		alias.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, node.name, "composite", desc, true));
+		alias.instructions.add(new InsnNode(Opcodes.ARETURN));
+		alias.maxStack = 5;
+		alias.maxLocals = 5;
+		node.methods.add(alias);
+		ForbricLog.info("[Forbric/MergedBaseCompat] net.minecraft.network.codec.StreamCodec answers"
+				+ " cast(codec, getter, codec, getter, constructor) by handing it to composite — a guest built against"
+				+ " the newer name resolves the call instead of dying in Bootstrap");
 		return true;
 	}
 

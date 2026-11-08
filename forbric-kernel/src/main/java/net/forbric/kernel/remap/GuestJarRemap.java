@@ -111,6 +111,10 @@ public final class GuestJarRemap {
 	private static final Pattern REFMAP_BARE = Pattern.compile(
 			"\"((?:method|field)_\\d+)(?::([A-Za-z0-9_$/;\\[\\$]+)|\\(([^)]*)\\)([A-Za-z0-9_$/;\\[\\$]+))\"");
 
+	/** A refmap entry: {@code "key": "Lowner;member(desc)ret"} or {@code "key": "Lowner;member:desc"}. */
+	private static final Pattern REFMAP_PAIR = Pattern.compile(
+			"\"([A-Za-z0-9_$<>()\\[\\];/]+)\"\\s*:\\s*\"L([A-Za-z0-9_$/]+);([A-Za-z0-9_$<>]+)([:(][^\"\\r\\n]*)\"");
+
 	private static int jarsWritten;
 	private static long classesRewritten;
 	private static long namesMapped;
@@ -178,7 +182,9 @@ public final class GuestJarRemap {
 							+ (lambdasPicked == 0 ? "" : ", " + lambdasPicked + " lambda name(s) replaced by the"
 									+ " method the base actually declares")
 							+ (lambdasAmbiguous == 0 ? "" : ", " + lambdasAmbiguous + " lambda name(s) left alone"
-									+ " because more than one method there accepts the descriptor"));
+									+ " because more than one method there accepts the descriptor")
+							+ (descriptorsPicked == 0 ? "" : ", " + descriptorsPicked + " member(s) named by their"
+									+ " descriptor because the table had no row for them"));
 		}
 		return out;
 	}
@@ -338,7 +344,111 @@ public final class GuestJarRemap {
 		// class_2591"). Measured after the first pass, which only handled descriptors: 251 "Error loading class:
 		// net/minecraft/class_2591" lines survived a jar that had been rewritten top to bottom.
 		reader.accept(new StringConstants(remapper, seen, owners), 0);
+		return renameShadows(writer.toByteArray());
+	}
+
+	/**
+	 * Renames a mixin's own {@code @Shadow} members to the names the base declares.
+	 *
+	 * <p>A shadow carries no selector string: mixin finds the target member by the shadow's own name and descriptor,
+	 * so an intermediary {@code method_29113(Ljava/lang/Object;)Ljava/util/Optional;} must become
+	 * {@code getOptional(Ljava/lang/Object;)Ljava/util/Optional;} before the class is applied. Measured after the
+	 * refmap rewrite: {@code SimpleRegistryMixin} still resolved only 6 of 15 anchors with
+	 * "InvalidMixinException @Shadow method method_29113 … was not located in the target class MappedRegistry" —
+	 * because refmaps answer selectors, never a member's own name. The descriptor is the evidence: only the name is
+	 * translated, and only when the base declares exactly one method of that shape (or one of them is the hint).
+	 */
+	private static byte[] renameShadows(byte[] remapped) {
+		MethodIndex index = minecraftIndex;
+		if (index == null) return remapped;
+		ClassNode node = new ClassNode();
+		new ClassReader(remapped).accept(node, ClassReader.SKIP_FRAMES);
+		List<String> targets = new ArrayList<>();
+		// @Mixin is @Retention(CLASS): it lands in the *invisible* annotation list, and reading only the visible one
+		// left the target list empty — the first attempt renamed nothing.
+		for (List<org.objectweb.asm.tree.AnnotationNode> list : annotationLists(node)) {
+			for (org.objectweb.asm.tree.AnnotationNode annotation : list) {
+				if (!"Lorg/spongepowered/asm/mixin/Mixin;".equals(annotation.desc)) continue;
+				collectTargets(annotation, targets);
+			}
+		}
+		if (targets.isEmpty()) return remapped;
+		java.util.Map<String, String> byDescriptor = new java.util.HashMap<>();
+		for (MethodNode method : node.methods) {
+			if (!INTERMEDIARY_MEMBER.matcher(method.name).matches() && !method.name.startsWith("lambda$")) continue;
+			if (!hasAnnotation(method, "Lorg/spongepowered/asm/mixin/Shadow;")
+					&& !hasAnnotation(method, "Lorg/spongepowered/asm/mixin/Overwrite;")) {
+				continue;
+			}
+			for (String target : targets) {
+				String picked = pickBaseName(index, target, method.desc, method.name);
+				if (picked != null) {
+					byDescriptor.put(method.name + method.desc, picked);
+					break;
+				}
+			}
+		}
+		if (byDescriptor.isEmpty()) return remapped;
+		for (MethodNode method : node.methods) {
+			String renamed = byDescriptor.get(method.name + method.desc);
+			if (renamed != null) method.name = renamed;
+			for (org.objectweb.asm.tree.AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof org.objectweb.asm.tree.MethodInsnNode call
+						&& node.name.equals(call.owner)) {
+					String called = byDescriptor.get(call.name + call.desc);
+					if (called != null) call.name = called;
+				}
+			}
+		}
+		ClassWriter writer = new ClassWriter(0);
+		node.accept(writer);
 		return writer.toByteArray();
+	}
+
+	private static void collectTargets(org.objectweb.asm.tree.AnnotationNode annotation, List<String> into) {
+		List<Object> values = new ArrayList<>();
+		if (annotation.values != null) values.addAll(annotation.values);
+		for (int i = 0; i + 1 < values.size(); i += 2) {
+			Object value = values.get(i + 1);
+			if (value instanceof List<?> list) {
+				for (Object item : list) {
+					if (item instanceof org.objectweb.asm.Type type) into.add(type.getInternalName());
+				}
+			} else if (value instanceof org.objectweb.asm.Type type) {
+				into.add(type.getInternalName());
+			}
+		}
+	}
+
+	private static boolean hasAnnotation(MethodNode method, String descriptor) {
+		for (List<org.objectweb.asm.tree.AnnotationNode> list : annotationLists(method)) {
+			for (org.objectweb.asm.tree.AnnotationNode annotation : list) {
+				if (descriptor.equals(annotation.desc)) return true;
+			}
+		}
+		return false;
+	}
+
+	private static List<List<org.objectweb.asm.tree.AnnotationNode>> annotationLists(Object holder) {
+		List<List<org.objectweb.asm.tree.AnnotationNode>> lists = new ArrayList<>(2);
+		if (holder instanceof ClassNode node) {
+			if (node.visibleAnnotations != null) lists.add(node.visibleAnnotations);
+			if (node.invisibleAnnotations != null) lists.add(node.invisibleAnnotations);
+		} else if (holder instanceof MethodNode method) {
+			if (method.visibleAnnotations != null) lists.add(method.visibleAnnotations);
+			if (method.invisibleAnnotations != null) lists.add(method.invisibleAnnotations);
+		}
+		return lists;
+	}
+
+	/** The one name of that shape on {@code owner}, or the hint when the base declares it. */
+	private static String pickBaseName(MethodIndex index, String owner, String descriptor, String hint) {
+		java.util.Set<String> names = new java.util.LinkedHashSet<>();
+		for (BaseMethod method : index.declaredByType(owner, descriptor)) {
+			if (!method.name().startsWith("lambda$") && !method.name().startsWith("<")) names.add(method.name());
+		}
+		if (names.contains(hint)) return hint;
+		return names.size() == 1 ? names.iterator().next() : null;
 	}
 
 	/**
@@ -427,7 +537,44 @@ public final class GuestJarRemap {
 		String bare = replaceBareSelectors(json, seen);
 		// Then methods before fields: a field pattern would also match a method selector's owner half and stop there.
 		String methods = replaceSelectors(bare, REFMAP_METHOD, true, seen);
-		return replaceSelectors(methods, REFMAP_FIELD, false, seen);
+		String fields = replaceSelectors(methods, REFMAP_FIELD, false, seen);
+		return useTheKeyWhenTheValueDoesNotResolve(fields);
+	}
+
+	/**
+	 * Answers the last few refmap values from the key beside them.
+	 *
+	 * <p>A refmap is a table of "the member my source wrote" to "the member the runtime has". The key is the source
+	 * name (mixin looks it up by it); the value carries the owner and shape, and its member half is an intermediary
+	 * name — sometimes a lambda the table collapsed several methods onto. When the value's member cannot be resolved
+	 * (measured: {@code MappedRegistry.method_29113} and two lambda rows), the key already says which member the mod
+	 * meant, and the value already says which owner and which descriptor — so accepting the key only when the base
+	 * declares that name with that shape is a verification, not a guess. Without it {@code SimpleRegistryMixin}
+	 * cannot shadow {@code getHolder}/{@code get}, the mixin applies only partially, no registry becomes a
+	 * {@code ListenableRegistry}, and every lookup throws "Unsupported registry".
+	 */
+	private static String useTheKeyWhenTheValueDoesNotResolve(String json) {
+		MethodIndex index = minecraftIndex;
+		if (index == null) return json;
+		Matcher matcher = REFMAP_PAIR.matcher(json);
+		StringBuilder out = new StringBuilder(json.length());
+		int last = 0;
+		while (matcher.find()) {
+			int cut = matcher.group(1).indexOf('(');
+			String named = cut < 0 ? matcher.group(1) : matcher.group(1).substring(0, cut);
+			String member = matcher.group(3);
+			String rest = matcher.group(4);
+			if (member.equals(named) || !rest.startsWith("(")) continue;
+			if (!INTERMEDIARY_MEMBER.matcher(member).matches() && !member.startsWith("lambda$")) continue;
+			if (!named.matches("[A-Za-z_$][A-Za-z0-9_$]*")) continue;
+			if (!index.declares(matcher.group(2), rest, named)) continue;
+			refmapValues++;
+			out.append(json, last, matcher.start(3)).append(named);
+			last = matcher.end(3);
+		}
+		if (last == 0) return json;
+		out.append(json, last, json.length());
+		return out.toString();
 	}
 
 	/**
@@ -480,7 +627,25 @@ public final class GuestJarRemap {
 			String officialName = method
 					? KernelMappingResolver.INSTANCE.mapMethodName("intermediary", owner, name, descriptor)
 					: KernelMappingResolver.INSTANCE.mapFieldName("intermediary", owner, name, descriptor);
+			if (method && officialName.equals(name)) {
+				String unqualified = KernelMappingResolver.INSTANCE.mapMethodNameWithoutOwner("intermediary", name);
+				if (!unqualified.equals(name)) officialName = unqualified;
+			}
+			if (!method && officialName.equals(name)) {
+				String unqualified = KernelMappingResolver.INSTANCE.mapFieldNameWithoutOwner("intermediary", name);
+				if (!unqualified.equals(name)) officialName = unqualified;
+			}
 			String officialDescriptor = mapDescriptor(descriptor, seen);
+			if (method) {
+				// The refmap of a fabric module is written with official class names but intermediary member names
+				// (Lnet/minecraft/core/MappedRegistry;method_10250(…)), so the table's owner#name key never matches.
+				// The exact shape does, and answering it here is what lets SimpleRegistryMixin's @Shadow members
+				// resolve — without it fabric-registry-sync cannot wrap any registry and every lookup throws
+				// "Unsupported registry". A table row that lands on a name the base does not declare (one row maps
+				// class_5321.method_29177 onto lambda$create$2) is corrected here too.
+				String picked = nameInTheBase(officialOwner, officialDescriptor, officialName);
+				if (picked != null && !picked.equals(officialName)) officialName = picked;
+			}
 			if (officialName.equals(name) && officialOwner.equals(owner)
 					&& officialDescriptor.equals(descriptor)) {
 				// A selector whose member is not in the table. Counted rather than warned one per hit: a single
@@ -502,6 +667,45 @@ public final class GuestJarRemap {
 		if (last == 0) return json;
 		out.append(json, last, json.length());
 		return out.toString();
+	}
+
+	/**
+	 * The base's own name for a member the guest names differently but with exactly this shape, or {@code null}.
+	 *
+	 * <p>Only the unambiguous tier of the lambda tie-breaks is used here, because a refmap selector is a claim about
+	 * one member: a public method sharing the name with a field of the class (a getter), a single public method of
+	 * that shape, or a single static lambda sibling. Anything still tied stays as written.
+	 */
+	private static String nameInTheBase(String officialOwner, String officialDescriptor, String mapped) {
+		MethodIndex index = minecraftIndex;
+		if (index == null) return null;
+		List<BaseMethod> byDescriptor = index.declaredByType(officialOwner, officialDescriptor);
+		if (debugShapes-- > 0) {
+			ForbricLog.info("[Forbric/Shape] ref " + mapped + " " + officialOwner + officialDescriptor + " -> "
+					+ byDescriptor);
+		}
+		if (byDescriptor.isEmpty()) return null;
+		for (BaseMethod method : byDescriptor) if (method.name().equals(mapped)) return mapped;
+		List<String> named = new ArrayList<>(byDescriptor.size());
+		List<String> siblings = new ArrayList<>(byDescriptor.size());
+		for (BaseMethod method : byDescriptor) {
+			String candidate = method.name();
+			if (candidate.startsWith("<")) continue;
+			if (candidate.startsWith("lambda$")) {
+				if ((method.access() & 0x0008) != 0 && !siblings.contains(candidate)) siblings.add(candidate);
+			} else if (method.callable() && !named.contains(candidate)) {
+				// A name declared by both the class and its super counts once: MappedRegistry and BaseMappedRegistry
+				// both declare register(…), and a list would report that as a tie between two candidates.
+				named.add(candidate);
+			}
+		}
+		if (named.size() == 1) return named.get(0);
+		java.util.Set<String> fields = index.fields(officialOwner);
+		List<String> getters = new ArrayList<>(1);
+		for (String candidate : named) if (fields.contains(candidate)) getters.add(candidate);
+		if (getters.size() == 1) return getters.get(0);
+		if (named.isEmpty() && siblings.size() == 1) return siblings.get(0);
+		return null;
 	}
 
 	/** Every {@code L...;} type inside a descriptor, mapped; the rest of the descriptor is copied as written. */
@@ -688,21 +892,86 @@ public final class GuestJarRemap {
 	 */
 	/** One method of a base class: its name and the access flags the base declares it with. */
 	private record BaseMethod(String name, int access) {
+		/** A member a guest call site may name: public, whether the base declares it instance or static. */
 		private boolean callable() {
+			return (access & 0x0001) != 0;
+		}
+
+		/** A member a lambda-shaped call can be: a lambda is always private static synthetic, so its target is static. */
+		private boolean staticMethod() {
 			return (access & 0x0001) != 0 && (access & 0x0008) != 0;
 		}
 	}
 
+	/**
+	 * Rows for guests compiled against a vanilla surface this line no longer has, keyed by
+	 * {@code owner|descriptor|the name the table gave}.
+	 *
+	 * <p>Only add a row after reading both sides with {@code javap} and naming the failure it fixes. A row here is a
+	 * claim that the base declares the replacement and the guest's meaning is that replacement, which a tie-break
+	 * between same-shaped candidates cannot establish.
+	 */
+	private static final java.util.regex.Pattern INTERMEDIARY_MEMBER = java.util.regex.Pattern.compile("(?:method|field)_\\d+");
+	private static long descriptorsPicked;
+	private static int shapeProbes = 0;
+	private static int debugShapes = 6;
+	private static final Map<String, String> KNOWN_LAMBDA_TARGETS = Map.of(
+			// fabric-transfer-api-v1 builds its item packet codec as
+			// StreamCodec.cast(ByteBufCodecs.<lambda>(Registries.ITEM), ItemVariant::getItem, …): the lambda answers
+			// the registry's element, which is what registry(ResourceKey) returns — holderRegistry and holderSet
+			// return Holder and HolderSet and would fail that cast. Measured failure: NoSuchMethodError for
+			// lambda$fromCodecWithRegistries$9(ResourceKey) during Bootstrap, VariantCodecs.<clinit>.
+			"net/minecraft/network/codec/ByteBufCodecs|(Lnet/minecraft/resources/ResourceKey;)"
+					+ "Lnet/minecraft/network/codec/StreamCodec;|lambda$fromCodecWithRegistries$9", "registry");
+
 	private static final class MethodIndex {
 		private final List<Path> jars;
 		private final Map<String, Map<String, List<BaseMethod>>> cache = new HashMap<>();
+		private final Map<String, List<String>> parents = new HashMap<>();
+		private final Map<String, java.util.Set<String>> declaredFields = new HashMap<>();
 
 		private MethodIndex(List<Path> jars) {
 			this.jars = jars;
 		}
 
+		/** The field names the type declares, used to tell a getter from its same-shaped sibling. */
+		private java.util.Set<String> fields(String internalOwner) {
+			read(internalOwner);
+			return declaredFields.getOrDefault(internalOwner, java.util.Set.of());
+		}
+
 		private List<BaseMethod> methods(String internalOwner, String descriptor) {
 			return cache.computeIfAbsent(internalOwner, this::read).getOrDefault(descriptor, List.of());
+		}
+
+		/**
+		 * Every method of that shape declared by {@code internalOwner} or by anything it extends or implements.
+		 *
+		 * <p>A call site names the static receiver: {@code Registry.method_30517()} is declared on a superinterface,
+		 * so asking only the named class answered "nothing" and left the intermediary name in the guest's bytecode —
+		 * the call then died with NoSuchMethodError at registry-sync time.
+		 */
+		private List<BaseMethod> declaredByType(String internalOwner, String descriptor) {
+			List<BaseMethod> found = new ArrayList<>(2);
+			java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>();
+			java.util.Set<String> seen = new java.util.HashSet<>();
+			pending.add(internalOwner);
+			while (!pending.isEmpty() && seen.size() < 24) {
+				String current = pending.poll();
+				if (current == null || !seen.add(current)) continue;
+				found.addAll(methods(current, descriptor));
+				read(current);
+				pending.addAll(parents.getOrDefault(current, List.of()));
+			}
+			return found;
+		}
+
+		/** Whether {@code internalOwner} (or a supertype) declares a method of that exact name and shape. */
+		private boolean declares(String internalOwner, String descriptor, String name) {
+			for (BaseMethod method : declaredByType(internalOwner, descriptor)) {
+				if (method.name().equals(name)) return true;
+			}
+			return false;
 		}
 
 		private Map<String, List<BaseMethod>> read(String internalOwner) {
@@ -716,10 +985,19 @@ public final class GuestJarRemap {
 						new ClassReader(in).accept(node,
 								ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
 					}
+					List<String> supers = new ArrayList<>(1 + node.interfaces.size());
+					if (node.superName != null) supers.add(node.superName);
+					supers.addAll(node.interfaces);
+					parents.put(internalOwner, List.copyOf(supers));
 					Map<String, List<BaseMethod>> byDescriptor = new HashMap<>();
 					for (MethodNode method : node.methods) {
 						byDescriptor.computeIfAbsent(method.desc, key -> new ArrayList<>(2))
 								.add(new BaseMethod(method.name, method.access));
+					}
+					if (!node.fields.isEmpty()) {
+						java.util.Set<String> names = new java.util.HashSet<>(node.fields.size());
+						for (org.objectweb.asm.tree.FieldNode field : node.fields) names.add(field.name);
+						declaredFields.put(internalOwner, names);
 					}
 					return byDescriptor;
 				} catch (IOException | RuntimeException unreadable) {
@@ -757,7 +1035,40 @@ public final class GuestJarRemap {
 			String resolved = mapped.equals(name)
 					? KernelMappingResolver.INSTANCE.mapMethodNameWithoutOwner("intermediary", name)
 					: mapped;
+			if (resolved.equals(name) && INTERMEDIARY_MEMBER.matcher(name).matches()) {
+				// The table is not a complete join: Registry alone has 47 method rows, so a member the guest calls
+				// through it can still be named method_NNNN after both lookups. The descriptor is not lossy, so ask
+				// the base which method it declares with exactly this shape and take it when the answer is one name.
+				String byShape = byDescriptor(owner, name, descriptor, true);
+				if (byShape != null) {
+					descriptorsPicked++;
+					return byShape;
+				}
+			}
 			return lambdaShape(owner, resolved, descriptor);
+		}
+
+		/**
+		 * The name the base declares for a member whose table name is still intermediary, found by its descriptor.
+		 *
+		 * <p>Returns {@code null} when the index cannot read the owner, when nothing matches, or when more than one
+		 * name takes the shape — an ambiguous answer would be a guess.
+		 */
+		private String byDescriptor(String owner, String name, String descriptor, boolean method) {
+			MethodIndex index = minecraftIndex;
+			if (index == null) {
+				if (shapeProbes-- > 0) ForbricLog.info("[Forbric/Shape] no index for " + owner);
+				return null;
+			}
+			List<BaseMethod> candidates = index.declaredByType(mapInternal(owner), mapDesc(descriptor));
+			if (shapeProbes-- > 0) {
+				ForbricLog.info("[Forbric/Shape] " + owner + " " + name + " " + descriptor + " -> "
+						+ mapInternal(owner) + mapDesc(descriptor) + " : " + candidates);
+			}
+			if (candidates.size() != 1) return null;
+			BaseMethod only = candidates.get(0);
+			if (!only.callable() || only.name().startsWith("lambda$") || only.name().startsWith("<")) return null;
+			return only.name();
 		}
 
 		/**
@@ -774,6 +1085,14 @@ public final class GuestJarRemap {
 			if (!mapped.startsWith("lambda$")) return mapped;
 			String officialOwner = mapInternal(owner);
 			String officialDescriptor = mapDesc(descriptor);
+			// Where a guest was compiled against a vanilla method that has since been replaced outright, no amount of
+			// index reading can recover the target: the base has several methods with the descriptor and none is
+			// named after the old one. These are measured renames, each with the failure they came from.
+			String known = KNOWN_LAMBDA_TARGETS.get(officialOwner + '|' + officialDescriptor + '|' + mapped);
+			if (known != null) {
+				lambdasPicked++;
+				return known;
+			}
 			MethodIndex index = minecraftIndex;
 			if (index == null) return mapped;
 			List<BaseMethod> byDescriptor = index.methods(officialOwner, officialDescriptor);
@@ -789,15 +1108,41 @@ public final class GuestJarRemap {
 				return mapped;
 			}
 			List<String> named = new ArrayList<>(byDescriptor.size());
+			List<String> siblings = new ArrayList<>(byDescriptor.size());
 			for (BaseMethod method : byDescriptor) {
 				String candidate = method.name();
-				if (!candidate.startsWith("lambda$") && !candidate.startsWith("<") && method.callable()) {
-					named.add(candidate);
+				if (candidate.startsWith("<")) continue;
+				if (candidate.startsWith("lambda$")) {
+					// The base keeps its own lambdas under private static synthetic names. A guest built against a
+					// different build of the same line can carry the enclosing method's next number, so the shape
+					// still matches: one such sibling with exactly this descriptor is the lambda the guest meant.
+					if ((method.access() & 0x0008) != 0 && !siblings.contains(candidate)) siblings.add(candidate);
+				} else if (method.callable()) {
+					// Instance members count: a mis-rolled table row can name a plain getter as a lambda, and the
+					// guest's call is invokevirtual ResourceKey.location(), not a static invocation.
+					if (!named.contains(candidate)) named.add(candidate);
 				}
 			}
 			if (named.size() == 1) {
 				lambdasPicked++;
 				return named.get(0);
+			}
+			// A getter is named after the field it returns. Measured: the table rows class_5321.method_29177 onto
+			// lambda$create$2, so ResourceKey location() arrives here as a lambda name; location() and registry() both
+			// answer ()Lnet/minecraft/resources/ResourceLocation;, and only the first shares its name with a field the
+			// class declares. Picking on that basis leaves every non-getter tie alone.
+			java.util.Set<String> fields = index.fields(officialOwner);
+			List<String> getters = new ArrayList<>(1);
+			for (String candidate : named) if (fields.contains(candidate)) getters.add(candidate);
+			if (getters.size() == 1) {
+				lambdasPicked++;
+				return getters.get(0);
+			}
+			if (named.isEmpty() && siblings.size() == 1) {
+				// Measured: fabric-registry-sync calls ResourceKey.lambda$create$2(); this line numbers that lambda
+				// differently, and it is the only static member of ResourceKey with the shape.
+				lambdasPicked++;
+				return siblings.get(0);
 			}
 			// More than one method takes the same descriptor, and the table cannot say which one the guest meant
 			// because it collapsed every lambda of the enclosing method onto one name. Measured case:
@@ -816,8 +1161,37 @@ public final class GuestJarRemap {
 						officialDescriptor, readers.get(0), named);
 				return readers.get(0);
 			}
+			// Second tie-break, same idea one level up: vanilla names the "narrowed" siblings after the plain one —
+			// holderRegistry/holderSet wrap what registry returns, optionalX and listX wrap what X returns. Measured
+			// case: ByteBufCodecs.registry / holderRegistry / holderSet all take (ResourceKey) and answer a
+			// StreamCodec, and fabric's transfer module wants the Item the registry yields (it casts the result with
+			// ItemVariant::getItem). A lone candidate that is none of those wrappers is the plain reading.
+			List<String> plain = new ArrayList<>(readers.size());
+			for (String candidate : readers) {
+				if (!wrapsAnother(candidate, readers)) plain.add(candidate);
+			}
+			if (plain.size() == 1 && plain.size() < readers.size()) {
+				lambdasPicked++;
+				ForbricLog.debug("[Forbric/Remap] %s%s is ambiguous, and %s is the plain reading among %s",
+						officialOwner, officialDescriptor, plain.get(0), named);
+				return plain.get(0);
+			}
 			lambdasAmbiguous++;
 			return mapped;
+		}
+
+		/** True when {@code candidate} is named after another candidate here, as holderX wraps what X returns. */
+		private static boolean wrapsAnother(String candidate, List<String> candidates) {
+			for (String other : candidates) {
+				if (other.equals(candidate) || other.length() <= 2) continue;
+				if (!candidate.endsWith(Character.toUpperCase(other.charAt(0)) + other.substring(1))) continue;
+				String stem = candidate.substring(0, candidate.length() - other.length());
+				if (stem.equals("holder") || stem.equals("optional") || stem.equals("list") || stem.equals("set")
+						|| stem.equals("map") || stem.equals("raw") || stem.equals("boxed")) {
+					return true;
+				}
+			}
+			return false;
 		}
 
 		@Override
