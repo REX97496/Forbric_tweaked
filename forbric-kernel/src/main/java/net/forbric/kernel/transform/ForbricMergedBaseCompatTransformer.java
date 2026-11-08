@@ -169,8 +169,15 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				"another ecosystem's condition type fails MinecraftForge's evaluator and the whole registry load with it"));
 		out.add(fixed("letFabricResourceConditionsDecide", CONDITIONAL_OPS,
 				"fabric:load_conditions has no evaluator — a Fabric mod's conditional data files all load"));
-		out.add(fixed("translateAGuestsPrivateSkipMarker", JSON_RELOAD_LISTENER,
-				"fabric-api's skip marker reaches the merged reader's cast — the datapack load dies (\"can't proceed with server load\")"));
+		// Scanned, not fixed: on 1.21.1 the reader this names has no DataResult at all. javap -c of
+		// SimpleJsonResourceReloadListener.scanDirectory(ResourceManager, String, Gson, Map) shows exactly one
+		// Map.put (offset 100) fed straight from GsonHelper.fromJson, and the class contains zero calls to
+		// DataResult.ifSuccess — this line's scanDirectory is the plain vanilla one, so there is no cast for a
+		// guest's skip marker to reach. The reader that does carry the condition layer (ConditionalOps) is the
+		// registry loader, and that seam is served by letFabricResourceConditionsDecide.
+		out.add(scanned("translateAGuestsPrivateSkipMarker",
+				"1.21.1's SimpleJsonResourceReloadListener.scanDirectory has no DataResult.ifSuccess call to translate — "
+						+ "its body parses and Map.puts, so a guest skip marker cannot reach a cast here"));
 		out.add(fixed("serveDefaultAttributesBothEcosystems", DEFAULT_ATTRIBUTES,
 				"DefaultAttributes reads only the ecosystem that won the merge — the other's entities \"have no attributes\""));
 		out.add(clientInit ? fixed("restoreForgeClientInit", "net/minecraft/client/Minecraft",
@@ -194,8 +201,14 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				"the block-breaking overlay crashes the render frame on MinecraftForge's absent model-data manager"));
 		out.add(fixed("dropTheWindowTitlesLoaderBrand", "net/minecraft/client/Minecraft",
 				"the window title carries another loader's brand"));
-		out.add(fixed("keepTheSaveOffTheTeardownsFailurePath", INTEGRATED_SERVER,
-				"a throw in IntegratedServer.teardownPublishedState costs the world save"));
+		// Scanned, not fixed: this line has no teardownPublishedState and no hazard to guard. javap of
+		// IntegratedServer.stopServer() on 1.21.1 is `aload_0; invokespecial MinecraftServer.stopServer()V;
+		// return` — nothing throws before a save, because nothing else runs. The save itself is vanilla's:
+		// MinecraftServer.stopServer saves players (PlayerList.saveAll) and the level before it tears anything
+		// down. The 26.x teardown that could throw does not exist here.
+		out.add(scanned("keepTheSaveOffTheTeardownsFailurePath",
+				"1.21.1's IntegratedServer.stopServer is a bare super call and has no teardownPublishedState to wrap — "
+						+ "the save-loss ordering this guards is 26.x shape"));
 		// Deliberately scanned, not fixed: this repair needs a TooltipDisplay local to hand the six-argument
 		// NeoForge event, and 1.21.1 has no such type at all (javap: ItemTooltipEvent here is
 		// (ItemStack, Player, List, TooltipFlag, Item$TooltipContext), five parameters). The feature is NOT
