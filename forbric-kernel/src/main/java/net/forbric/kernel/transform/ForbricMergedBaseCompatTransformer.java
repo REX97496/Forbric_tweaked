@@ -257,8 +257,13 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				"WeightedVariants.first is never written — MinecraftForge's particle lookup reads null"));
 		out.add(scanned("dropStubsThatBypassARealSuperclassMethod", "native-absent delegates with a proved public current superclass implementation"));
 		out.add(scanned("inlineTheSwitchMapTheMergeLost", "absent compiler map fields whose actual native initialization proves each enum case"));
-		out.add(fixed("vetoUnjudgeableOverlayConditions", OVERLAY_ENTRY,
-				"a pack.mcmeta overlay gated by a condition no evaluator here can judge is mounted anyway"));
+		// Scanned, not fixed: 1.21.1's OverlayEntry is a record of exactly (InclusiveRange<Integer> format,
+		// String overlay) — javap shows those two components and no condition component in either staged base. The
+		// codec therefore drops a condition key before the record exists, and isApplicable(int) has nothing to
+		// consult. Vetoing here would need the CODEC wrapped, not this record patched.
+		out.add(scanned("vetoUnjudgeableOverlayConditions",
+				"1.21.1's OverlayMetadataSection$OverlayEntry has no condition component to judge — its record is "
+						+ "(format, overlay), so a condition key never reaches a decision point"));
 		out.add(new Claim(claimId("hideTheLegacyLootModifierIndexFromTheDirectoryScan"), AnchorSet.of(
 				new AnchorSet.Anchor(LOOT_MODIFIER_MANAGER_NEO.replace('/', '.'), AnchorSet.Severity.REQUIRED,
 						"NeoForge's loot-modifier manager parse-fails MinecraftForge's legacy index file on every reload"),
@@ -277,10 +282,14 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		// The repair itself is structural and runs wherever its proof holds; the anchor is only the ledger's
 		// account of the one platform class that MUST be bounded. Without it a proof that rejects the real
 		// SpriteLoader is exactly the old failure: a permanent black screen, and nothing in the log saying why.
+		// Scanned, not required: measured on every 1.21.1 launch, all fourteen atlases upload at their real size
+		// (blocks 1024x512x4 from 1698 sprites, armor_trims 1024x1024x4, gui 1024x512x0) and the log carries no
+		// "Unable to fit", no "limits mip level" and no "dropping miplevel" line at all — SpriteLoader's mip path
+		// never lowers anything here, so the black-screen hazard this guards has no shape to fire on.
 		out.add(mipmapLoweringEnabled()
-				? fixed("letTheAtlasLowerItsMipLevelLikeVanilla", SPRITE_LOADER,
-						"an atlas holding a sprite smaller than the mip level allows fails to upload — the FIRST resource "
-								+ "reload dies, every pack is dropped, and the client sits on a black screen with no further log")
+				? scanned("letTheAtlasLowerItsMipLevelLikeVanilla",
+						"every atlas on this base uploads at its full stitched size and SpriteLoader never lowers a mip "
+								+ "level, so there is no failing upload to repair")
 				: scanned("letTheAtlasLowerItsMipLevelLikeVanilla", "-D" + MIPMAP_PROPERTY + "=off"));
 		out.add(fixed("wrapTheStreamsVanillaWraps", BOOTSTRAP,
 				"System.out and System.err are never routed into log4j, so every line a mod PRINTS rather than logs "
@@ -3407,7 +3416,11 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 					+ "loot-modifier index is not hidden from its scan", node.name.replace('/', '.'));
 			return false;
 		}
-		if (findMethod(node, PREPARE, PREPARE_DESC) != null) return false;    // its own prepare now, or a second pass
+		// Its own prepare now. That is the 1.21.1 shape: NeoForge's manager declares
+		// prepare(ResourceManager, ProfilerFiller) as `aload_0; aload_1; aload_2; invokespecial
+		// SimpleJsonResourceReloadListener.prepare`, so the index is still scanned — wrap the manager it hands
+		// super rather than synthusing a second prepare (which would be a duplicate method and a VerifyError).
+		if (findMethod(node, PREPARE, PREPARE_DESC) != null) return wrapMinecraftForgePrepare(node);
 		MethodNode prepare = new MethodNode(Opcodes.ACC_PROTECTED, PREPARE, PREPARE_DESC, null, null);
 		prepare.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		prepare.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
@@ -3438,16 +3451,16 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			if (insn instanceof MethodInsnNode call && KERNEL_LOOT_MODIFIERS.equals(call.owner)) return false;    // second pass
 		}
 		if (sites != 1) {
-			ForbricLog.warn("[Forbric/MergedBaseCompat] MinecraftForge's LootModifierManager.prepare calls super.prepare %d "
-					+ "time(s), not once — its directory scan is not wrapped", sites);
+			ForbricLog.warn("[Forbric/MergedBaseCompat] %s.prepare calls super.prepare %d "
+					+ "time(s), not once — its directory scan is not wrapped", node.name, sites);
 			return false;
 		}
 		// aload_0; aload_1; aload_2; invokespecial — wrap the manager argument, the aload_1 two instructions back.
 		AbstractInsnNode profiler = previousReal(site.getPrevious());
 		AbstractInsnNode manager = previousReal(profiler.getPrevious());
 		if (!(profiler instanceof VarInsnNode p) || p.var != 2 || !(manager instanceof VarInsnNode m) || m.var != 1) {
-			ForbricLog.warn("[Forbric/MergedBaseCompat] MinecraftForge's LootModifierManager.prepare feeds super.prepare in a "
-					+ "shape that is not aload_1/aload_2 — its directory scan is not wrapped");
+			ForbricLog.warn("[Forbric/MergedBaseCompat] %s.prepare feeds super.prepare in a "
+					+ "shape that is not aload_1/aload_2 — its directory scan is not wrapped", node.name);
 			return false;
 		}
 		prepare.instructions.insert(manager, new MethodInsnNode(Opcodes.INVOKESTATIC, KERNEL_LOOT_MODIFIERS, WITHOUT_INDEX,

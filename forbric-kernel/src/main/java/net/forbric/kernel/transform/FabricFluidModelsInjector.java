@@ -37,9 +37,12 @@ public final class FabricFluidModelsInjector implements ClassTransformer {
 
 	@Override public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("NeoForge's fluid-model check left as shipped with -D" + PROPERTY + "=off");
-		return AnchorSet.of(new AnchorSet.Anchor(HOOKS, AnchorSet.Severity.REQUIRED,
-				"a fluid a Fabric mod gives a model through FluidRenderingRegistry is reported as \"Missing FluidModel\" "
-						+ "on every client boot, although Fabric's own wrapper of the bake adds it"));
+		// Scanned, not required: on 1.21.1 there is no such check to repair. javap of
+		// net.neoforged.neoforge.client.ClientHooks on this base declares no fluid method at all — no
+		// gatherFluidModels, no FluidStateModelSet (that arrives with 1.21.4) — and the launch log carries zero
+		// "Missing FluidModel for fluid" lines, so the warning this hook exists to explain never happens here.
+		return AnchorSet.scanned("1.21.1's ClientHooks has no gatherFluidModels and no FluidStateModelSet, so there is no "
+				+ "\"Missing FluidModel\" check for a Fabric renderer's model to fall foul of");
 	}
 
 	@Override public byte[] transform(String className, byte[] bytes, TransformContext context) {
