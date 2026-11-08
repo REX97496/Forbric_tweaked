@@ -1786,6 +1786,15 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		String desc = "(Lnet/minecraft/server/packs/resources/PreparableReloadListener$SharedState;Ljava/util/concurrent/Executor;"
 				+ "Lnet/minecraft/server/packs/resources/PreparableReloadListener$PreparationBarrier;Ljava/util/concurrent/Executor;)Ljava/util/concurrent/CompletableFuture;";
 		MethodNode method = findMethod(node, "reload", desc);
+		// Before the SharedState shape Minecraft passed the manager itself, and ModelManager is still that shape on
+		// 1.21.1: (PreparationBarrier, ResourceManager, ProfilerFiller, ProfilerFiller, Executor, Executor). Slot 1
+		// is then the barrier rather than the SharedState, which is why the entry proof below only applies to the
+		// newer one; the older one is identified by its own descriptor.
+		boolean legacy = false;
+		if (method == null) {
+			method = findMethod(node, "reload", LEGACY_RELOAD_DESC);
+			legacy = method != null;
+		}
 		if (method == null || (method.access & Opcodes.ACC_STATIC) != 0) return false;
 		for (AbstractInsnNode instruction : method.instructions) {
 			if (instruction instanceof MethodInsnNode call
@@ -1796,18 +1805,31 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		}
 		AbstractInsnNode first = method.instructions.getFirst();
 		while (first != null && first.getOpcode() < 0) first = first.getNext();
-		if (!(first instanceof VarInsnNode load) || load.getOpcode() != Opcodes.ALOAD || load.var != 1) return false;
-		AbstractInsnNode next = first.getNext();
-		while (next != null && next.getOpcode() < 0) next = next.getNext();
-		if (!(next instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKEVIRTUAL
-				|| !"net/minecraft/server/packs/resources/PreparableReloadListener$SharedState".equals(call.owner)
-				|| !"resourceManager".equals(call.name)
-				|| !"()Lnet/minecraft/server/packs/resources/ResourceManager;".equals(call.desc)) return false;
+		if (!legacy) {
+			if (!(first instanceof VarInsnNode load) || load.getOpcode() != Opcodes.ALOAD || load.var != 1) return false;
+			AbstractInsnNode next = first.getNext();
+			while (next != null && next.getOpcode() < 0) next = next.getNext();
+			if (!(next instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKEVIRTUAL
+					|| !"net/minecraft/server/packs/resources/PreparableReloadListener$SharedState".equals(call.owner)
+					|| !"resourceManager".equals(call.name)
+					|| !"()Lnet/minecraft/server/packs/resources/ResourceManager;".equals(call.desc)) return false;
+		}
 		method.instructions.insertBefore(first, new MethodInsnNode(Opcodes.INVOKESTATIC,
 				"net/forbric/kernel/runtime/KernelForgeClientInit", "initGeometryLoaders", "()V", false));
 		ForbricLog.info("[Forbric/MergedBaseCompat] ModelManager initializes Forge geometry loaders on every resource reload");
 		return true;
 	}
+
+	/**
+	 * The pre-{@code SharedState} reload signature, which 1.21.1's {@code ModelManager} still implements: the
+	 * resource manager travels as its own parameter instead of through {@code PreparableReloadListener.SharedState}.
+	 */
+	private static final String LEGACY_RELOAD_DESC =
+			"(Lnet/minecraft/server/packs/resources/PreparableReloadListener$PreparationBarrier;"
+			+ "Lnet/minecraft/server/packs/resources/ResourceManager;"
+			+ "Lnet/minecraft/util/profiling/ProfilerFiller;Lnet/minecraft/util/profiling/ProfilerFiller;"
+			+ "Ljava/util/concurrent/Executor;Ljava/util/concurrent/Executor;)"
+			+ "Ljava/util/concurrent/CompletableFuture;";
 
 	/**
 	 * Lets a Fabric mod add a client reload listener the way Fabric mods always have, without killing the client.

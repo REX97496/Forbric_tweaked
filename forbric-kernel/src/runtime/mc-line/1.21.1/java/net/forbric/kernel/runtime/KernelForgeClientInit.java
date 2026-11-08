@@ -21,6 +21,8 @@ public final class KernelForgeClientInit {
 	}
 
 	public static void initClientHooks(Minecraft minecraft, ReloadableResourceManager resources) {
+		// A separate feature from the hooks below, so it is installed before their switch is read.
+		KernelScreenEvents.installForgeScreenEvents();
 		if (!enabled()) {
 			ClientHooks.initClientHooks(minecraft, resources);
 			return;

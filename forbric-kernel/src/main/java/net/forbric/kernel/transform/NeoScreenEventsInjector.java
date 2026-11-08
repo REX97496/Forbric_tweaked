@@ -51,8 +51,14 @@ public final class NeoScreenEventsInjector implements ClassTransformer {
 
 	@Override public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("NeoForge's ScreenEvent.Opening and Closing left unposted with -D" + PROPERTY + "=off");
-		return AnchorSet.of(new AnchorSet.Anchor(GUI, AnchorSet.Severity.REQUIRED,
-				"NeoForge mods that replace, refuse or track screens (Controlling, JEI, Balm) are never told a screen changed"));
+		// Measured on 1.21.1: Gui has no setScreen at all — the screen changer moved to Minecraft.setScreen, which
+		// posts NeoForge's ScreenEvent.Opening (offset 151) and Closing (offset 197) itself. So there is nothing to
+		// insert on this base, and MinecraftForge's two events, which nothing posts here, ride NeoForge's through
+		// KernelScreenEvents.installForgeScreenEvents() instead. On an older base Gui.setScreen is still the site and
+		// this transformer is the one that puts them there.
+		return AnchorSet.of(new AnchorSet.Anchor(GUI, AnchorSet.Severity.HEDGE,
+				"before 1.20.2 Gui.setScreen is the screen changer; newer bases moved it to Minecraft.setScreen, "
+				+ "which already posts NeoForge's two events, and MinecraftForge's ride them from a listener there"));
 	}
 
 	@Override public byte[] transform(String className, byte[] bytes, TransformContext context) {
