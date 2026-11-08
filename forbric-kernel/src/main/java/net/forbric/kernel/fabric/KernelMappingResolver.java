@@ -22,8 +22,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import net.fabricmc.loader.api.MappingResolver;
 import net.forbric.kernel.util.ForbricLog;
@@ -175,6 +177,70 @@ public final class KernelMappingResolver implements MappingResolver {
 		return className;
 	}
 
+	/**
+	 * A field name translated without being told its owner.
+	 *
+	 * <p>This exists for refmaps. A fabric refmap value is {@code "field_19315:Ljava/util/Set;"} - a member with no
+	 * owner anywhere in the document - while the mixin it belongs to names its target in a different file. The index
+	 * is built on first use from the same joined table (intermediary member names are unique per member, asserted by
+	 * tools/namespace/verify-runtime-table.py), and a name that appears under two owners with different official
+	 * names is deliberately left alone rather than guessed.
+	 */
+	public String mapFieldNameWithoutOwner(String namespace, String name) {
+		if (name == null) return null;
+		return withoutOwner(fieldsByName(), name);
+	}
+
+	/** The method counterpart of {@link #mapFieldNameWithoutOwner}. */
+	public String mapMethodNameWithoutOwner(String namespace, String name) {
+		if (name == null) return null;
+		return withoutOwner(methodsByName(), name);
+	}
+
+	private static String withoutOwner(Map<String, String> index, String name) {
+		return index == null ? name : index.getOrDefault(name, name);
+	}
+
+	private synchronized Map<String, String> fieldsByName() {
+		Table t = table();
+		if (t == null) return null;
+		if (fieldsByName == null) fieldsByName = byName(t.fields);
+		return fieldsByName;
+	}
+
+	private synchronized Map<String, String> methodsByName() {
+		Table t = table();
+		if (t == null) return null;
+		if (methodsByName == null) methodsByName = byName(t.methods);
+		return methodsByName;
+	}
+
+	/**
+	 * {@code owner#name -> official} turned into {@code name -> official}, with ambiguous names dropped.
+	 *
+	 * <p>Two owners can share an intermediary member name; when they do and the official names differ, no answer is
+	 * correct without the owner, so the name is left as written and the caller keeps its own diagnostics.
+	 */
+	private static Map<String, String> byName(Map<String, String> keyed) {
+		Map<String, String> out = new HashMap<>(keyed.size());
+		Set<String> ambiguous = new HashSet<>();
+		for (Map.Entry<String, String> entry : keyed.entrySet()) {
+			String key = entry.getKey();
+			int hash = key.indexOf('#');
+			if (hash < 0) continue;
+			String name = key.substring(hash + 1);
+			// Lambdas are named after their enclosing method, so dozens of distinct intermediary ids share one official
+			// name ("lambda$read$0" has eight rows in the 1.21.1 table alone) while meaning different descriptors.
+			// Collapsing them unqualified renamed ResourceLocation's two-argument lambda to a one-argument one, and the
+			// call failed with NoSuchMethodError at Bootstrap; only the owner-qualified lookup can tell them apart.
+			if (name.contains("lambda$")) continue;
+			String previous = out.putIfAbsent(name, entry.getValue());
+			if (previous != null && !previous.equals(entry.getValue())) ambiguous.add(name);
+		}
+		for (String name : ambiguous) out.remove(name);
+		return out;
+	}
+
 	@Override
 	public String mapFieldName(String namespace, String owner, String name, String descriptor) {
 		Table t = table();
@@ -258,6 +324,10 @@ public final class KernelMappingResolver implements MappingResolver {
 	}
 
 	/** One loaded table. Keys for members are {@code owner#name}; no descriptor, see mapMethodName. */
+	/** Built on first use by {@link #fieldsByName()} / {@link #methodsByName()}; null until then. */
+	private Map<String, String> fieldsByName;
+	private Map<String, String> methodsByName;
+
 	private record Table(Map<String, String> classes, Map<String, String> classesReverse,
 			Map<String, String> methods, Map<String, String> fields) {
 

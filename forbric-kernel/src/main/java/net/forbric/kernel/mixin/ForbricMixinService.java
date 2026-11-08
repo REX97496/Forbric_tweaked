@@ -76,6 +76,9 @@ public final class ForbricMixinService
 	private static final boolean DIAGNOSTICS = Boolean.getBoolean("forbric.mixinDiagnostics");
 
 	private static volatile ForbricClassLoader gameLoader;
+
+	/** Temporary: how many mixin class reads still get the byte-level diagnostic. */
+	private static final java.util.concurrent.atomic.AtomicInteger MIXIN_BYTES_PROBE = new java.util.concurrent.atomic.AtomicInteger(6);
 	private static volatile EnvType envType = EnvType.SERVER;
 	private static volatile IMixinTransformer transformer;
 
@@ -302,7 +305,13 @@ public final class ForbricMixinService
 	public ClassNode getClassNode(String name, boolean runTransformers, int readerFlags)
 			throws ClassNotFoundException, IOException {
 		ClassNode node = new ClassNode();
-		new ClassReader(getClassBytes(name, runTransformers)).accept(node, readerFlags);
+		byte[] classBytes = getClassBytes(name, runTransformers);
+		if (DIAGNOSTICS && MIXIN_BYTES_PROBE.decrementAndGet() > 0) {
+			String raw = new String(classBytes, java.nio.charset.StandardCharsets.ISO_8859_1);
+			ForbricLog.info("[Forbric/Diag] mixin %s: %d bytes, carries class_2591=%s", name, classBytes.length,
+					raw.contains("class_2591"));
+		}
+		new ClassReader(classBytes).accept(node, readerFlags);
 		// The one seam MixinInfo.loadMixinClass reads a mixin through: a retarget plan the adapter remembered for
 		// this mixin is applied to the node Mixin receives, never to jar bytes.
 		MixinRetarget.applyRemembered(name, node);

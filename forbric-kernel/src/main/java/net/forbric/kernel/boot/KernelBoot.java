@@ -310,6 +310,21 @@ public final class KernelBoot {
 		// Fabric mods (+ extracted JiJ children). Also Mojmap on this game version. Creates the FabricLoader.
 		List<Path> fabricJars = KernelFabricEcosystem.build(fabricScan, side.envType, gameDir, gameVersion,
 				gameArgs.toArray(new String[0]), dupes, gameJar);
+		// …and then rewritten into the namespace the game actually runs in. A Fabric jar is compiled against
+		// intermediary (net/minecraft/class_310); this base is Mojang's names (net/minecraft/client/Minecraft).
+		// Measured without this step: 268 "Error loading class: net/minecraft/class_2591" lines, every fabric-api
+		// entrypoint failing to construct, and the transfer bridge off. See GuestJarRemap for why the references are
+		// rewritten rather than aliased at load.
+		fabricJars = net.forbric.kernel.remap.GuestJarRemap.remapAll(fabricJars,
+				gameDir.resolve(".forbric-kernel").resolve("remapped"));
+		// …and the arbiter's extracted children, which reach the MOD-jar list and sit ahead of the Fabric list on
+		// the classpath. Measured with this missing: Mixin read BlockEntityTypeAccessor as the untouched 492-byte
+		// original out of candidates/ while the rewritten copy was 612 bytes, so its @Mixin annotation still said
+		// net.minecraft.class_2591 and every one of its 251 siblings reported the same. The cache is content-keyed,
+		// so this is a hit rather than a second rewrite.
+		modJars = net.forbric.kernel.remap.GuestJarRemap.remapUnder(modJars,
+				gameDir.resolve(".forbric-kernel").resolve("candidates"),
+				gameDir.resolve(".forbric-kernel").resolve("remapped"));
 		// Which custom entrypoint keys the Fabric mods just declared only a build arbitration did NOT load would have
 		// dispatched; the lifecycle dispatches them in its place (ArbitratedAwayDispatchers says when and why).
 		try {

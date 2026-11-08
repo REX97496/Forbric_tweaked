@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores", "makeTheGeneratedDispatcherTargetsPublic");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores", "makeTheGeneratedDispatcherTargetsPublic", "mirrorTheDefaultedRegistriesTheMergeWidened", "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -362,11 +362,19 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 						+ "while the merged getColor asks ForgeRegistries.getDelegateOrThrow for a Holder.Reference "
 						+ "— two different keys, so every lookup misses and every tinted sprite draws its raw "
 						+ "greyscale texture instead of its colour"));
-		// scanned(), LAST. Two instructions replaced, no branch introduced, so no StackMapTable.
 		out.add(scanned("makeTheGeneratedDispatcherTargetsPublic",
 				"the eventbus compiles a handler class in its own loader for every registered lambda, and Forge keeps its "
 						+ "dispatch targets package-private — a different loader is a different runtime package, so the very first step of "
 						+ "the delivery dies on IllegalAccessError before the listener body runs"));
+		// scanned(). Two instructions appended per widened registry, no branch introduced, so no StackMapTable.
+		out.add(fixed("mirrorTheDefaultedRegistriesTheMergeWidened", "net.minecraft.core.registries.BuiltInRegistries",
+				"fabric-api's transfer module asks for BuiltInRegistries.LOOT_NUMBER_PROVIDER_TYPE at the type it is stored as, and the merge widened the declaration — NoSuchFieldError in ItemVariant.<clinit> during Bootstrap"));
+		// fixed(). One hop to a method the class already declares, no branch, no StackMapTable.
+		out.add(fixed("aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", "net.minecraft.resources.ResourceLocation",
+				"fabric-api-base calls lambda$read$0(String, String), the shape that base's read() had, and on this line"
+						+ " the only lambda$read$0 takes (String, ResourceLocationException) — NoSuchMethodError in"
+						+ " Event.<clinit> during Bootstrap"));
+
 		return List.copyOf(out);
 	}
 
@@ -474,6 +482,8 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			changed |= claim(reporter, "resolveDeferredHoldersThroughTheWritableRoot", resolveDeferredHoldersThroughTheWritableRoot(node));
 			changed |= claim(reporter, "keyTheColourMapByWhatItStores", keyTheColourMapByWhatItStores(node));
 			changed |= claim(reporter, "makeTheGeneratedDispatcherTargetsPublic", makeTheGeneratedDispatcherTargetsPublic(node));
+		changed |= claim(reporter, "mirrorTheDefaultedRegistriesTheMergeWidened", mirrorTheDefaultedRegistriesTheMergeWidened(node));
+		changed |= claim(reporter, "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", aliasTheVanillaLambdaTheGuestCallsByItsOfficialName(node));
 			changed |= namedOldLoader && adoptInteropHooksTheBaseStillNamesAfterTheOldLoader(node);
 
 			byte[] result = classBytes;
@@ -4555,8 +4565,102 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	 * the CLASS is hidden; the methods already want to be called. Widening the class adds no access that the
 	 * methods did not already declare, and nothing in this tree calls that class except the generated handler.
 	 */
-	static boolean makeTheGeneratedDispatcherTargetsPublic(ClassNode node) {
-		if (!node.name.startsWith("net/minecraftforge/")) return false;
+	/**
+	 * Gives every defaulted registry the merge widened to {@code Registry} a second field of the type it is
+	 * <b>actually</b> stored as.
+	 *
+	 * <p>The merge types {@code BuiltInRegistries.LOOT_NUMBER_PROVIDER_TYPE} and its eleven siblings as
+	 * {@code net.minecraft.core.Registry}, because one family's patched sources declare them that way. Their own
+	 * {@code <clinit>} stores the result of {@code registerDefaulted(...)}, whose descriptor returns
+	 * {@code DefaultedRegistry} — so the widest legal declaration and the narrowest actual value disagree, and a mod
+	 * compiled against the narrower one cannot resolve the field: the JVM resolves a field by NAME AND DESCRIPTOR.
+	 * Measured with fabric-api installed: {@code NoSuchFieldError: … BuiltInRegistries does not have member field
+	 * 'net.minecraft.core.DefaultedRegistry LOOT_NUMBER_PROVIDER_TYPE'} out of fabric's {@code VariantCodecs}, thrown
+	 * from {@code ItemVariant.<clinit>} while {@code Items} was still bootstrapping — i.e. the client died at
+	 * Bootstrap, not later.
+	 *
+	 * <p>A second field rather than a retype: the family bases and every mod compiled against them reference
+	 * {@code Registry}, and a field reference is matched by its descriptor, so retyping would trade this crash for
+	 * the same one on the other side. The mirrored field is assigned right after the original store, from the same
+	 * value.
+	 *
+	 * <p>Every widened slot gets one, not just the ones {@code registerDefaulted} filled: measured on this base,
+	 * {@code LOOT_NUMBER_PROVIDER_TYPE} is stored from {@code registerSimple}, which returns plain {@code Registry} —
+	 * so a rule keyed on the producer missed exactly the field fabric-api asked for first. The values themselves are
+	 * adapted by {@code KernelRegistryViews.asDefaulted}, which hands back the original when it already answers as a
+	 * defaulted registry and a delegating view when it does not (Forge's {@code NamespacedWrapper} lacks only
+	 * {@code getDefaultKey()}).
+	 */
+	static boolean mirrorTheDefaultedRegistriesTheMergeWidened(ClassNode node) {
+		if (!"net/minecraft/core/registries/BuiltInRegistries".equals(node.name)) return false;
+		MethodNode clinit = findMethod(node, "<clinit>", "()V");
+		if (clinit == null) return false;
+		java.util.List<FieldInsnNode> stores = new java.util.ArrayList<>();
+		for (AbstractInsnNode insn : clinit.instructions.toArray()) {
+			if (insn instanceof FieldInsnNode store && store.getOpcode() == Opcodes.PUTSTATIC
+					&& node.name.equals(store.owner) && "Lnet/minecraft/core/Registry;".equals(store.desc)) {
+				stores.add(store);
+			}
+		}
+		int mirrored = 0;
+		for (FieldInsnNode store : stores) {
+			boolean already = node.fields.stream().anyMatch(field -> field.name.equals(store.name)
+					&& "Lnet/minecraft/core/DefaultedRegistry;".equals(field.desc));
+			if (already) continue;
+			node.fields.add(new FieldNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, store.name,
+					"Lnet/minecraft/core/DefaultedRegistry;", null, null));
+			InsnList mirror = new InsnList();
+			mirror.add(new FieldInsnNode(Opcodes.GETSTATIC, node.name, store.name, store.desc));
+			// The stored value is a registry, but on this base it is Forge's plain NamespacedWrapper — it holds every
+			// DefaultedRegistry method except getDefaultKey(). A bare CHECKCAST threw inside <clinit>; the view returns
+			// the value itself when it already is one and a delegating DefaultedRegistry otherwise.
+			mirror.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "net/forbric/kernel/runtime/KernelRegistryViews",
+					"asDefaulted", "(Ljava/lang/Object;)Ljava/lang/Object;", false));
+			mirror.add(new TypeInsnNode(Opcodes.CHECKCAST, "net/minecraft/core/DefaultedRegistry"));
+			mirror.add(new FieldInsnNode(Opcodes.PUTSTATIC, node.name, store.name,
+					"Lnet/minecraft/core/DefaultedRegistry;"));
+			clinit.instructions.insert(store, mirror);
+			mirrored++;
+		}
+		if (mirrored == 0) return false;
+		ForbricLog.info("[Forbric/MergedBaseCompat] " + mirrored + " registr(ies) now answer to DefaultedRegistry as"
+				+ " well as Registry (BuiltInRegistries) — a mod compiled against the narrower type resolves them, and"
+				+ " every reference that names Registry still finds the widened field");
+		return true;
+	}
+
+
+	/**
+	 * fabric-api-base calls {@code ResourceLocation.lambda$read$0(String, String)} — the lambda its own build named
+	 * against a base whose {@code read} took two arguments. On 1.21.1 the only {@code lambda$read$0} takes
+	 * {@code (String, ResourceLocationException)}, so the call dies with NoSuchMethodError in {@code Event.<clinit>}
+	 * during Bootstrap, before any window exists. The two-String shape is exactly what {@code fromNamespaceAndPath}
+	 * accepts, so the alias hands the call to it rather than guessing at the parser's internals.
+	 */
+	static boolean aliasTheVanillaLambdaTheGuestCallsByItsOfficialName(ClassNode node) {
+		if (!"net/minecraft/resources/ResourceLocation".equals(node.name)) return false;
+		final String desc = "(Ljava/lang/String;Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;";
+		for (MethodNode method : node.methods) {
+			if (method.name.equals("lambda$read$0") && method.desc.equals(desc)) return false;
+		}
+		MethodNode builder = findMethod(node, "fromNamespaceAndPath", desc);
+		if (builder == null || (builder.access & Opcodes.ACC_STATIC) == 0) return false;
+		MethodNode alias = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+				"lambda$read$0", desc, null, null);
+		alias.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		alias.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+		alias.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, node.name, "fromNamespaceAndPath", desc, false));
+		alias.instructions.add(new InsnNode(Opcodes.ARETURN));
+		alias.maxStack = 2;
+		alias.maxLocals = 2;
+		node.methods.add(alias);
+		ForbricLog.info("[Forbric/MergedBaseCompat] net.minecraft.resources.ResourceLocation answers"
+				+ " lambda$read$0(String, String) by handing it to fromNamespaceAndPath — a guest compiled against the"
+				+ " older read() shape resolves the call instead of dying in Bootstrap");
+		return true;
+	}
+
+	static boolean makeTheGeneratedDispatcherTargetsPublic(ClassNode node) {		if (!node.name.startsWith("net/minecraftforge/")) return false;
 		if (!node.name.endsWith("$EventDispatcher")) return false;
 		if ((node.access & Opcodes.ACC_PUBLIC) != 0) return false;
 		node.access = (node.access & ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED)) | Opcodes.ACC_PUBLIC;
