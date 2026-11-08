@@ -89,7 +89,7 @@ public final class KernelForgeBaseline {
 			// so those registries never exist and RegistryObjects like ForgeMod.EMPTY_TYPE (minecraft:empty fluid type,
 			// read by EntityFluidInteraction when a chest minecart spawns during worldgen) stay unbound. Fire it FIRST
 			// so the registries exist before the RegisterEvent pass enumerates + populates them.
-			int created = fireNewRegistryEvent(cl);
+			int created = fireNewRegistryEvent(cl, baseline, modHandles);
 
 			List<KernelForgeModContext.Handle> all = new java.util.ArrayList<>();
 			if (baseline != null) all.add(baseline);
@@ -110,7 +110,8 @@ public final class KernelForgeBaseline {
 	 * which call {@code event.create(builder)}) then {@code fill()} it to build + register those registries into
 	 * {@code RegistryManager.ACTIVE}. Returns the count of registries that came into being. Best-effort.
 	 */
-	private static int fireNewRegistryEvent(ClassLoader cl) {
+	private static int fireNewRegistryEvent(ClassLoader cl, KernelForgeModContext.Handle baseline,
+			List<KernelForgeModContext.Handle> modHandles) {
 		try {
 			Class<?> newRegCls = Class.forName(ForeignType.NEW_REGISTRY_EVENT.binary(Ecosystem.FORGE), false, cl);
 			Class<?> regManager = Class.forName(ForeignType.REGISTRY_MANAGER.binary(Ecosystem.FORGE), false, cl);
@@ -120,7 +121,6 @@ public final class KernelForgeBaseline {
 			int before = ((java.util.Map<?, ?>) rf.get(active)).size();
 
 			Object event = newRegCls.getDeclaredConstructor().newInstance();
-			Object bus = newRegCls.getField("BUS").get(null);
 
 			// The post and the fill are separated on purpose. This is traditional Forge's GLOBAL bus, so every
 			// mod's NewRegistryEvent listener runs inside one call and there is no seam to isolate them at. What
@@ -129,9 +129,16 @@ public final class KernelForgeBaseline {
 			// modifier serializers -- including the ones listeners that already ran had created. Filling anyway
 			// keeps those. This is the same shape as the deferred-work drain in KernelNeoSetup: the failure is
 			// one mod's, and the cost should be too.
+			//
+			// The event no longer carries its own bus lookup: 1.21.1's NewRegistryEvent has no BUS field, so
+			// getField("BUS") threw here and took every Forge custom registry with it. ForgeEventPost picks the
+			// form this line actually has.
 			boolean posted = true;
 			try {
-				KernelForgeModContext.single(bus.getClass(), "post").invoke(bus, event);
+				java.util.List<Object> buses = new java.util.ArrayList<>();
+				if (baseline != null) buses.add(baseline.busGroup());
+				for (KernelForgeModContext.Handle handle : modHandles) buses.add(handle.busGroup());
+				ForgeEventPost.post(cl, event, buses);
 			} catch (Throwable t) {
 				posted = false;
 				ForbricLog.warn("[Forbric/Forge] a traditional-Forge mod's NewRegistryEvent listener failed — the "

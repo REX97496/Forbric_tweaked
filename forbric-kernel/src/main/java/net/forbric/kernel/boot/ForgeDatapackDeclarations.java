@@ -18,9 +18,10 @@ final class ForgeDatapackDeclarations {
 		try { eventClass = Class.forName(ForeignType.DATAPACK_NEW_REGISTRY_EVENT.binary(Ecosystem.FORGE), true, loader); }
 		catch (ClassNotFoundException absent) { return; }
 		Object event = eventClass.getConstructor().newInstance();
-		Object bus = eventClass.getField("BUS").get(null);
-		Class.forName(ForeignType.EVENT_BUS.binary(Ecosystem.FORGE), false, loader)
-				.getMethod("post", Class.forName(ForeignType.EVENT.binary(Ecosystem.FORGE), false, loader)).invoke(bus, event);
+		// Forge 1.21.1's DataPackRegistryEvent has no BUS field either — the reflective getField threw before a
+		// single listener ran, so no Forge mod's custom datapack registry codec was ever declared. No bus handle is
+		// threaded down to here yet, so ForgeEventPost uses this line's ModLoader path.
+		ForgeEventPost.post(loader, event, java.util.List.of());
 		Method process = eventClass.getDeclaredMethod("process"); process.setAccessible(true); process.invoke(event);
 		Field list = eventClass.getDeclaredField("registryDataList"); list.setAccessible(true);
 		Class<?> forgeData = Class.forName(ForeignType.DATAPACK_REGISTRY_DATA.binary(Ecosystem.FORGE), false, loader);

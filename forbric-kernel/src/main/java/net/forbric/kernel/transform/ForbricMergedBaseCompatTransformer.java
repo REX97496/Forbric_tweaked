@@ -93,7 +93,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores", "makeTheGeneratedDispatcherTargetsPublic");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -345,7 +345,6 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		out.add(scanned("answerTheLoadingOverlayWhenNoEarlyWindowExists",
 				"DisplayWindow.loadingOverlay answers with a sentinel (\"How did you get here?\"), so the overlay "
 						+ "handoff from Minecraft.<init> dies on a line this subsystem supports elsewhere"));
-		// scanned(), LAST. Two instructions replaced, no branch introduced, so no StackMapTable.
 		out.add(scanned("serveEveryNamespaceTheMergedBaseCarries",
 				"VanillaPackResources.getNamespaces returns a set naming only vanilla, so NeoForge's own shader "
 						+ "lookup cannot resolve assets/neoforge even though the merged base carries it"));
@@ -359,6 +358,11 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 						+ "while the merged getColor asks ForgeRegistries.getDelegateOrThrow for a Holder.Reference "
 						+ "— two different keys, so every lookup misses and every tinted sprite draws its raw "
 						+ "greyscale texture instead of its colour"));
+		// scanned(), LAST. Two instructions replaced, no branch introduced, so no StackMapTable.
+		out.add(scanned("makeTheGeneratedDispatcherTargetsPublic",
+				"the eventbus compiles a handler class in its own loader for every registered lambda, and Forge keeps its "
+						+ "dispatch targets package-private — a different loader is a different runtime package, so the very first step of "
+						+ "the delivery dies on IllegalAccessError before the listener body runs"));
 		return List.copyOf(out);
 	}
 
@@ -465,6 +469,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			changed |= claim(reporter, "serveEveryNamespaceTheMergedBaseCarries", serveEveryNamespaceTheMergedBaseCarries(node));
 			changed |= claim(reporter, "resolveDeferredHoldersThroughTheWritableRoot", resolveDeferredHoldersThroughTheWritableRoot(node));
 			changed |= claim(reporter, "keyTheColourMapByWhatItStores", keyTheColourMapByWhatItStores(node));
+			changed |= claim(reporter, "makeTheGeneratedDispatcherTargetsPublic", makeTheGeneratedDispatcherTargetsPublic(node));
 			changed |= namedOldLoader && adoptInteropHooksTheBaseStillNamesAfterTheOldLoader(node);
 
 			byte[] result = classBytes;
@@ -4507,8 +4512,42 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	 * <p>SELF-GATING: fires only when the class's superclass is ServerLifecycleEvent. On 26.2 ServerStartingEvent is a
 	 * final Record implementing the interface instead, so this cannot fire there.
 	 */
+	/**
+	 * Makes a MinecraftForge dispatch target's own class public, because the event bus delivers through a class it
+	 * compiles in a loader of its own.
+	 *
+	 * <p>MEASURED, 1.21.1, first launch in which ForgeMod actually constructed: every one of the 90 RegisterEvent
+	 * deliveries failed with
+	 * {@code IllegalAccessError: failed to access class net.minecraftforge.registries.DeferredRegister$EventDispatcher
+	 * from class net.minecraftforge.registries.__EventDispatcher_handleEvent_RegisterEvent}, whose stack shows the
+	 * generated class living in {@code net.minecraftforge.eventbus.ClassLoaderFactory$ASMClassLoader} while the
+	 * dispatcher lives in the game loader. A class that is package-private is only reachable from its own runtime
+	 * package, and a runtime package is (name, loader) — so on Forge's own loader this works and here it cannot.
+	 *
+	 * <p>javap on the carrier: {@code class net.minecraftforge.registries.DeferredRegister$EventDispatcher} with
+	 * {@code public void handleEvent(RegisterEvent)} and {@code public void createRegistry(NewRegistryEvent)}. Only
+	 * the CLASS is hidden; the methods already want to be called. Widening the class adds no access that the
+	 * methods did not already declare, and nothing in this tree calls that class except the generated handler.
+	 */
+	static boolean makeTheGeneratedDispatcherTargetsPublic(ClassNode node) {
+		if (!node.name.startsWith("net/minecraftforge/")) return false;
+		if (!node.name.endsWith("$EventDispatcher")) return false;
+		if ((node.access & Opcodes.ACC_PUBLIC) != 0) return false;
+		node.access = (node.access & ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED)) | Opcodes.ACC_PUBLIC;
+		ForbricLog.info("[Forbric/MergedBaseCompat] " + node.name.replace('/', '.')
+				+ " is public — the event bus delivers to it from a generated class in a loader of its own, so a "
+				+ "package-private dispatch target could not be reached at all");
+		return true;
+	}
 	static boolean giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith(ClassNode node) {
-		if (!node.name.startsWith("net/minecraftforge/event/")) return false;
+		// ANY MinecraftForge event in ANY package, not a list of two packages. Measured on 1.21.1: fixing
+		// net/minecraftforge/data/event/ only moved the same NoSuchMethodException one class along --
+		// "net.minecraftforge.registries.RegisterEvent.<init>()" -- because ForgeMod's constructor subscribes
+		// several event types and each one is probed the same way. Enumerating the packages ForgeMod happens to
+		// touch today would leave the next subscription, in the next class, failing the same way: the predicate is
+		// "a MinecraftForge class that extends the bus's Event", which is exactly what EventListenerHelper probes.
+		if (!node.name.startsWith("net/minecraftforge/")) return false;
+		if (!node.name.endsWith("Event")) return false;
 		// NO CLASS-NAME LITERALS: the superclass to chain to is node.superName itself. The first version wrote
 		// "net/minecraftforge/eventbus/api/Event" inline and ForeignTypeTest named it -- that concept is spelled out
 		// under both Forge families, and ForeignType.EVENT is the 26.2 spelling (eventbus.internal.Event), so a
