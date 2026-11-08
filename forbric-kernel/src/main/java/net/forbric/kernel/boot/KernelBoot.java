@@ -566,6 +566,11 @@ public final class KernelBoot {
 			try (var in = loader.getGameResourceAsStream(name + ".class")) { return in != null; }
 			catch (java.io.IOException unavailable) { return false; }
 		}));
+		// A diagnostic, not a repair: it exists so that "F3 does nothing" can be told apart from "F3 never
+		// arrived". Off unless asked for, so the shipped client is untouched.
+		if (Boolean.getBoolean("forbric.probeKeys")) {
+			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.KeyPressProbeTransformer());
+		}
 		if (transferInterop) {
 			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.TransferTransactionHooks());
 			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.TransferCapabilityFallback());
