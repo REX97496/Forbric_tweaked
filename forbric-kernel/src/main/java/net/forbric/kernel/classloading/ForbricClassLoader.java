@@ -475,6 +475,10 @@ public final class ForbricClassLoader extends URLClassLoader {
 		boolean outer=activeDefinitions.add(name);try{return buildAndDefineGameClass(name);}finally{if(outer)activeDefinitions.remove(name);}
 	}
 	private Class<?> buildAndDefineGameClass(String name) {
+		if (name.startsWith("net.minecraftforge.") && name.contains("__")) {
+			Class<?> wrapper = defineEventBusWrapper(name);
+			if (wrapper != null) return wrapper;
+		}
 		String path = name.replace('.', '/') + ".class";
 		URL resource = findResource(path); // this loader's own URLs only
 		byte[] bytes = null;
@@ -541,6 +545,97 @@ public final class ForbricClassLoader extends URLClassLoader {
 			ancestorBridges.observe(bytes, familyOfUrl(resource, runtimeJarFamilies), this::carrierOfClass);
 		return defined;
 	}
+
+	/**
+	 * The listener wrapper the Forge eventbus asks its launcher for, generated here instead of by ModLauncher.
+	 *
+	 * <p>{@code EventBus.registerObject} does not call a {@code @SubscribeEvent} method directly. It asks its
+	 * {@code ClassLoaderFactory} for a wrapper class named
+	 * {@code <owner package>.__<owner simple name>_<method>_<event simple name>}, and on a real Forge that class is
+	 * produced by ModLauncher during transformation: {@code ModLauncherFactory.createWrapper} queues the method in
+	 * a pending cache and then calls {@code Class.forName}, expecting the transformer service to have filled the
+	 * class in on the way. There is no ModLauncher here, so the lookup reached
+	 *
+	 * <pre>ClassNotFoundException: net.minecraftforge.common.__ForgeInternalHandler_onConnectionStart_ConnectionStartEvent</pre>
+	 *
+	 * <p>for every {@code @SubscribeEvent} on every object - 12 of them for Forge's own {@code ForgeInternalHandler}
+	 * alone - and each one was logged as {@code Error registering event handler} while the listener silently did
+	 * not exist. The eventbus exposes the other half of that contract: {@code hasPendingWrapperClass(name)} says the
+	 * name is one it is waiting for, and {@code processWrapperClass(name, ClassNode)} fills the node in. So this
+	 * asks for the node, writes it out and defines it.
+	 *
+	 * <p>Reflective because the eventbus is not on this module's compile classpath and its ASM is whichever copy the
+	 * game loader resolved. Any failure returns {@code null} and leaves the previous behaviour - the class is simply
+	 * absent - so this cannot make a working launch worse.
+	 */
+	private Class<?> defineEventBusWrapper(String name) {
+		if (WRAPPER_OFF) return null;
+		try {
+			// The eventbus resolves its own classes through the thread context loader (that is also the loader its
+			// Class.forName for this wrapper uses), so ask there first and only then through this one.
+			Class<?> factory = null;
+			ClassLoader context = Thread.currentThread().getContextClassLoader();
+			for (ClassLoader candidate : new ClassLoader[] {context, this}) {
+				if (candidate == null) continue;
+				try {
+					factory = Class.forName("net.minecraftforge.eventbus.ModLauncherFactory", false, candidate);
+					break;
+				} catch (ClassNotFoundException notHere) {
+					// next candidate
+				}
+			}
+			if (factory == null) {
+				reportWrapperMiss(name, "the eventbus class itself is not visible");
+				return null;
+			}
+			java.lang.reflect.Method pending = factory.getMethod("hasPendingWrapperClass", String.class);
+			if (!Boolean.TRUE.equals(pending.invoke(null, name))) {
+				reportWrapperMiss(name, "the eventbus is not waiting for this name");
+				return null;
+			}
+			java.lang.reflect.Method process = null;
+			for (java.lang.reflect.Method candidate : factory.getMethods()) {
+				if (candidate.getName().equals("processWrapperClass") && candidate.getParameterCount() == 2
+						&& candidate.getParameterTypes()[0] == String.class) {
+					process = candidate;
+					break;
+				}
+			}
+			if (process == null) return null;
+			Class<?> nodeType = process.getParameterTypes()[1];
+			Object node = nodeType.getDeclaredConstructor().newInstance();
+			process.invoke(null, name, node);
+			ClassLoader asmLoader = nodeType.getClassLoader();
+			Class<?> writerType = Class.forName("org.objectweb.asm.ClassWriter", true, asmLoader);
+			Class<?> visitorType = Class.forName("org.objectweb.asm.ClassVisitor", true, asmLoader);
+			Object writer = writerType.getConstructor(int.class).newInstance(org.objectweb.asm.ClassWriter.COMPUTE_MAXS);
+			// accept() is declared against ClassVisitor, not ClassWriter: getMethod needs the exact declared type.
+			nodeType.getMethod("accept", visitorType).invoke(node, writer);
+			byte[] bytes = (byte[]) writerType.getMethod("toByteArray").invoke(writer);
+			definePackageIfNeeded(name, null);
+			Class<?> defined = define(name, bytes, null);
+			ForbricLog.info("[Forbric/EventBus] generated the listener wrapper %s the eventbus asks its launcher for — "
+					+ "without it every @SubscribeEvent method on a registered object is silently unregistered", name);
+			return defined;
+		} catch (Throwable unavailable) {
+			reportWrapperMiss(name, String.valueOf(unavailable));
+			return null;
+		}
+	}
+
+	/** One line per distinct reason, so a silent "wrapper still absent" is never the state the log leaves behind. */
+	private static void reportWrapperMiss(String name, String reason) {
+		if (WRAPPER_MISSES.size() < 3 && WRAPPER_MISSES.add(name + " | " + reason)) {
+			ForbricLog.info("[Forbric/EventBus] could not generate the listener wrapper %s: %s — every @SubscribeEvent "
+					+ "on that object stays unregistered", name, reason);
+		}
+	}
+
+	private static final java.util.Set<String> WRAPPER_MISSES =
+			java.util.Collections.synchronizedSet(new java.util.LinkedHashSet<>());
+
+	private static final boolean WRAPPER_OFF = "off".equalsIgnoreCase(
+			net.forbric.kernel.util.ForbricSwitches.get("forbric.eventBusWrappers", "on"));
 
 	/**
 	 * {@code bytes} rewritten so that verifying it resolves no class this loader has yet to define. Reached only for a
