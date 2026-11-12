@@ -571,6 +571,11 @@ public final class KernelBoot {
 		if (Boolean.getBoolean("forbric.probeKeys")) {
 			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.KeyPressProbeTransformer());
 		}
+		if (Boolean.getBoolean("forbric.probeScreens")) {
+			// Same reason as the key probe: the curios button exists in the heap and cannot be seen, and only the
+			// screen's own widget list can say whether it was ever added and where it thinks it is.
+			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.ScreenProbeTransformer());
+		}
 		if (transferInterop) {
 			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.TransferTransactionHooks());
 			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.TransferCapabilityFallback());
