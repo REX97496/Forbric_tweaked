@@ -132,6 +132,10 @@ public final class KernelGameServerLifecycle {
 				server -> {
 					try {
 						openServerConfigsForgeNeverOpened(server);
+						// Dropped before Forge's own stop hook validates them: those holders name registries this
+						// base never created, and Forge turns the absence into a RuntimeException that ends the
+						// whole hook — measured twice on 2026-11-13 with 26 such names.
+						KernelForgeObjectHolders.dropHandlersForMissingRegistries();
 						ServerLifecycleHooks.handleServerStopped(server);
 					} finally {
 						// Even if the hook threw: leaving a dead server published is worse than publishing none,
@@ -156,6 +160,13 @@ public final class KernelGameServerLifecycle {
 	 * {@code ServerLifecycleHooks.getServerConfigPath}, which is private static.
 	 */
 	private static void openServerConfigsForgeNeverOpened(MinecraftServer server) {
+		// The registry-name fallback has to be installed HERE as well as at registration: GameData.revertToFrozen
+		// puts a plain snapshot back into RegistryManager.registries before ObjectHolderRegistry validates, which
+		// discards the wrapper installed at boot. Measured 2026-11-13: the wrapper answered seven 'forge:' names
+		// during startup (forge:condition_codecs among them) and the shutdown still threw the same 26
+		// "Unable to find registry with key forge:..." lines. install() re-checks the field's own type, so calling
+		// it a second time is a no-op when nothing replaced the map.
+		KernelForgeRegistryNames.install();
 		if (server == null) return;
 		try {
 			Class<?> loader = Class.forName("net.forbric.kernel.runtime.KernelForgeConfigLoad", false,

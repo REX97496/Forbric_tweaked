@@ -85,6 +85,9 @@ public final class KernelForgeRegistries {
 	 * name any of the three types.
 	 */
 	public static List<Object[]> targets() throws Exception {
+		// Before anything asks: a "forge:" registry name this base registered as "neoforge:" must resolve, or
+		// Forge's own ObjectHolderRegistry throws 26 "Unable to find registry" lines at shutdown (round 122).
+		KernelForgeRegistryNames.install();
 		List<Object[]> targets = new ArrayList<>();
 		Set<ForgeRegistry<?>> covered = Collections.newSetFromMap(new IdentityHashMap<>());
 		// A mirrored slot answers as a Registry too (mirrorTheDefaultedRegistriesTheMergeWidened adds one per
