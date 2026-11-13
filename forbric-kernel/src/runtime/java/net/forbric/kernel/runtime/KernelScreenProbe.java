@@ -42,6 +42,8 @@ public final class KernelScreenProbe {
 	private static final int LIMIT = 40;
 	private static final Set<String> SEEN = ConcurrentHashMap.newKeySet();
 	private static final AtomicInteger LINES = new AtomicInteger();
+	/** One synthetic click per process: a second inventory open must not click again. */
+	private static final java.util.concurrent.atomic.AtomicBoolean CLICKED = new java.util.concurrent.atomic.AtomicBoolean();
 
 	private KernelScreenProbe() {
 	}
@@ -68,11 +70,59 @@ line.append(" | guiLeft=").append(call(screen, "getGuiLeft")).append(" guiTop=")
 			}
 			String text = line.toString();
 			String signature = name + "|" + children.size() + "|" + text.length();
-			if (!SEEN.add(signature)) return;
-			LINES.incrementAndGet();
-			say(text);
+			if (SEEN.add(signature)) {
+				LINES.incrementAndGet();
+				say(text);
+			}
+			clickNamedChild(screen, children);
 		} catch (Throwable unreadable) {
 			say("unreadable " + unreadable);
+		}
+	}
+
+	/**
+	 * Clicks the widget whose class name contains {@code -Dforbric.probeClick}, and says what happened.
+	 *
+	 * <p>A synthetic mouse click at absolute screen coordinates turned out to be unusable on this machine: the desktop
+	 * is 3840x2160 at 200% while the game's framebuffer is 854x480 inside a 502x311 window, so every hand-computed
+	 * pixel lands somewhere else, and focusing the window to make the click land pauses singleplayer. Clicking the
+	 * widget directly answers the question the pixels were for - does this button open anything - without either
+	 * problem: the widget's own {@code mouseClicked}, at its own centre, once per process.
+	 */
+	private static void clickNamedChild(net.minecraft.client.gui.screens.Screen screen, List<Object> children) {
+		String wanted = System.getProperty("forbric.probeClick");
+		if (wanted == null || wanted.isBlank() || CLICKED.get()) return;
+		for (Object child : children) {
+			if (!child.getClass().getSimpleName().contains(wanted)) continue;
+			if (!CLICKED.compareAndSet(false, true)) return;
+			Integer x = call(child, "getX");
+			Integer y = call(child, "getY");
+			Integer w = call(child, "getWidth");
+			Integer h = call(child, "getHeight");
+			double at = (x == null ? 0 : x) + (w == null ? 0 : w) / 2.0;
+			double ay = (y == null ? 0 : y) + (h == null ? 0 : h) / 2.0;
+			Object accepted = "?";
+			try {
+				Method click = child.getClass().getMethod("mouseClicked", double.class, double.class, int.class);
+				click.setAccessible(true);
+				accepted = String.valueOf(click.invoke(child, at, ay, 0));
+			} catch (Throwable refused) {
+				accepted = refused.getClass().getSimpleName() + ": " + refused.getMessage();
+			}
+			say("clicked " + child.getClass().getSimpleName() + " at (" + at + "," + ay + ") -> " + accepted
+					+ "; the screen now is " + screenNow(screen));
+			return;
+		}
+	}
+
+	private static String screenNow(net.minecraft.client.gui.screens.Screen screen) {
+		Object minecraft = field(screen, "minecraft");
+		if (minecraft == null) return "?";
+		try {
+			Object shown = minecraft.getClass().getMethod("getScreen").invoke(minecraft);
+			return shown == null ? "null" : shown.getClass().getName();
+		} catch (Throwable absent) {
+			return "?";
 		}
 	}
 

@@ -585,6 +585,16 @@ public final class KernelBoot {
 			// screen's own widget list can say whether it was ever added and where it thinks it is.
 			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.ScreenProbeTransformer());
 		}
+		if (Boolean.getBoolean("forbric.probePayloads")) {
+			// Forge's own custom-payload check disconnects the player on a side mismatch. Moving the server thread into
+			// Forge's SERVER thread group did not stop it, so the next step reads the site itself: which thread runs it,
+			// what the connection says it received, and what EffectiveSide answers there.
+			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.PayloadProbeTransformer());
+		}
+		// The other half of the same bug: the check runs on a Netty IO thread, and both of the server listener's
+		// event-loop factories create those threads in NeoForge's thread group, where Forge's EffectiveSide answers
+		// CLIENT. Handing them MinecraftForge's group (it is a ThreadFactory) fixes the side without touching Forge.
+		chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.ServerThreadGroupTransformer());
 		if (transferInterop) {
 			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.TransferTransactionHooks());
 			chain.register(TransformPhase.COREMOD, new net.forbric.kernel.transform.TransferCapabilityFallback());

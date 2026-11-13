@@ -79,6 +79,14 @@ public final class KernelGameServerAboutToStart {
 		AtomicBoolean warnedEvent = new AtomicBoolean();
 
 		Consumer<ServerAboutToStartEvent> listener = neoEvent -> {
+			// FIRST, and before anything that can be disconnected by it. This runs on the server thread, which is the
+			// thread MinecraftForge's EffectiveSide.get() will be asked about when a mod's custom payload arrives.
+			// The merged base builds that thread with NeoForge's SidedThreadGroups.SERVER (MinecraftServer.spin), and
+			// Forge's EffectiveSide recognises only its own group class, so it answered CLIENT there — which made
+			// ForgeHooks.onCustomPayload read every serverbound payload as the wrong side and disconnect the player
+			// ("Illegal packet received, terminating connection", first seen when curios' button was clicked).
+			KernelServerThreads.adoptForgeServerThreadGroup();
+
 			MinecraftServer server;
 			try {
 				server = neoEvent.getServer();
