@@ -566,6 +566,15 @@ public final class KernelBoot {
 			try (var in = loader.getGameResourceAsStream(name + ".class")) { return in != null; }
 			catch (java.io.IOException unavailable) { return false; }
 		}));
+		// Forge 1.21.1 declares forge:condition_codecs and three siblings; this base registers the same registry
+		// objects under neoforge:…, so Forge's own ObjectHolderRegistry could not find them at shutdown (26
+		// suppressed "Unable to find registry with key forge:… for mod forge" lines, measured 2026-11-13).
+		// RegistryManager.registries is a BiMap, so the name is translated on the way in instead of duplicated.
+		chain.register(TransformPhase.COREMOD,
+				new net.forbric.kernel.transform.ForgeRegistryNameFallbackTransformer(name -> {
+					try (var in = loader.getGameResourceAsStream(name + ".class")) { return in != null; }
+					catch (java.io.IOException unavailable) { return false; }
+				}));
 		// A diagnostic, not a repair: it exists so that "F3 does nothing" can be told apart from "F3 never
 		// arrived". Off unless asked for, so the shipped client is untouched.
 		if (Boolean.getBoolean("forbric.probeKeys")) {
