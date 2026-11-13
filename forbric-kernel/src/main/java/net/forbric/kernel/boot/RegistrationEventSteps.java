@@ -197,7 +197,51 @@ final class RegistrationEventSteps {
 			outcome = new Outcome(true, steps, failures, null, dataMapTypes(cl));
 		}
 		report(outcome);
+		if (Boolean.getBoolean("forbric.probeCapabilities")) capabilityCensus(cl);
 		return outcome;
+	}
+
+	/**
+	 * What the capability step actually registered: every entity capability's id and how many entity types have a
+	 * provider for it.
+	 *
+	 * <p>Written for a measured question, not a guess: curios' inventory panel opened with no slots, and curios'
+	 * {@code CuriosImplMixinHooks.getCuriosInventory} is nothing but {@code LivingEntity.getCapability(
+	 * CuriosCapability.INVENTORY)}, which reads the {@code providers} map of that very capability instance. A zero
+	 * there says the mod's own {@code RegisterCapabilitiesEvent} listener never ran; a missing id says the mod's
+	 * capability class was never initialised. The two have different fixes and the same symptom.
+	 *
+	 * <p>{@code -Dforbric.probeCapabilities=true}. Reflection only: this runs in the boot loader, which cannot see
+	 * NeoForge's classes at compile time.
+	 */
+	private static void capabilityCensus(ClassLoader cl) {
+		try {
+			Class<?> capability = Class.forName("net.neoforged.neoforge.capabilities.EntityCapability", false, cl);
+			Object all = capability.getMethod("getAll").invoke(null);
+			if (!(all instanceof List<?> capabilities)) {
+				ForbricLog.info("[Forbric/Capabilities] entity capability census: getAll() answered %s",
+						String.valueOf(all));
+				return;
+			}
+			List<String> lines = new ArrayList<>();
+			for (Object each : capabilities) {
+				Object name = each.getClass().getMethod("name").invoke(each);
+				java.lang.reflect.Field providers = each.getClass().getDeclaredField("providers");
+				providers.setAccessible(true);
+				Object map = providers.get(each);
+				String detail = map instanceof Map<?, ?> m ? Integer.toString(m.size()) : "?";
+				lines.add(name + "=" + detail);
+				if (String.valueOf(name).startsWith("curios") && map instanceof Map<?, ?> m) {
+					List<String> types = new ArrayList<>();
+					for (Object key : m.keySet()) types.add(String.valueOf(key));
+					ForbricLog.info("[Forbric/Capabilities] %s is provided for: %s", name, types);
+				}
+			}
+			ForbricLog.info("[Forbric/Capabilities] entity capability census (%d): %s", lines.size(),
+					String.join(", ", lines));
+		} catch (Throwable t) {
+			ForbricLog.warn("[Forbric/Capabilities] could not take the entity capability census", unwrap(t));
+		}
 	}
 
 	/**

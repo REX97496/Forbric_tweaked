@@ -64,6 +64,7 @@ public final class KernelScreenProbe {
 			}
 line.append(" | guiLeft=").append(call(screen, "getGuiLeft")).append(" guiTop=").append(call(screen, "getGuiTop"));
 			line.append(" | menu=").append(describeMenu(screen));
+			if (name.startsWith("top.theillusivec4.curios")) line.append(" | ").append(curiosState());
 			Object renderables = field(screen, "renderables");
 			if (renderables instanceof List<?> drawn) {
 				line.append(" | renderables=").append(drawn.size()).append(':');
@@ -136,8 +137,118 @@ line.append(" | guiLeft=").append(call(screen, "getGuiLeft")).append(" guiTop=")
 		return line.toString();
 	}
 
-	private static String screenNow(net.minecraft.client.gui.screens.Screen screen) {
-		Object minecraft = field(screen, "minecraft");
+	/**
+	 * Why curios' panel is empty: the slot manager, the entity manager and the player's inventory capability, all three
+	 * at the moment the screen opens.
+	 *
+	 * <p>curios' inventory capability is a NeoForge {@code EntityCapability} whose provider returns null unless
+	 * {@code CuriosApi.getEntitySlots(entity)} is non-empty, and that map comes from the client's
+	 * {@code CuriosEntityManager}, which is filled from the login sync packet. So an empty panel can be "no slot
+	 * definitions", "no entity→slot mapping" or "no capability instance", and the screen alone cannot tell them apart.
+	 * Each is printed separately, and a failure in one is not a failure of the others.
+	 */
+	private static String curiosState() {
+		StringBuilder line = new StringBuilder();
+		line.append("curiosSlots=").append(managerSize("top.theillusivec4.curios.common.data.CuriosSlotManager"));
+		line.append(" curiosEntities=").append(entitySlots());
+		line.append(" curiosInventory=").append(inventory());
+		return line.toString();
+	}
+
+	/** A curios {@code *Manager}'s CLIENT and SERVER slot counts, as {@code client/server}. */
+	private static String managerSize(String className) {
+		try {
+			Class<?> type = Class.forName(className, false, KernelScreenProbe.class.getClassLoader());
+			return size(type, "CLIENT") + "/" + size(type, "SERVER");
+		} catch (Throwable absent) {
+			return "?";
+		}
+	}
+
+	private static String size(Class<?> type, String fieldName) {
+		try {
+			java.lang.reflect.Field manager = type.getField(fieldName);
+			Object instance = manager.get(null);
+			if (instance == null) return "-";
+			Object slots = instance.getClass().getMethod("getSlots").invoke(instance);
+			return slots instanceof java.util.Map<?, ?> map ? Integer.toString(map.size()) : "?";
+		} catch (Throwable absent) {
+			return "?";
+		}
+	}
+
+	/** How many slots the client's entity manager gives the local player's type: {@code client/server}. */
+	private static String entitySlots() {
+		Object player = localPlayer();
+		if (player == null) return "no-player";
+		try {
+			Object entityType = player.getClass().getMethod("getType").invoke(player);
+			Class<?> manager = Class.forName("top.theillusivec4.curios.common.data.CuriosEntityManager", false,
+					KernelScreenProbe.class.getClassLoader());
+			java.lang.reflect.Method slots = null;
+			for (java.lang.reflect.Method candidate : manager.getMethods()) {
+				Class<?>[] parameters = candidate.getParameterTypes();
+				if ("getEntitySlots".equals(candidate.getName()) && parameters.length == 1
+						&& parameters[0].isInstance(entityType)) {
+					slots = candidate;
+				}
+			}
+			if (slots == null) return "no-ask";
+			StringBuilder line = new StringBuilder();
+			for (String side : new String[] {"CLIENT", "SERVER"}) {
+				Object instance = manager.getField(side).get(null);
+				if (instance == null) {
+					line.append('-');
+				} else {
+					Object answer = slots.invoke(instance, entityType);
+					line.append(answer instanceof java.util.Map<?, ?> map ? map.size() : "?");
+				}
+				if ("CLIENT".equals(side)) line.append('/');
+			}
+			return line.toString();
+		} catch (Throwable absent) {
+			return absent.getClass().getSimpleName();
+		}
+	}
+
+	/** Whether {@code CuriosApi.getCuriosInventory(player)} answers, and what it is when it does. */
+	private static String inventory() {
+		Object player = localPlayer();
+		if (player == null) return "no-player";
+		try {
+			ClassLoader loader = KernelScreenProbe.class.getClassLoader();
+			Class<?> capability = Class.forName("top.theillusivec4.curios.api.CuriosCapability", false, loader);
+			Object inventoryCapability = capability.getField("INVENTORY").get(null);
+			java.lang.reflect.Method ask = null;
+			for (java.lang.reflect.Method candidate : player.getClass().getMethods()) {
+				if (!"getCapability".equals(candidate.getName())) continue;
+				Class<?>[] parameters = candidate.getParameterTypes();
+				if (parameters.length == 1 && parameters[0].isInstance(inventoryCapability)) ask = candidate;
+			}
+			if (ask == null) return "no-ask";
+			Object handler = ask.invoke(player, inventoryCapability);
+			if (handler == null) return "null";
+			Object slots = handler.getClass().getMethod("getSlots").invoke(handler);
+			return slots + " " + handler.getClass().getSimpleName();
+		} catch (Throwable absent) {
+			return absent.getClass().getSimpleName() + ": " + absent.getMessage();
+		}
+	}
+
+	/** The client's own player, or null outside a world. */
+	private static Object localPlayer() {
+		try {
+			Class<?> minecraft = Class.forName("net.minecraft.client.Minecraft", false,
+					KernelScreenProbe.class.getClassLoader());
+			Object instance = minecraft.getMethod("getInstance").invoke(null);
+			if (instance == null) return null;
+			return field(instance, "player");
+		} catch (Throwable absent) {
+			return null;
+		}
+	}
+
+	private static String screenNow(net.minecraft.client.gui.screens.Screen screen) {		Object minecraft = field(screen, "minecraft");
 		if (minecraft == null) return "?";
 		try {
 			Object shown = minecraft.getClass().getMethod("getScreen").invoke(minecraft);
