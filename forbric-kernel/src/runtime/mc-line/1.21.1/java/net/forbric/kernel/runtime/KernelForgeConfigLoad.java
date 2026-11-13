@@ -98,6 +98,69 @@ public final class KernelForgeConfigLoad {
         return selected;
     }
 
+    /**
+     * Opens every SERVER config Forge's tracker holds but never opened, so its own unload can save it.
+     *
+     * <p>{@code ConfigTracker.closeConfig} does {@code if (getConfigData() == null) return;} and otherwise
+     * hands the data to {@code ModConfig.save()}, whose bytecode is
+     * {@code ((CommentedFileConfig) configData).save();} — an unconditional cast. A config that was tracked but
+     * never opened therefore carries the in-memory {@link com.electronwill.nightconfig.core.SimpleCommentedConfig}
+     * that {@code ModConfig}'s constructor installs, and the cast throws {@code ClassCastException} out of
+     * {@code ConfigTracker.unloadConfigs}, i.e. out of Forge's {@code ServerStoppedEvent} hook. Observed on the
+     * 1.21.1 line: {@code handleServerStopped forward failed; Forge-family mods won't observe this
+     * server-lifecycle event} at 22:32:13, with the CCE inside {@code ConfigTracker.closeConfig}.
+     *
+     * <p>So open them first: Forge's {@code openConfig(config, dir)} replaces the data with a reader-backed
+     * {@code CommentedFileConfig} (and its file watcher), which is exactly the state the close half expects.
+     * Anything that still fails to open is reported and left alone — a wrong write is worse than a skipped one.
+     */
+    public static List<String> openServerConfigs(Path directory) {
+        Set<ModConfig> configs = ConfigTracker.INSTANCE.configSets().get(ModConfig.Type.SERVER);
+        if (configs == null) return List.of();
+        List<ModConfig> snapshot;
+        synchronized (configs) { snapshot = List.copyOf(configs); }
+        List<String> opened = new ArrayList<>();
+        List<String> failed = new ArrayList<>();
+        for (ModConfig config : snapshot) {
+            synchronized (config) {
+                try {
+                    Object data = config.getConfigData();
+                    if (data != null && FILE_CONFIG.isInstance(data)) continue;
+                    String was = data == null ? "nothing" : data.getClass().getName();
+                    openOne(config, directory);
+                    opened.add(config.getModId() + " (" + was + ")");
+                } catch (Throwable failure) {
+                    failed.add(config.getModId() + " " + config.getFileName());
+                    ForbricLog.warn("[Forbric/Lifecycle] " + config.getModId()
+                            + ": its MinecraftForge SERVER config " + config.getFileName()
+                            + " could not be opened on the way out, so it is not saved",
+                            Reflect.unwrap(failure));
+                }
+            }
+        }
+        if (!opened.isEmpty()) {
+            ForbricLog.info("[Forbric/Lifecycle] opened %d MinecraftForge SERVER config(s) that were never opened "
+                    + "before unloading them, so Forge's own save has a file to write: %s", opened.size(), opened);
+        }
+        if (!failed.isEmpty()) {
+            ForbricLog.warn("[Forbric/Lifecycle] %d MinecraftForge SERVER config(s) stay unsaved: %s",
+                    failed.size(), failed);
+        }
+        return List.copyOf(opened);
+    }
+
+    /** {@code CommentedFileConfig} without holding the class in a field the 26.2 line cannot see. */
+    private static final Class<?> FILE_CONFIG;
+    static {
+        Class<?> fileConfig = null;
+        try {
+            fileConfig = Class.forName("com.electronwill.nightconfig.core.file.CommentedFileConfig");
+        } catch (Throwable ignored) {
+            // Not on this classpath: every config then counts as unopened, which is the safe direction.
+        }
+        FILE_CONFIG = fileConfig;
+    }
+
     /** The private two-argument static method is Forge's own single-config loading transaction. */
     private static void openOne(ModConfig config, Path directory) throws ReflectiveOperationException {
         Method open = ConfigTracker.class.getDeclaredMethod("openConfig", ModConfig.class, Path.class);

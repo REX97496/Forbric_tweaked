@@ -131,6 +131,7 @@ public final class KernelGameServerLifecycle {
 		subscribe((IEventBus) neoBus, ServerStoppedEvent.class, "handleServerStopped", false,
 				server -> {
 					try {
+						openServerConfigsForgeNeverOpened(server);
 						ServerLifecycleHooks.handleServerStopped(server);
 					} finally {
 						// Even if the hook threw: leaving a dead server published is worse than publishing none,
@@ -138,6 +139,38 @@ public final class KernelGameServerLifecycle {
 						KernelGameServerAboutToStart.forgetCurrentServer();
 					}
 				});
+	}
+
+	/**
+	 * Opens the MinecraftForge SERVER configs Forge's own unload is about to save, if nobody opened them.
+	 *
+	 * <p>{@code ConfigTracker.closeConfig} returns early for a null {@code configData} and otherwise lets
+	 * {@code ModConfig.save()} cast it to {@code CommentedFileConfig} unconditionally. A config that was tracked
+	 * but never opened still carries the in-memory {@code SimpleCommentedConfig} the constructor installs, so
+	 * Forge's stop hook dies with {@code ClassCastException} and {@link #subscribe} reports it as "the event did
+	 * not reach its mods" — measured on the 1.21.1 line at 22:32:13. Opening them first is what makes the close
+	 * half save a file instead of throwing.
+	 *
+	 * <p>Reflective on both ends because the helper lives in the 1.21.1 line's overlay (it is written against
+	 * Forge's two-argument {@code openConfig}) and the directory is Forge's own
+	 * {@code ServerLifecycleHooks.getServerConfigPath}, which is private static.
+	 */
+	private static void openServerConfigsForgeNeverOpened(MinecraftServer server) {
+		if (server == null) return;
+		try {
+			Class<?> loader = Class.forName("net.forbric.kernel.runtime.KernelForgeConfigLoad", false,
+					KernelGameServerLifecycle.class.getClassLoader());
+			java.lang.reflect.Method open = loader.getMethod("openServerConfigs", java.nio.file.Path.class);
+			java.lang.reflect.Method path = ServerLifecycleHooks.class.getDeclaredMethod("getServerConfigPath",
+					MinecraftServer.class);
+			path.setAccessible(true);
+			open.invoke(null, path.invoke(null, server));
+		} catch (ClassNotFoundException | NoSuchMethodException absent) {
+			// Another line: there is no Forge config loader to consult here.
+		} catch (Throwable t) {
+			ForbricLog.warn("[Forbric/Lifecycle] could not open the MinecraftForge SERVER configs before unloading "
+					+ "them; anything Forge never opened stays unsaved", Reflect.unwrap(t));
+		}
 	}
 
 	/** The MinecraftForge side of one lifecycle step. */
