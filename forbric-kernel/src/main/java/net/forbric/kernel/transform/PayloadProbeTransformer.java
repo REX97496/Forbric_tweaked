@@ -44,33 +44,82 @@ public final class PayloadProbeTransformer implements ClassTransformer {
 	static final String TARGET = "net.minecraft.server.network.ServerGamePacketListenerImpl";
 	static final String METHOD = "handleCustomPayload";
 	static final String DESC = "(Lnet/minecraft/network/protocol/common/ServerboundCustomPayloadPacket;)V";
+	/**
+	 * The client half. Curios opens an inventory whose container holds the same 46 slots as vanilla's, and the slots it
+	 * adds come from a server-to-client payload — so whether the client dispatches clientbound custom payloads at all
+	 * is the next thing to measure, and its type ids say which ones arrive.
+	 */
+	static final String CLIENT_TARGET = "net.minecraft.client.multiplayer.ClientPacketListener";
+	/**
+	 * The merged base's client entry point takes the payload itself, not the packet: NeoForge's patch routes the packet
+	 * to {@code handleCustomPayload(CustomPacketPayload)}. A probe pinned to the vanilla packet shape finds nothing and
+	 * says nothing, which is exactly how this was measured.
+	 */
+	static final String CLIENT_DESC = "(Lnet/minecraft/network/protocol/common/custom/CustomPacketPayload;)V";
+	/**
+	 * Where the client throws an unresolvable payload away. Probing both sites is what separates "the payload never
+	 * arrived" from "it arrived and the client could not name its type" — from outside the connection those look the same.
+	 */
+	static final String CLIENT_DROP_METHOD = "handleUnknownCustomPayload";
+	/**
+	 * The packet's own entry point, one step before the payload reaches {@code ClientPacketListener}. Probing it splits
+	 * "the payload arrived and the dispatch lost it" from "nothing was sent at all".
+	 */
+	static final String CLIENT_COMMON_TARGET = "net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl";
+	static final String CLIENT_PACKET_DESC =
+			"(Lnet/minecraft/network/protocol/common/ClientboundCustomPayloadPacket;)V";
 	static final String HELPER = "net/forbric/kernel/runtime/KernelNetProbe";
 	static final String HELPER_DESC = "(Ljava/lang/Object;Ljava/lang/Object;)V";
 
 	private static boolean said;
+	private static boolean saidClient;
 
 	@Override
 	public byte[] transform(String className, byte[] classBytes, TransformContext context) {
-		if (!TARGET.equals(className) || !Boolean.getBoolean(PROPERTY)) return classBytes;
+		if (!Boolean.getBoolean(PROPERTY)) return classBytes;
+		boolean server = TARGET.equals(className);
+		boolean client = CLIENT_TARGET.equals(className);
+		boolean clientPacket = CLIENT_COMMON_TARGET.equals(className);
+		if (!server && !client && !clientPacket) return classBytes;
 		ClassNode node = new ClassNode();
 		new ClassReader(classBytes).accept(node, 0);
+		String desc = server ? DESC : client ? CLIENT_DESC : CLIENT_PACKET_DESC;
+		boolean touched = false;
 		for (MethodNode method : node.methods) {
-			if (!METHOD.equals(method.name) || !DESC.equals(method.desc)) continue;
+			if (!desc.equals(method.desc)) continue;
+			String entry;
+			if (server && METHOD.equals(method.name)) {
+				entry = "see";
+			} else if (client && METHOD.equals(method.name)) {
+				entry = "seeClient";
+			} else if (client && CLIENT_DROP_METHOD.equals(method.name)) {
+				entry = "seeUnknown";
+			} else if (clientPacket && METHOD.equals(method.name)) {
+				entry = "seeClientPacket";
+			} else {
+				continue;
+			}
 			InsnList probe = new InsnList();
 			probe.add(new VarInsnNode(Opcodes.ALOAD, 0));
 			probe.add(new VarInsnNode(Opcodes.ALOAD, 1));
-			probe.add(new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, "see", HELPER_DESC, false));
+			probe.add(new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, entry, HELPER_DESC, false));
 			method.instructions.insert(probe);
-			ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
-			node.accept(writer);
-			if (!said) {
+			touched = true;
+			if (server && !said) {
 				said = true;
 				ForbricLog.info("[Forbric/Probe] serverbound custom payloads are being watched: the thread, its group, "
 						+ "the connection's direction and MinecraftForge's EffectiveSide, on every one (" + PROPERTY + ")");
 			}
-			return writer.toByteArray();
+			if (client && !saidClient) {
+				saidClient = true;
+				ForbricLog.info("[Forbric/Probe] clientbound custom payloads are being watched too: the registered type "
+						+ "id of every one that reaches the client, and every one it throws away (" + PROPERTY + ")");
+			}
 		}
-		return classBytes;
+		if (!touched) return classBytes;
+		ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		node.accept(writer);
+		return writer.toByteArray();
 	}
 
 	@Override

@@ -58,8 +58,83 @@ public final class KernelNetProbe {
 		}
 	}
 
-	private static Object forgeEffectiveSide() {
+	/**
+	 * Called at the head of the client's {@code ClientPacketListener.handleCustomPayload}.
+	 *
+	 * <p>Answers a different question from {@link #see}: a curios inventory opens with no curio slots while the server's
+	 * container has the same 46 slots as vanilla. Curios fills the client container from a server-to-client payload, so
+	 * the first thing to know is whether the client ever sees that payload at all — printing the type id of every
+	 * clientbound custom payload says so, and names the ones that do arrive.
+	 *
+	 * @param listener the client packet listener, untyped so this class needs no Minecraft types
+	 * @param payload the custom payload itself, not the packet: the merged base's client entry point takes
+	 *     {@code CustomPacketPayload} directly, untyped here for the same reason
+	 */
+	public static void seeClient(Object listener, Object payload) {
 		try {
+			String line = "[Forbric/Net] client handleCustomPayload id=" + payloadId(payload)
+					+ " class=" + (payload == null ? "null" : payload.getClass().getSimpleName());
+			if (SEEN.add(line)) {
+				say(line);
+			}
+		} catch (Throwable t) {
+			say("[Forbric/Net] client handleCustomPayload probe could not read the site: " + t);
+		}
+	}
+
+	/**
+	 * Called at the head of {@code ClientCommonPacketListenerImpl.handleCustomPayload(ClientboundCustomPayloadPacket)}.
+	 *
+	 * <p>That is the packet's own entry point, one step before the payload reaches {@code ClientPacketListener}. If this
+	 * site prints and {@link #seeClient} does not, the payload arrived and the dispatch inside the base lost it; if
+	 * neither prints, nothing was sent — and then the server side is where the answer is, not the client.
+	 *
+	 * @param listener the common packet listener, untyped so this class needs no Minecraft types
+	 * @param packet the clientbound payload packet, untyped for the same reason
+	 */
+	public static void seeClientPacket(Object listener, Object packet) {
+		try {
+			String line = "[Forbric/Net] client packet handleCustomPayload id=" + payloadId(call(packet, "payload"))
+					+ " class=" + (packet == null ? "null" : packet.getClass().getSimpleName());
+			if (SEEN.add(line)) {
+				say(line);
+			}
+		} catch (Throwable t) {
+			say("[Forbric/Net] client packet handleCustomPayload probe could not read the site: " + t);
+		}
+	}
+
+	/** The payload's registered type id, which is what a mod names when it registers one. */
+	private static String payloadId(Object payload) {
+		Object type = call(payload, "type");
+		Object id = call(type, "id");
+		return String.valueOf(id);
+	}
+
+	/**
+	 * Called at the head of the client's {@code handleUnknownCustomPayload}.
+	 *
+	 * <p>The client printed no {@code handleCustomPayload} line at all while the server answered one serverbound payload,
+	 * so the next question is whether curios' payload never arrived or arrived and was thrown away as an unknown type.
+	 * The two look identical from outside the connection: this site is where the client discards one, and the id it
+	 * prints names the payload a mod registered that this client could not resolve.
+	 *
+	 * @param listener the client packet listener, untyped so this class needs no Minecraft types
+	 * @param payload the payload the client could not resolve, untyped for the same reason
+	 */
+	public static void seeUnknown(Object listener, Object payload) {
+		try {
+			String line = "[Forbric/Net] client handleUnknownCustomPayload id=" + payloadId(payload)
+					+ " class=" + (payload == null ? "null" : payload.getClass().getSimpleName());
+			if (SEEN.add(line)) {
+				say(line);
+			}
+		} catch (Throwable t) {
+			say("[Forbric/Net] handleUnknownCustomPayload probe could not read the site: " + t);
+		}
+	}
+
+	private static Object forgeEffectiveSide() {		try {
 			Class<?> type = Class.forName("net.minecraftforge.fml.util.thread.EffectiveSide");
 			Method get = type.getMethod("get");
 			return get.invoke(null);

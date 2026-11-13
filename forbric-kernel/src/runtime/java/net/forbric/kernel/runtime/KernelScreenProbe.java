@@ -63,6 +63,7 @@ public final class KernelScreenProbe {
 				line.append(' ').append(describe(child));
 			}
 line.append(" | guiLeft=").append(call(screen, "getGuiLeft")).append(" guiTop=").append(call(screen, "getGuiTop"));
+			line.append(" | menu=").append(describeMenu(screen));
 			Object renderables = field(screen, "renderables");
 			if (renderables instanceof List<?> drawn) {
 				line.append(" | renderables=").append(drawn.size()).append(':');
@@ -113,6 +114,26 @@ line.append(" | guiLeft=").append(call(screen, "getGuiLeft")).append(" guiTop=")
 					+ "; the screen now is " + screenNow(screen));
 			return;
 		}
+	}
+
+	/**
+	 * What the screen's menu actually holds: the container class, how many slots it has, and what the first few are.
+	 *
+	 * <p>Motivated by curios: its screen opens now, and the panel beside the inventory stays empty. "The datapack was
+	 * never loaded" and "the container has no slots" look identical on screen, and only the slot list separates them.
+	 */
+	private static String describeMenu(Object screen) {
+		Object menu = field(screen, "menu");
+		if (menu == null) return "none";
+		Object slots = field(menu, "slots");
+		if (!(slots instanceof List<?> list)) return menu.getClass().getName() + " slots=unreadable";
+		StringBuilder line = new StringBuilder(menu.getClass().getName()).append(" slots=").append(list.size());
+		int shown = 0;
+		for (Object slot : list) {
+			if (shown++ >= 12) break;
+			line.append(' ').append(slot == null ? "null" : slot.getClass().getSimpleName());
+		}
+		return line.toString();
 	}
 
 	private static String screenNow(net.minecraft.client.gui.screens.Screen screen) {
