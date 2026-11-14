@@ -736,11 +736,110 @@ public final class ForbricMixinService
 	/** Reads a game resource ({@code some/pkg/Name.class}) to its bytes, or null. */
 	private static byte[] readGameResource(String resourcePath) {
 		try (InputStream in = loader().getGameResourceAsStream(resourcePath)) {
-			return in == null ? null : in.readAllBytes();
+			if (in != null) return in.readAllBytes();
 		} catch (IOException e) {
+			// fall through to the jar that serves the entry
+		}
+		return readFromServingJar(resourcePath);
+	}
+
+	/**
+	 * The jar entry behind a resource the game loader does not hand out.
+	 *
+	 * <p>{@link #readGameResource} used to stop at the loader's resource view, and that view is not every entry in
+	 * every game jar: {@code net/minecraft/server/commands/GameRuleCommand$1.class} is in the merged base but not in
+	 * it as a game resource, and a mixin refmap sits at a guest jar's root, where the game has no business looking.
+	 * Both are exactly what the guest-mixin gate needs — the first to judge an {@code @Shadow} field against the real
+	 * anonymous class, the second to follow the target a mixin's own refmap redirects it to — so read them from the
+	 * jar the loader says serves them.
+	 */
+	private static byte[] readFromServingJar(String resourcePath) {
+		String entry = resourcePath.startsWith("/") ? resourcePath.substring(1) : resourcePath;
+		java.net.URL url = loader().findResource(entry);
+		if (url != null) {
+			java.nio.file.Path jar = NativeAbsentTargets.servingJar(url);
+			if (jar != null) {
+				byte[] direct = readEntry(jar, entry);
+				if (direct != null) return direct;
+			}
+		}
+		// The loader's resource lookup does not answer for every entry its jars hold: measured for
+		// net/minecraft/server/commands/GameRuleCommand$1.class, which is in the merged base yet findResource
+		// answered null — and a guest jar's mixin refmap sits at the jar root, where nothing looks. Both are what
+		// the guest gate needs, so ask the jars this loader owns directly.
+		for (java.net.URL each : loader().getURLs()) {
+			if (!"file".equals(each.getProtocol())) continue;
+			java.nio.file.Path candidate;
+			try {
+				candidate = java.nio.file.Path.of(each.toURI());
+			} catch (java.net.URISyntaxException | RuntimeException notAFile) {
+				continue;
+			}
+			if (!java.nio.file.Files.isRegularFile(candidate)) continue;
+			byte[] found = readEntry(candidate, entry);
+			if (found != null) {
+				if (Boolean.getBoolean("forbric.probeMixinResources") && PROBED.add(entry))
+					ForbricLog.info("[Forbric/Mixin] resource '%s' came from %s — the loader's own lookup did not answer it",
+							entry, candidate.getFileName());
+				return found;
+			}
+		}
+		byte[] outerJar = readFromTheJarOfTheOuterClass(entry);
+		if (outerJar != null) return outerJar;
+		return probeResource(entry, url == null ? "findResource answered null and no owned jar holds it" : "no owned jar holds it", url);
+	}
+
+	/**
+	 * The entry as read from the jar that holds the class enclosing it.
+	 *
+	 * <p>Measured on the 1.21.1 merged base: {@code findResource} answers for a top-level class and answers null for
+	 * its anonymous inner class, so {@code net/minecraft/server/commands/GameRuleCommand$1.class} was unreadable while
+	 * {@code GameRuleCommand.class} was not. An inner class always ships in the jar of its outer class, and the outer
+	 * name is the part before the last {@code $} — so walk the enclosure chain until the loader answers, then read the
+	 * inner entry from that jar.
+	 */
+	private static byte[] readFromTheJarOfTheOuterClass(String entry) {
+		String name = entry.endsWith(".class") ? entry.substring(0, entry.length() - ".class".length()) : entry;
+		for (int guard = 0; guard < 8; guard++) {
+			int dollar = name.lastIndexOf('$');
+			if (dollar < 0) return null;
+			name = name.substring(0, dollar);
+			java.net.URL outer = loader().findResource(name + ".class");
+			if (outer == null) continue;
+			java.nio.file.Path jar = NativeAbsentTargets.servingJar(outer);
+			if (jar == null) continue;
+			byte[] found = readEntry(jar, entry);
+			if (found != null) {
+				if (Boolean.getBoolean("forbric.probeMixinResources") && PROBED.add(entry))
+					ForbricLog.info("[Forbric/Mixin] resource '%s' came from %s, the jar of its enclosing class %s",
+							entry, jar.getFileName(), name);
+				return found;
+			}
+		}
+		return null;
+	}
+
+	private static byte[] readEntry(java.nio.file.Path jar, String entry) {
+		try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(jar.toFile())) {
+			java.util.zip.ZipEntry found = zip.getEntry(entry);
+			if (found == null) return null;
+			try (InputStream in = zip.getInputStream(found)) {
+				return in.readAllBytes();
+			}
+		} catch (IOException | RuntimeException unreadable) {
 			return null;
 		}
 	}
+
+	/** -Dforbric.probeMixinResources: say why a resource stayed unreadable, once per path. */
+	private static byte[] probeResource(String entry, String why, java.net.URL url) {
+		if (Boolean.getBoolean("forbric.probeMixinResources") && PROBED.add(entry))
+			ForbricLog.info("[Forbric/Mixin] resource '%s' unreadable — %s%s", entry, why,
+					url == null ? "" : " (" + url + ")");
+		return null;
+	}
+
+	private static final java.util.Set<String> PROBED = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
 	/**
 	 * The members digest of the jar that serves {@code owner} ({@link NativeAbsentTargets#membersDigest}), the same jar

@@ -82,30 +82,35 @@ public final class MergedBaseMixinCompat {
         List<String> missing=new ArrayList<>();
         for(FieldNode field:node.fields) {
             if(!shadowsField(field))continue;
-            boolean found=false;
-            for(String target:targets)if(declaresField(classes,target,field.name)) { found=true;break; }
-            if(!found)missing.add(field.name);
+            int verdict=ABSENT;
+            for(String target:targets) verdict=Math.max(verdict,declaresField(classes,target,field.name));
+            // UNREADABLE is not evidence: a class this pass cannot open (an inner class the loader will not hand out,
+            // measured for GameRuleCommand$1) leaves the field unjudged rather than refused. The three verdicts are
+            // kept apart so "absent" and "cannot see" stop being the same answer.
+            if(verdict==ABSENT)missing.add(field.name);
         }
         if(missing.isEmpty())return null;
         return "source @Shadow field(s) "+String.join(", ",missing)+" are not declared by "+String.join(", ",targets)
                 +" nor by their superclasses on this base, so Mixin refuses the whole mixin; what it wires is not here to wire";
     }
+
+    private static final int ABSENT=0, UNREADABLE=1, FOUND=2;
     private static boolean shadowsField(FieldNode field) {
         if(field.visibleAnnotations==null)return false;
         for(AnnotationNode annotation:field.visibleAnnotations)
             if("Lorg/spongepowered/asm/mixin/Shadow;".equals(annotation.desc))return true;
         return false;
     }
-    private static boolean declaresField(Function<String,ClassNode> classes,String internal,String name) {
+    private static int declaresField(Function<String,ClassNode> classes,String internal,String name) {
         Set<String> seen=new HashSet<>();
         String current=internal;
         for(int depth=0;current!=null&&depth<16&&seen.add(current);depth++) {
             ClassNode owner=classes.apply(current);
-            if(owner==null)return true; // not readable here: never refuse on evidence this file cannot see
-            for(FieldNode field:owner.fields)if(field.name.equals(name))return true;
+            if(owner==null)return UNREADABLE; // never refuse on evidence this file cannot see
+            for(FieldNode field:owner.fields)if(field.name.equals(name))return FOUND;
             current=owner.superName;
         }
-        return false;
+        return ABSENT;
     }
     /**
      * Why the source mixin is refused, or null. {@code natives} gives the class the mod was compiled against: each gate
