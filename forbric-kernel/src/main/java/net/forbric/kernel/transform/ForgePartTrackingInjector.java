@@ -75,9 +75,14 @@ public final class ForgePartTrackingInjector implements ClassTransformer {
 	@Override public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("MinecraftForge mods' multipart entities explicitly left as merged with -D" + PROPERTY + "=off");
 		return AnchorSet.of(
-				new AnchorSet.Anchor(SERVER_CALLBACKS, AnchorSet.Severity.REQUIRED,
+				// Measured on this base: ServerLevel keeps NeoForge's parts map under the vanilla name dragonParts,
+				// typed to NeoForge's PartEntity, and the merged Entity.getParts() returns NeoForge's array type, so a
+				// MinecraftForge multipart entity has no map to be tracked in and cannot even override getParts().
+				// Both callbacks are therefore expected to make no edit here; the code stays for a carrier that
+				// brings MinecraftForge's partEntities field back.
+				new AnchorSet.Anchor(SERVER_CALLBACKS, AnchorSet.Severity.HEDGE,
 						"a MinecraftForge mod's multipart entity throws when a server adds it to a world or removes it"),
-				new AnchorSet.Anchor(CLIENT_CALLBACKS, AnchorSet.Severity.REQUIRED,
+				new AnchorSet.Anchor(CLIENT_CALLBACKS, AnchorSet.Severity.HEDGE,
 						"a MinecraftForge mod's multipart entity throws when the client stops tracking it"),
 				new AnchorSet.Anchor(HITBOXES, AnchorSet.Severity.REQUIRED,
 						"F3+B hitboxes throw on every frame a MinecraftForge mod's multipart entity is in view"),
@@ -132,7 +137,9 @@ public final class ForgePartTrackingInjector implements ClassTransformer {
 		// MinecraftForge's own bodies, or this edit's.
 		if (!readsNeoForgeParts(start) && !readsNeoForgeParts(end) || method(callbacks, TRACK, TRACK_DESC) != null) return 0;
 		if (partEntities == null) return declined("ServerLevel's class file could not be read");
-		if (!partEntities) return 0;
+		if (!partEntities) return declined("ServerLevel keeps NeoForge's parts map under the vanilla name dragonParts, typed to "
+				+ "NeoForge's PartEntity, and the merged Entity.getParts() returns NeoForge's array type — a MinecraftForge "
+				+ "multipart entity has no map here to be tracked in");
 		FieldInsnNode level = outerLevel(callbacks, SERVER_LEVEL);
 		AbstractInsnNode startBlock = neoForgeBlock(start);
 		AbstractInsnNode endBlock = neoForgeBlock(end);
@@ -150,7 +157,7 @@ public final class ForgePartTrackingInjector implements ClassTransformer {
 
     /** Whichever canonical client direction reads Neo parts also mirrors the Forge map at its shared exit. */
     static int clientCallbacks(ClassNode callbacks,Boolean partEntities){
-        if(partEntities==null)return declined("ClientLevel's class file could not be read");if(!partEntities)return 0;
+        if(partEntities==null)return declined("ClientLevel's class file could not be read");if(!partEntities)return declined("ClientLevel has no partEntities map to mirror MinecraftForge's parts into");
         FieldInsnNode level=outerLevel(callbacks,CLIENT_LEVEL);if(level==null)return declined("client callbacks have no outer level field");
         record Plan(MethodNode method,AbstractInsnNode exit,MethodInsnNode read,String loop){}
         List<Plan> plans=new ArrayList<>();
