@@ -48,6 +48,7 @@ import org.objectweb.asm.tree.analysis.Value;
 final class ClientPartTrackingFlow {
 	private static final String ENTITY = ClientPartTrackingInjector.ENTITY;
 	private static final String LEVEL = ClientPartTrackingInjector.LEVEL;
+	private static final String NEO_GET_PARTS = ClientPartTrackingInjector.NEO_GET_PARTS;
 	private static final String OBJECTS = "java/util/Objects";
 	/** The kernel's own repair hands NeoForge's parts to this helper, which adds those dragonParts does not hold yet. */
 	private static final String KERNEL_VIEWS = "net/forbric/kernel/runtime/KernelMultipartViews";
@@ -61,6 +62,7 @@ final class ClientPartTrackingFlow {
 
 	/** Whether {@code start} adds NeoForge's parts into dragonParts and null-tests every MinecraftForge part array it reads. */
 	static boolean tracksNeoForgeParts(ClassNode owner, MethodNode start) {
+		if (registersIntoTheMapThisBaseKeeps(owner, start)) return true;
 		Flows flows = new Flows(owner, 0, null);
 		try {
 			new FlowAnalyzer(flows).analyze(owner.name, start);
@@ -68,6 +70,39 @@ final class ClientPartTrackingFlow {
 			return false;
 		}
 		return flows.registers && !flows.unchecked;
+	}
+
+	/**
+	 * Whether {@code start} already hands NeoForge's parts to the map this base keeps them in.
+	 *
+	 * <p>On the 1.21.1 merged base {@code ClientLevel} has no {@code dragonParts} list at all: it keeps
+	 * {@code partEntities}, an {@code Int2ObjectMap<PartEntity<?>>}, and {@code onTrackingStart} loops over NeoForge's
+	 * {@code getParts()} array calling {@code partEntities.put(id, part)}. That is the same outcome this repair exists to
+	 * produce — NeoForge's parts end up registered on the client and MinecraftForge's {@code getParts()} array, which is
+	 * null for every NeoForge mod's entity, is never read at all — so the flow analysis above, written for the shape
+	 * where both families' arrays exist, has nothing to judge.
+	 */
+	private static boolean registersIntoTheMapThisBaseKeeps(ClassNode owner, MethodNode start) {
+		boolean readsNeoParts = false;
+		boolean putsIntoLevelMap = false;
+		for (AbstractInsnNode insn : start.instructions) {
+			if (insn instanceof MethodInsnNode call && call.owner.equals(ENTITY) && call.name.equals("getParts")
+					&& call.desc.equals(NEO_GET_PARTS)) {
+				readsNeoParts = true;
+			}
+			if (insn instanceof FieldInsnNode field && field.getOpcode() == Opcodes.GETFIELD && field.owner.equals(LEVEL)
+					&& field.desc.equals("Lit/unimi/dsi/fastutil/ints/Int2ObjectMap;")) {
+				putsIntoLevelMap = true;
+			}
+		}
+		if (!readsNeoParts || !putsIntoLevelMap) return false;
+		for (AbstractInsnNode insn : start.instructions) {
+			if (insn instanceof MethodInsnNode call && call.name.equals("put") && call.getOpcode() == Opcodes.INVOKEINTERFACE
+					&& call.owner.equals("it/unimi/dsi/fastutil/ints/Int2ObjectMap")) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

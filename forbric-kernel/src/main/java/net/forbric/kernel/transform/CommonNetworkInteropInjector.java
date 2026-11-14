@@ -88,10 +88,11 @@ public final class CommonNetworkInteropInjector implements ClassTransformer {
 	 * {@code minecraft:register} reached the client as NeoForge's payload type, the client's Fabric addon did not
 	 * recognise it, never replied, and Fabric scored the peer NOT_RECEIVED.
 	 */
+	private static final String SERVER_CONFIGURATION_ADDON = "net.fabricmc.fabric.impl.networking.server.ServerConfigurationNetworkAddon";
 	private static final Set<String> FABRIC_ADDONS = Set.of(
 			"net.fabricmc.fabric.impl.networking.AbstractChanneledNetworkAddon",
 			"net.fabricmc.fabric.impl.networking.client.ClientConfigurationNetworkAddon",
-			"net.fabricmc.fabric.impl.networking.server.ServerConfigurationNetworkAddon");
+			SERVER_CONFIGURATION_ADDON);
 	private static final String HANDLE = "handle";
 	private static final String HANDLE_DESC = "(Lnet/minecraft/network/protocol/common/custom/CustomPacketPayload;)Z";
 	private static final String HANDLE_HOOK = "handleFabricChannelRegistrationAddon";
@@ -303,7 +304,11 @@ public final class CommonNetworkInteropInjector implements ClassTransformer {
 	public List<Claim> claims() {
 		List<AnchorSet.Anchor> addons = new ArrayList<>();
 		for (String addon : FABRIC_ADDONS) {
-			addons.add(required(addon, "fabric-api's channel-registration addon miscasts a NeoForge payload before the cross-ecosystem negotiator sees it"));
+			String cost = "fabric-api's channel-registration addon miscasts a NeoForge payload before the cross-ecosystem negotiator sees it";
+			// Measured: ServerConfigurationNetworkAddon declares no handle(CustomPacketPayload) of its own — the body
+			// that runs there is AbstractChanneledNetworkAddon's, which this repair does edit. Expecting an edit in the
+			// subclass declared a miss that could never be repaired.
+			addons.add(SERVER_CONFIGURATION_ADDON.equals(addon) ? hedged(addon, cost) : required(addon, cost));
 		}
 		return List.of(
 				new Claim(CLAIM_FABRIC_ADDON, new AnchorSet(addons, null)),
@@ -339,6 +344,11 @@ public final class CommonNetworkInteropInjector implements ClassTransformer {
 
 	private static AnchorSet.Anchor required(String binaryName, String cost) {
 		return new AnchorSet.Anchor(binaryName, AnchorSet.Severity.REQUIRED, cost);
+	}
+
+	/** For a class the repair is expected never to edit, with the reason it cannot be among its own cost. */
+	private static AnchorSet.Anchor hedged(String binaryName, String cost) {
+		return new AnchorSet.Anchor(binaryName, AnchorSet.Severity.HEDGE, cost);
 	}
 
 	@Override
