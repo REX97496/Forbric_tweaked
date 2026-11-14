@@ -75,8 +75,10 @@ public final class ForgeWorldModifierInjector implements ClassTransformer {
 		return AnchorSet.of(
 				new AnchorSet.Anchor(SPAWN_BUILDER, AnchorSet.Severity.REQUIRED,
 						"MinecraftForge's spawn-settings builder cannot link, so any Forge biome modifier touching spawns throws"),
-				new AnchorSet.Anchor(REMOVE_SPAWNS, AnchorSet.Severity.REQUIRED,
-						"forge:remove_spawns ClassCastExceptions inside Forge's own lambda"),
+				new AnchorSet.Anchor(REMOVE_SPAWNS, AnchorSet.Severity.HEDGE,
+						"forge:remove_spawns can ClassCastException inside Forge's own lambda if a carrier hands it a "
+								+ "WeightedList$Builder to remove from; this base hands it a java.util.List, so the "
+								+ "anchor is expected to stay absent"),
 				new AnchorSet.Anchor(LIFECYCLE_HOOKS, AnchorSet.Severity.REQUIRED,
 						"MinecraftForge biome/structure modifiers never reach the world"));
 	}
@@ -133,10 +135,11 @@ public final class ForgeWorldModifierInjector implements ClassTransformer {
 	/** {@code removeIf(Predicate<E>)} → the kernel's copy of Forge's lost default. */
 	private static boolean routeRemoveIfThroughTheLostDefault(ClassNode node) {
 		int repaired = 0;
+		int alreadyLists = 0;
 		for (MethodNode method : node.methods) {
 			for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
-				if (insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKEVIRTUAL
-						&& WEIGHTED_BUILDER.equals(call.owner) && "removeIf".equals(call.name)
+				if (!(insn instanceof MethodInsnNode call) || !"removeIf".equals(call.name)) continue;
+				if (call.getOpcode() == Opcodes.INVOKEVIRTUAL && WEIGHTED_BUILDER.equals(call.owner)
 						&& ("(Ljava/util/function/Predicate;)" + BUILDER_DESC).equals(call.desc)) {
 					call.setOpcode(Opcodes.INVOKESTATIC);
 					call.owner = RUNTIME;
@@ -144,8 +147,21 @@ public final class ForgeWorldModifierInjector implements ClassTransformer {
 					call.desc = "(" + BUILDER_DESC + "Ljava/util/function/Predicate;)" + BUILDER_DESC;
 					call.itf = false;
 					repaired++;
+				} else if (call.getOpcode() == Opcodes.INVOKEINTERFACE && "java/util/List".equals(call.owner)
+						&& "(Ljava/util/function/Predicate;)Z".equals(call.desc)) {
+					alreadyLists++;
 				}
 			}
+		}
+		if (repaired == 0 && alreadyLists > 0) {
+			// Measured on the 1.21.1 base: Forge's own RemoveSpawnsBiomeModifier already removes from the
+			// java.util.List that MobSpawnSettingsBuilder.getSpawner(MobCategory) hands out (javap: that method
+			// returns Ljava/util/List; and checkcasts the builder's list). There is nothing broken to repair here,
+			// so the anchor is declared HEDGE, not REQUIRED: it must stay quiet on this base and speak up only if a
+			// carrier ever brings the WeightedList$Builder shape back.
+			ForbricLog.info("[Forbric/Worldgen] %s already removes from a java.util.List — nothing to repair on this "
+					+ "base, the WeightedList$Builder.removeIf anchor is not present", node.name.replace('/', '.'));
+			return false;
 		}
 		if (repaired == 0) return false;
 		ForbricLog.info("[Forbric/Worldgen] applied %d call-site repair(s) in %s — WeightedList$Builder.removeIf(Predicate<E>) "
