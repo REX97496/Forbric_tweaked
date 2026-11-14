@@ -166,7 +166,10 @@ public final class TransformChain {
 			}
 		}
 
-		if (landmark != null) censusIfLandmark(className);
+		if (landmark != null) {
+			censusIfLandmark(className);
+			if (reported.get()) noteLateArrival(className);
+		}
 		return bytes;
 	}
 
@@ -190,10 +193,56 @@ public final class TransformChain {
 	 */
 	public void reportWhenLoaded(String landmark) {
 		this.landmark = landmark;
+		// The one-shot line above fires when the landmark loads, which on a client is the title screen: measured on
+		// 1.21.1, 32 of the targets it calls "never loaded" load within the next thirteen seconds (world generation,
+		// the server thread, the join packet). A second summary at shutdown costs one string and is the only place
+		// that can count what a play session actually loaded.
+		if (finalHooked.compareAndSet(false, true)) {
+			Runtime.getRuntime().addShutdownHook(new Thread(this::reportFinal, "forbric-anchor-final"));
+		}
+	}
+
+	private final java.util.concurrent.atomic.AtomicBoolean finalHooked = new java.util.concurrent.atomic.AtomicBoolean();
+
+	private void reportFinal() {
+		try {
+			AnchorLedger.Report r = ledger.report();
+			ForbricLog.info("[Forbric/Anchor] at shutdown: %d of %d declared repair(s) landed; %d target(s) were never "
+					+ "loaded in this session, and %d hedge(s) correctly found nothing to do", r.hit(), r.declared(),
+					r.absent().size(), r.hedged().size());
+			if (!r.misses().isEmpty()) {
+				ForbricLog.error("[Forbric/Anchor] at shutdown: %d repair(s) were handed their target and declined it",
+						r.misses().size());
+				for (AnchorLedger.Miss miss : r.misses()) {
+					ForbricLog.error("[Forbric/Anchor]   %s on %s: %s", miss.transformer(), miss.className(),
+							miss.cost());
+				}
+			}
+		} catch (Throwable closing) {
+			// A logger that is already shut down must not take the JVM's exit with it.
+		}
 	}
 
 	private volatile String landmark;
 	private final java.util.concurrent.atomic.AtomicBoolean reported = new java.util.concurrent.atomic.AtomicBoolean();
+
+	/**
+	 * Classes the one-shot report called "never loaded", kept so a later arrival can be named.
+	 *
+	 * <p>The report is a snapshot at {@link #landmark}, and world generation loads some repair targets AFTER it:
+	 * measured on 1.21.1, {@code ModifiableBiomeInfo} is written as absent at the world-load landmark and then
+	 * loaded nine seconds later, which is how the same build reported 105 landed on one boot and 104 on the next
+	 * with no change between them. A count that moves with nothing does not measure anything, so every late arrival
+	 * is named instead of left to be re-derived.
+	 */
+	private volatile java.util.Set<String> absentAtReport;
+
+	private void noteLateArrival(String className) {
+		java.util.Set<String> late = absentAtReport;
+		if (late == null || !late.remove(className)) return;
+		ForbricLog.info("[Forbric/Anchor] %s loaded after the anchor line was written; it reads as \"never loaded\" "
+				+ "in that snapshot only, because the ledger is taken when %s loads", className, landmark);
+	}
 
 	private void censusIfLandmark(String className) {
 		if (!className.equals(landmark) || !reported.compareAndSet(false, true)) return;
@@ -207,6 +256,9 @@ public final class TransformChain {
 			// the number moves and there is nothing in the log to say which target moved. Names cost nothing at
 			// debug level and turn the next such question into a diff instead of an argument.
 			ForbricLog.debug("[Forbric/Anchor] target(s) never loaded on this side: %s", r.absent());
+			java.util.Set<String> late = java.util.concurrent.ConcurrentHashMap.newKeySet();
+			for (AnchorLedger.Absent absent : r.absent()) late.add(absent.className());
+			absentAtReport = late;
 		} else {
 			ForbricLog.error("[Forbric/Anchor] %d of %d declared repair(s) landed, and %d did NOT -- their target "
 					+ "classes were loaded and the repair declined them. Each one is a feature that is gone with "

@@ -42,6 +42,11 @@ public final class BiomeInfoRebaseInjector implements ClassTransformer {
 
 	@Override public AnchorSet anchors() {
 		if (!enabled()) return AnchorSet.scanned("biome modified view explicitly disabled with -D" + NativeCoremodParity.BIOME + "=off");
+		// REQUIRED stays: the class does load and this repair does apply to it, but only during world generation,
+		// which is AFTER the one-shot anchor line is written. Measured on 1.21.1: ModifiableBiomeInfo is printed as
+		// "never loaded" at the world-load landmark and loads about nine seconds later, and the pass reports
+		// "applyBiomeModifiers ... reads a Holder and casts it ..." — so the snapshot, not the repair, was wrong.
+		// TransformChain.noteLateArrival now names every such late arrival instead of leaving the count to drift.
 		return AnchorSet.of(new AnchorSet.Anchor(TARGET, AnchorSet.Severity.REQUIRED,
 				"a Fabric mod's biome climate is dropped once biome reads go through NeoForge's modified view"));
 	}

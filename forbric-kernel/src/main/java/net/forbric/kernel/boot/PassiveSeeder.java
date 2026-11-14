@@ -505,6 +505,16 @@ public final class PassiveSeeder {
 	 * base disagree about what kind of process this is.
 	 */
 	private static void seedNeoForgeProduction(Class<?> fmlLoader) throws Exception {
+		// The A/B switch exists because turning this on moved one number nobody could attribute: the anchor ledger
+		// went from 105 landed / 77 never loaded / 16 hedge to 104 / 79 / 15, and a count cannot tell "a target moved
+		// between buckets" from "a repair silently stopped applying". With -Dforbric.seedProduction=off the same jar
+		// boots the old way and the absent-anchor dump (-Dforbric.debug) diffs against the new one.
+		if (!Boolean.parseBoolean(System.getProperty("forbric.seedProduction", "true"))) {
+			ForbricLog.warn("[Forbric/Seed] NeoForge FMLLoader.production seeding DISABLED "
+					+ "(-Dforbric.seedProduction=off) — SharedConstants.IS_RUNNING_IN_IDE stays true and vanilla's "
+					+ "development-only checks run in this instance; a measurement switch, not a supported setting");
+			return;
+		}
 		Field productionField;
 		try {
 			productionField = fmlLoader.getDeclaredField("production");
