@@ -198,7 +198,57 @@ final class RegistrationEventSteps {
 		}
 		report(outcome);
 		if (Boolean.getBoolean("forbric.probeCapabilities")) capabilityCensus(cl);
+		if (Boolean.getBoolean("forbric.probeLoot")) lootCensus(cl);
 		return outcome;
+	}
+
+	/**
+	 * Whether Fabric's loot-table events actually fire on this base, and from whose code.
+	 *
+	 * <p>Written for a measured question, not a guess: the kernel's own loot bridge was written because Fabric mods'
+	 * {@code LootTableEvents.ALL_LOADED} listeners looked like they were registered and never called, and it declines
+	 * on this base because it looks for a {@code TagLoader.loadTagsForRegistry} site that 1.21.1 does not have. The
+	 * events a mod sees are not fired from there anyway: {@code fabric-loot-api-v3}'s {@code ReloadableRegistriesMixin}
+	 * injects at the RETURN of {@code ReloadableServerRegistries.reload} and calls
+	 * {@code LootTableEvents$Loaded.onLootTablesLoaded} itself, and {@code fabric-loot-api-v2}'s {@code LootInitializer}
+	 * registers an adapter that forwards v3's {@code ALL_LOADED} into v2's. So the useful measurement is not "is there a
+	 * site to patch" but "does a listener get called" — this registers a counting listener into both APIs and says so.
+	 *
+	 * <p>{@code -Dforbric.probeLoot=true}.
+	 */
+	private static void lootCensus(ClassLoader cl) {
+		for (String eventOwner : List.of("net.fabricmc.fabric.api.loot.v3.LootTableEvents",
+				"net.fabricmc.fabric.api.loot.v2.LootTableEvents")) {
+			String shortName = eventOwner.contains(".loot.v3.") ? "fabric-loot-api-v3" : "fabric-loot-api-v2";
+			try {
+				Class<?> owner = Class.forName(eventOwner, false, cl);
+				Object event = owner.getField("ALL_LOADED").get(null);
+				Class<?> listenerType = Class.forName(eventOwner + "$Loaded", false, cl);
+				final java.util.concurrent.atomic.AtomicInteger fired = new java.util.concurrent.atomic.AtomicInteger();
+				Object proxy = java.lang.reflect.Proxy.newProxyInstance(listenerType.getClassLoader(),
+						new Class<?>[] { listenerType }, (self, method, args) -> {
+							if ("onLootTablesLoaded".equals(method.getName())) {
+								int count = fired.incrementAndGet();
+								ForbricLog.info("[Forbric/Loot] %s ALL_LOADED really fired (%d) — a mod listener on this "
+										+ "event is called %s", shortName, count,
+										count == 1 ? "at least once per reload" : "again");
+							}
+							return null;
+						});
+				// Fabric's event implementation is package-private (ArrayBackedEvent), so the register method it
+				// answers is public but its declaring class is not: reflectively calling it needs the gate opened.
+				java.lang.reflect.Method register = event.getClass().getMethod("register", Object.class);
+				register.setAccessible(true);
+				register.invoke(event, proxy);
+				ForbricLog.info("[Forbric/Loot] counting listener installed on %s ALL_LOADED (%s), so whether a mod's "
+						+ "listener is ever called becomes a measurement instead of a claim", shortName,
+						event.getClass().getName());
+			} catch (ClassNotFoundException absent) {
+				ForbricLog.info("[Forbric/Loot] %s is not present, so its loot events cannot fire for anyone", shortName);
+			} catch (Throwable t) {
+				ForbricLog.warn("[Forbric/Loot] could not install the %s ALL_LOADED counter", shortName, unwrap(t));
+			}
+		}
 	}
 
 	/**

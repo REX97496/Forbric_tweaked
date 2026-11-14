@@ -32,9 +32,12 @@ import org.objectweb.asm.Handle;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TypeInsnNode;
+import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.tree.analysis.Analyzer;
 import org.objectweb.asm.tree.analysis.AnalyzerException;
 import org.objectweb.asm.tree.analysis.Frame;
@@ -108,6 +111,23 @@ public final class LootTableEventBridgeInjector implements ClassTransformer {
 	static final String LOAD_TAGS_DESC =
 			"(Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/core/WritableRegistry;)V";
 
+	/**
+	 * 1.21.1's one per-registry reload step, measured on the merged base: the whole body is
+	 * {@code CompletableFuture.supplyAsync(<loot parse>, executor); areturn} — parameters in slots 0..3, none of them
+	 * reassigned, one {@code ARETURN}. Wrapping that future is how ALL_LOADED gets a site on a line that has no
+	 * {@code TagLoader.loadTagsForRegistry} to fire from.
+	 */
+	static final String SCHEDULE_ELEMENT_PARSE = "scheduleElementParse";
+	static final String SCHEDULE_ELEMENT_PARSE_DESC =
+			"(Lnet/minecraft/world/level/storage/loot/LootDataType;Lnet/minecraft/resources/RegistryOps;"
+					+ "Lnet/minecraft/server/packs/resources/ResourceManager;Ljava/util/concurrent/Executor;)"
+					+ "Ljava/util/concurrent/CompletableFuture;";
+	/** The kernel class that wraps the future; {@code afterParse(future, dataType, resourceManager)}. */
+	static final String DISPATCH = "net/forbric/kernel/boot/LootTableEventDispatch";
+	static final String AFTER_PARSE_DESC =
+			"(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;";
+	static final String COMPLETABLE_FUTURE = "java/util/concurrent/CompletableFuture";
+
 	/** NeoForge's event hooks — the family that won this call site. */
 	static final String EVENT_HOOKS = ForeignType.EVENT_FACTORY.internal(Ecosystem.NEOFORGE);
 
@@ -149,7 +169,8 @@ public final class LootTableEventBridgeInjector implements ClassTransformer {
 							"every Fabric mod's LootTableEvents.REPLACE/MODIFY listener is registered and never called"),
 					new AnchorSet.Anchor(TARGET, AnchorSet.Severity.REQUIRED,
 							"every Fabric mod's LootTableEvents.ALL_LOADED listener is registered and never called "
-									+ "(1.21.1 has no TagLoader.loadTagsForRegistry for the bridge to fire it from)"));
+									+ "(this line completes a reload in ReloadableServerRegistries.scheduleElementParse, "
+									+ "whose future nobody wraps, and fabric's own mixin is suppressed here)"));
 		}
 		return AnchorSet.of(new AnchorSet.Anchor(TARGET, AnchorSet.Severity.REQUIRED,
 				"every Fabric mod's LootTableEvents.REPLACE/MODIFY/ALL_LOADED listener is registered and never called"));
@@ -163,6 +184,10 @@ public final class LootTableEventBridgeInjector implements ClassTransformer {
 
 		ClassNode node = new ClassNode();
 		new ClassReader(classBytes).accept(node, 0);
+
+		// The 1.21.1 completion seam: the same class that parses the registries is the one that knows when a registry
+		// is done, and its future is the only "everything of this type has loaded" point on the line.
+		if (TARGET.equals(className) && lootLivesInLootDataType) return bracketTheReload(node, classBytes);
 
 		List<MethodInsnNode> loot = new ArrayList<>();
 		List<MethodInsnNode> tags = new ArrayList<>();
@@ -205,6 +230,56 @@ public final class LootTableEventBridgeInjector implements ClassTransformer {
 
 		// Owner swaps only: no instruction, frame or stack change.
 		ClassWriter writer = new ClassWriter(0);
+		node.accept(writer);
+		return writer.toByteArray();
+	}
+
+	/**
+	 * 1.21.1's ALL_LOADED seam: wrap the future {@code scheduleElementParse} is about to return.
+	 *
+	 * <p>Measured on the merged base, {@code ReloadableServerRegistries} holds no
+	 * {@code TagLoader.loadTagsForRegistry} and no {@code EventHooks.loadLootTable} call — the loot tables are parsed
+	 * in {@code LootDataType}, and the only point where one registry's contents are complete is the future this method
+	 * returns. Firing from there is what fabric-loot-api-v3's own {@code ReloadableRegistriesMixin} does; that mixin
+	 * applies only partially on this base and is suppressed, so the site has to be created here.
+	 *
+	 * <p>Computed frames stay valid: the inserted run adds no local, ends on the same stack shape (one
+	 * {@code CompletableFuture}) and sits on a straight line to an {@code ARETURN} with no branch in between, so
+	 * {@code COMPUTE_MAXS} is enough. Anything unexpected leaves the class byte-identical and says so.
+	 */
+	private byte[] bracketTheReload(ClassNode node, byte[] original) {
+		MethodNode parse = null;
+		for (MethodNode method : node.methods) {
+			if (SCHEDULE_ELEMENT_PARSE.equals(method.name) && SCHEDULE_ELEMENT_PARSE_DESC.equals(method.desc)) parse = method;
+		}
+		if (parse == null) {
+			ForbricLog.warn("[Forbric/LootBridge] %s has no %s%s — the reload's per-registry step has moved, so "
+					+ "ALL_LOADED still has no site to fire from", TARGET, SCHEDULE_ELEMENT_PARSE,
+					SCHEDULE_ELEMENT_PARSE_DESC);
+			return original;
+		}
+		int sites = 0;
+		for (AbstractInsnNode insn = parse.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn.getOpcode() != Opcodes.ARETURN) continue;
+			InsnList injected = new InsnList();
+			injected.add(new VarInsnNode(Opcodes.ALOAD, 0));    // the LootDataType being parsed
+			injected.add(new VarInsnNode(Opcodes.ALOAD, 2));    // the reload's ResourceManager
+			injected.add(new MethodInsnNode(Opcodes.INVOKESTATIC, DISPATCH, "afterParse", AFTER_PARSE_DESC, false));
+			injected.add(new TypeInsnNode(Opcodes.CHECKCAST, COMPLETABLE_FUTURE));
+			parse.instructions.insertBefore(insn, injected);
+			sites++;
+		}
+		if (sites == 0) {
+			ForbricLog.warn("[Forbric/LootBridge] %s.%s has no ARETURN to wrap — the reload's per-registry step has "
+					+ "changed shape, so ALL_LOADED still has no site to fire from", TARGET, SCHEDULE_ELEMENT_PARSE);
+			return original;
+		}
+		routed += sites;
+		ForbricLog.info("[Forbric/LootBridge] wrapped %d returned future(s) in %s.%s — once the loot-table registry is "
+				+ "populated the kernel fires LootTableEvents.ALL_LOADED exactly where fabric-loot-api-v3's own mixin "
+				+ "would (that mixin misses an anchor on this base and is suppressed, so nothing fired it before)",
+				sites, TARGET, SCHEDULE_ELEMENT_PARSE);
+		ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 		node.accept(writer);
 		return writer.toByteArray();
 	}
