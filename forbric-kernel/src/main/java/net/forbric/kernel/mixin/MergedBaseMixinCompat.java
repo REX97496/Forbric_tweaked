@@ -63,12 +63,59 @@ public final class MergedBaseMixinCompat {
         }catch(Exception unreadable){net.forbric.kernel.util.ForbricLog.debug("[Forbric/Mixin] cannot inspect source protocols in %s: %s",configName,unreadable.toString());}
     }
     /**
+     * Why the source mixin cannot apply to this base at all, or null: it declares a {@code @Shadow} field that none of
+     * its targets, nor any of their superclasses, declare under that name.
+     *
+     * <p>Mixin locates a shadow by name in the target's hierarchy and refuses the <em>whole</em> mixin when it finds
+     * nothing, so this is the decision Mixin is about to take, taken here first — with the field and the target named.
+     * Measured cause on the 1.21.1 merged base: fabric-registry-sync-v0's {@code BlockColorsMixin} and
+     * {@code ItemColorsMixin} and fabric-rendering-v1's same-named pair shadow an {@code IdMapper} field
+     * ({@code field_1995}, {@code field_1996}) that this base does not have — {@code BlockColors} keeps
+     * {@code private final Map<Block, BlockColor> blockColors} and {@code ItemColors} keeps
+     * {@code private final Map<Item, ItemColor> itemColors}. Their whole feature (handing the {@code IdMapper} to
+     * {@code IdListTracker}) has nothing to wire here, and the kernel's own colour repair already made lookup use the
+     * key the registration wrote.
+     */
+    static String unresolvedShadow(ClassNode node,Function<String,ClassNode> classes) {
+        List<String> targets=MixinFit.mixinTargets(node);
+        if(targets.isEmpty()||classes==null)return null;
+        List<String> missing=new ArrayList<>();
+        for(FieldNode field:node.fields) {
+            if(!shadowsField(field))continue;
+            boolean found=false;
+            for(String target:targets)if(declaresField(classes,target,field.name)) { found=true;break; }
+            if(!found)missing.add(field.name);
+        }
+        if(missing.isEmpty())return null;
+        return "source @Shadow field(s) "+String.join(", ",missing)+" are not declared by "+String.join(", ",targets)
+                +" nor by their superclasses on this base, so Mixin refuses the whole mixin; what it wires is not here to wire";
+    }
+    private static boolean shadowsField(FieldNode field) {
+        if(field.visibleAnnotations==null)return false;
+        for(AnnotationNode annotation:field.visibleAnnotations)
+            if("Lorg/spongepowered/asm/mixin/Shadow;".equals(annotation.desc))return true;
+        return false;
+    }
+    private static boolean declaresField(Function<String,ClassNode> classes,String internal,String name) {
+        Set<String> seen=new HashSet<>();
+        String current=internal;
+        for(int depth=0;current!=null&&depth<16&&seen.add(current);depth++) {
+            ClassNode owner=classes.apply(current);
+            if(owner==null)return true; // not readable here: never refuse on evidence this file cannot see
+            for(FieldNode field:owner.fields)if(field.name.equals(name))return true;
+            current=owner.superName;
+        }
+        return false;
+    }
+    /**
      * Why the source mixin is refused, or null. {@code natives} gives the class the mod was compiled against: each gate
      * recognises a protocol with the same reading of its points as the adapter it guards, so a point written without its
      * owner or descriptor is recognised — and refused when it cannot be adapted — exactly where the adapter would serve it.
      */
     static String refusal(ClassNode node,Function<String,byte[]> resources,BiFunction<net.forbric.api.Ecosystem,String,ClassNode> natives) {
         Function<String,ClassNode> classes=name->parse(resources.apply(name+".class"));
+        String shadow=unresolvedShadow(node,classes);
+        if(shadow!=null)return shadow;
         // The pair is proved through the host's local variable table (the callback's @Local names the Reader), which
         // MixinFit.parse drops; read the host whole, as the pruner's own lookup does, or the check never fires.
         if(!net.forbric.kernel.transform.GuestInjectorPruner.enabled()&&net.forbric.kernel.transform.GuestInjectorPruner.unsafeWithoutPruning(node,name->whole(resources.apply(name+".class"))))
