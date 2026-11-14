@@ -207,12 +207,20 @@ public final class TransformChain {
 	private void reportFinal() {
 		try {
 			AnchorLedger.Report r = ledger.report();
+			java.util.List<AnchorLedger.Absent> foreign = writtenAgainstAnotherLine(r.absent());
+			// One message, not four: log4j's appenders can close between two calls at shutdown, and a hook that
+			// writes the summary then silently loses the detail is worse than no summary. Measured — the summary
+			// line landed in latest.log and the two debug lines after it did not.
+			StringBuilder nameThem = new StringBuilder();
+			nameThem.append(" this session left ").append(r.absent().size() - foreign.size())
+					.append(" shipped target(s) unloaded [")
+					.append(names(r.absent().stream().filter(a -> !foreign.contains(a)).toList()))
+					.append("] and declared ").append(foreign.size()).append(" on another line [")
+					.append(names(foreign)).append(']');
 			ForbricLog.info("[Forbric/Anchor] at shutdown: %d of %d declared repair(s) landed; %d target(s) were never "
-					+ "loaded in this session, and %d hedge(s) correctly found nothing to do", r.hit(), r.declared(),
-					r.absent().size(), r.hedged().size());
-			// The snapshot dump names the ones that looked absent early; this one names what is still absent when the
-			// session ends, which is the only list worth classifying (client-only vs server-only vs unreachable).
-			ForbricLog.debug("[Forbric/Anchor] still never loaded at shutdown: %s", r.absent());
+					+ "loaded in this session (%d of them are not shipped by this line at all), and %d hedge(s) "
+					+ "found nothing to do;%s", r.hit(), r.declared(), r.absent().size(), foreign.size(),
+					r.hedged().size(), nameThem.toString());
 			if (!r.misses().isEmpty()) {
 				ForbricLog.error("[Forbric/Anchor] at shutdown: %d repair(s) were handed their target and declined it",
 						r.misses().size());
@@ -247,14 +255,38 @@ public final class TransformChain {
 				+ "in that snapshot only, because the ledger is taken when %s loads", className, landmark);
 	}
 
+	/** {@code a.b.C}, {@code a.b.D} — the shape a reader can paste into a grep, without the record's decoration. */
+	private static String names(java.util.List<AnchorLedger.Absent> absent) {
+		StringBuilder out = new StringBuilder();
+		for (AnchorLedger.Absent one : absent) {
+			if (out.length() > 0) out.append(", ");
+			out.append(one.className());
+		}
+		return out.toString();
+	}
+
+	/**
+	 * The absent anchors whose class no artefact on this line contains — a declaration written against another
+	 * Minecraft line, not a feature that disappeared. See {@link LineResources} for why the two are kept apart.
+	 */
+	private static java.util.List<AnchorLedger.Absent> writtenAgainstAnotherLine(java.util.List<AnchorLedger.Absent> absent) {
+		java.util.List<AnchorLedger.Absent> foreign = new java.util.ArrayList<>();
+		for (AnchorLedger.Absent one : absent) {
+			if (!LineResources.shipped(one.className())) foreign.add(one);
+		}
+		return foreign;
+	}
+
 	private void censusIfLandmark(String className) {
 		if (!className.equals(landmark) || !reported.compareAndSet(false, true)) return;
 
 		AnchorLedger.Report r = ledger.report();
 		if (r.clean()) {
+			java.util.List<AnchorLedger.Absent> foreign = writtenAgainstAnotherLine(r.absent());
 			ForbricLog.info("[Forbric/Anchor] %d of %d declared repair(s) landed; %d target(s) were never loaded "
-					+ "on this side, and %d hedge(s) correctly found nothing to do", r.hit(), r.declared(),
-					r.absent().size(), r.hedged().size());
+					+ "on this side (%d of them are not in any artefact this line ships, so those repairs are written "
+					+ "against another line), and %d hedge(s) correctly found nothing to do", r.hit(), r.declared(),
+					r.absent().size(), foreign.size(), r.hedged().size());
 			// The count alone cannot be audited: when a repair lands on one boot and is "never loaded" on the next,
 			// the number moves and there is nothing in the log to say which target moved. Names cost nothing at
 			// debug level and turn the next such question into a diff instead of an argument.
