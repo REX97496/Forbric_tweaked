@@ -306,6 +306,9 @@ public final class ForbricClassLoader extends URLClassLoader {
 	private volatile URLClassLoader rescue;
 	private static final Set<String> RESCUED = ConcurrentHashMap.newKeySet();
 
+	/** Classes defined unchanged because the kernel suppressed the mixin that would have carried them. */
+	private static final Set<String> SUPPRESSED_DEFINED = ConcurrentHashMap.newKeySet();
+
 	/** A class the owned jars do not have, from a superseded jar. Null when there is no rescue set or no such class. */
 	private URL rescueResource(String path) {
 		URLClassLoader superseded = rescue;
@@ -527,6 +530,25 @@ public final class ForbricClassLoader extends URLClassLoader {
 		byte[] woven;
 		try {
 			woven = mixinTransformer.apply(name, bytes);
+		} catch (org.spongepowered.asm.mixin.transformer.throwables.IllegalClassLoadError refused) {
+			// Mixin refuses a class whose mixin this service removed from the config ("The mixin is missing"). A mod
+			// that only REFERENCES that class then loses its initialiser — measured: fabric-data-attachment-api-v1's
+			// AttachmentChange.<clinit> asked for CustomPayloadS2CPacketAccessor and the whole client entrypoint died
+			// with NoClassDefFoundError. Defining it unchanged keeps the reference loadable; only actually calling an
+			// unbound accessor throws, which is the honest failure for a class the merge cannot bind.
+			if (bytes == null || !net.forbric.kernel.mixin.ForbricMixinService.wasDropped(name)) throw refused;
+			net.forbric.kernel.mixin.SuppressedAccessorBodies.Result bodies =
+					net.forbric.kernel.mixin.SuppressedAccessorBodies.implement(bytes);
+			if (SUPPRESSED_DEFINED.add(name)) {
+				ForbricLog.warn("[Forbric/Mixin] %s is a mixin this kernel suppressed on the merged base; defined it "
+						+ "anyway so a mod that references it still loads — %s"
+						+ (bodies.implemented() > 0
+								? "; its @Accessor/@Invoker bodies now read and write their fields reflectively"
+								: "; what it adds is not here, so calling it throws instead of the class being missing"),
+						name, bodies.implemented() > 0 ? bodies.implemented() + " stub(s) implemented" : "no stub to implement");
+			}
+			bytes = bodies.bytes();
+			woven = null;
 		} finally {
 			open.removeLast();
 		}

@@ -706,6 +706,7 @@ public final class ForbricMixinService
 						.replaceAll(token, "");
 				ForbricLog.info("[Forbric/Mixin] suppressed mixin %s from %s", mixin,
 						MixinConfigOwners.describe(name));
+				DROPPED.add(mixin);
 			}
 
 			byte[] served = json.getBytes(StandardCharsets.UTF_8);
@@ -718,6 +719,22 @@ public final class ForbricMixinService
 
 	/** Each config as {@link #getResourceAsStream} last served it to Mixin, after the kernel's drops. */
 	private static final java.util.Map<String, byte[]> SERVED = new java.util.concurrent.ConcurrentHashMap<>();
+
+	/**
+	 * Simple names of every mixin this service removed from a config. Mixin then answers a request for such a class
+	 * with {@code IllegalClassLoadError: Illegal classload request for accessor mixin … The mixin is missing}, and a
+	 * mod that merely REFERENCES the accessor (fabric-data-attachment-api-v1's {@code AttachmentChange.<clinit>} does)
+	 * loses its whole entrypoint to it. The loader asks here first and defines the class unchanged instead.
+	 */
+	private static final java.util.Set<String> DROPPED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+	/** True when this service removed the mixin with this binary name (or its outermost simple name) from a config. */
+	public static boolean wasDropped(String binaryName) {
+		if (DROPPED.isEmpty() || binaryName == null) return false;
+		int dot = binaryName.lastIndexOf('.');
+		String simple = dot < 0 ? binaryName : binaryName.substring(dot + 1);
+		return DROPPED.contains(simple) || DROPPED.contains(simple.substring(simple.lastIndexOf('$') + 1));
+	}
 
 	/**
 	 * The JSON Mixin read for {@code config}: what was served when this service rewrote or inspected it, the resource
