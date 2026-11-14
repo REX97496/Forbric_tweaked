@@ -23,8 +23,6 @@ import net.forbric.kernel.util.Reflect;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 
 /**
  * Delivers {@code RegisterKeyMappingsEvent} to the buses of mods that are not NeoForge mods.
@@ -60,16 +58,47 @@ public final class KernelForeignShimKeys {
 		Options options = minecraft.options;
 		int before = options.keyMappings.length;
 		try {
-			RegisterKeyMappingsEvent event = new RegisterKeyMappingsEvent(options);
 			for (Object bus : buses) {
 				try {
-					((IEventBus) bus).post(event);
+					// Never cast to IEventBus here: measured, the cast threw
+					// "class net.neoforged.bus.EventBus cannot be cast to class net.neoforged.bus.api.IEventBus"
+					// while the bus itself was healthy — the two names resolve to different copies in this class.
+					java.lang.reflect.Method post = postOn(bus.getClass(), null);
+					if (post == null) {
+						ForbricLog.warn("[Forbric/ShimContext] %s has no single-argument post method, so what a foreign "
+								+ "mod registered on it cannot be delivered", bus.getClass().getName());
+						continue;
+					}
+					// And the event has to be built in the loader the bus's own parameter type came from: measured,
+					// this bus takes net.neoforged.bus.api.Event from the app class loader while the class below is
+					// loaded with the game's, so the kernel's own RegisterKeyMappingsEvent is not an Event for this bus.
+					Object event = eventFor(post.getParameterTypes()[0].getClassLoader(), options);
+					if (event == null) {
+						ForbricLog.warn("[Forbric/ShimContext] RegisterKeyMappingsEvent cannot be built in %s, the loader "
+								+ "the bus's post(Event) belongs to; the bus offers %s; here Event is from %s and "
+								+ "RegisterKeyMappingsEvent is from %s",
+								String.valueOf(post.getParameterTypes()[0].getClassLoader()),
+								describePosts(bus.getClass()), loaderOfNamed("net.neoforged.bus.api.Event"),
+								loaderOfNamed("net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent"));
+						continue;
+					}
+					post.invoke(bus, event);
 				} catch (Throwable perBus) {
 					ForbricLog.warn("[Forbric/ShimContext] a foreign mod threw while registering key mappings",
 							Reflect.unwrap(perBus));
 				}
 			}
 			int added = options.keyMappings.length - before;
+			if (java.lang.Boolean.getBoolean("forbric.probeKeys")) {
+				// Says WHY nothing landed, not just that nothing did: a bus with no listeners means the mod
+				// registered somewhere else, a bus with listeners means the event shape is still not the one its
+				// handler takes.
+				StringBuilder out = new StringBuilder("[Forbric/ShimKeys] delivered to ")
+						.append(buses.size()).append(" bus(es), ").append(before).append(" -> ")
+						.append(options.keyMappings.length).append(" key mapping(s)");
+				for (Object bus : buses) out.append("; ").append(describe(bus));
+				ForbricLog.info(out.toString());
+			}
 			if (added <= 0) return 0;
 
 			// Order matters: the saved binding has to be applied BEFORE the index is rebuilt, or the index holds
@@ -84,5 +113,102 @@ public final class KernelForeignShimKeys {
 			ForbricLog.warn("[Forbric/ShimContext] could not deliver foreign key mappings", Reflect.unwrap(t));
 			return -1;
 		}
+	}
+
+	/**
+	 * Builds {@code RegisterKeyMappingsEvent} in {@code loader} and returns null when that loader cannot build it.
+	 *
+	 * <p>Measured on this base: the bus hands a {@code post(net.neoforged.bus.api.Event)} whose {@code Event} comes
+	 * from the app class loader, while this class is loaded with the game's class loader. The kernel's own
+	 * {@code RegisterKeyMappingsEvent} is therefore not an {@code Event} for that bus, and the event has to be built
+	 * by the same loader the parameter type belongs to — that is the class a listener on that bus can accept.
+	 */
+	private static Object eventFor(ClassLoader loader, Object options) {
+		try {
+			Class<?> type = Class.forName("net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent", true, loader);
+			for (java.lang.reflect.Constructor<?> constructor : type.getConstructors()) {
+				if (constructor.getParameterCount() != 1) continue;
+				if (!constructor.getParameterTypes()[0].isInstance(options)) continue;
+				return constructor.newInstance(options);
+			}
+		} catch (Throwable cannotBuild) {
+			ForbricLog.debug("[Forbric/ShimContext] no RegisterKeyMappingsEvent in %s (%s)", String.valueOf(loader),
+					cannotBuild.toString());
+		}
+		return null;
+	}
+
+	/**
+	 * Names the bus and counts what a listener registry looks like on it: every {@code Map} field, by name and size.
+	 * Diagnostic only ({@code -Dforbric.probeKeys=true}); says whether nothing landed because no listener registered
+	 * on this bus at all, or because the listeners are there and the event did not match them.
+	 */
+	private static String describe(Object bus) {
+		StringBuilder out = new StringBuilder(bus.getClass().getName()).append('@')
+				.append(Integer.toHexString(System.identityHashCode(bus)));
+		for (Class<?> type = bus.getClass(); type != null && type != Object.class; type = type.getSuperclass()) {
+			for (java.lang.reflect.Field field : type.getDeclaredFields()) {
+				if (!java.util.Map.class.isAssignableFrom(field.getType())) continue;
+				try {
+					field.setAccessible(true);
+					Object value = field.get(bus);
+					out.append(' ').append(field.getName()).append('=')
+							.append(value instanceof java.util.Map<?, ?> map ? map.size() : "null");
+				} catch (Throwable ignored) {
+					out.append(' ').append(field.getName()).append("=?");
+				}
+			}
+		}
+		return out.toString();
+	}
+
+	private static String loaderOf(Class<?> type) {		if (type == null) return "none";
+		ClassLoader loader = type.getClassLoader();
+		return loader == null ? "bootstrap" : loader.getClass().getName();
+	}
+
+	/** The loader this class resolves {@code name} to, or {@code "not here"} when it cannot. */
+	private static String loaderOfNamed(String name) {
+		try {
+			return loaderOf(Class.forName(name, false, KernelForeignShimKeys.class.getClassLoader()));
+		} catch (Throwable absent) {
+			return "not here";
+		}
+	}
+
+	/** Every single-argument {@code post} the bus declares, with the type and loader of its parameter. */
+	private static String describePosts(Class<?> bus) {
+		StringBuilder out = new StringBuilder();
+		for (Class<?> type = bus; type != null; type = type.getSuperclass()) {
+			for (java.lang.reflect.Method method : type.getMethods()) {
+				if (!"post".equals(method.getName()) || method.getParameterCount() != 1) continue;
+				Class<?> parameter = method.getParameterTypes()[0];
+				if (out.length() > 0) out.append(", ");
+				out.append(parameter.getName()).append(" from ").append(loaderOf(parameter));
+			}
+		}
+		return out.length() == 0 ? "none at all" : out.toString();
+	}
+
+	/**
+	 * The bus's own single-argument {@code post}, looked up on the object instead of through the interface.
+	 *
+	 * <p>Same reason {@code ForgeEventPost.postOn} exists on the other side of the merge: the event-bus name survives
+	 * a spelling change and a loader split, the interface identity does not.
+	 */
+	private static java.lang.reflect.Method postOn(Class<?> bus, Object event) {
+		for (Class<?> type = bus; type != null; type = type.getSuperclass()) {
+			for (java.lang.reflect.Method method : type.getMethods()) {
+				if (!"post".equals(method.getName()) || method.getParameterCount() != 1) continue;
+				if (event != null && !method.getParameterTypes()[0].isInstance(event)) continue;
+				try {
+					method.setAccessible(true);
+					return method;
+				} catch (RuntimeException refused) {
+					return null;
+				}
+			}
+		}
+		return null;
 	}
 }
