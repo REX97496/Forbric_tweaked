@@ -791,9 +791,18 @@ public final class KernelModLoader {
 			Class<?> containerCls = Class.forName(ForeignType.MOD_CONTAINER.binary(Ecosystem.FORGE), false, cl);
 			List<Object> containers = forgeListContents(forge.values(), lowCode.values(), containerCls::isInstance);
 			Method setLoadedMods = modListCls.getDeclaredMethod("setLoadedMods", List.class);
+			setLoadedMods.setAccessible(true);
+			// On Forge 1.21.1 setLoadedMods is an INSTANCE method on a ModList handed out of a static INSTANCE
+			// field, so invoke(null, …) threw "Cannot invoke Object.getClass() because o is null" and the publish
+			// never happened. Resolve the instance first; on a line where the method is static, invoke(null, …)
+			// stays right.
+			Object modList = forgeModList(modListCls);
 			boolean wrote = publishForgeContainers(containers, allowEmpty, list -> {
-				setLoadedMods.setAccessible(true);
-				setLoadedMods.invoke(null, list); // static on MinecraftForge; NeoForge's twin is an instance method
+				if (modList != null && (setLoadedMods.getModifiers() & java.lang.reflect.Modifier.STATIC) == 0) {
+					setLoadedMods.invoke(modList, list);
+				} else {
+					setLoadedMods.invoke(null, list); // static on the older MinecraftForge lines
+				}
 			});
 			if (!wrote) return;
 			Set<String> ids = new LinkedHashSet<>(forge.keySet());
@@ -806,6 +815,41 @@ public final class KernelModLoader {
 		} catch (Throwable t) {
 			ForbricLog.warn("[Forbric/ModLoader] could not publish into MinecraftForge's ModList — a Forge mod asking "
 					+ "whether another is loaded still gets no", Reflect.unwrap(t));
+		}
+	}
+
+	/**
+	 * The MinecraftForge {@code ModList} instance this boot should write containers into, or {@code null} if this
+	 * line has none to give.
+	 *
+	 * <p>Forge 1.21.1 keeps the loaded containers per instance ({@code mods}, {@code indexedMods},
+	 * {@code sortedContainers} are instance fields) and exposes it as {@code ModList.get()}, which reads a static
+	 * {@code INSTANCE}. The kernel never runs Forge's own discovery, so {@code INSTANCE} is null until something
+	 * calls {@code ModList.of(modFiles, modInfos)} — and until then every Forge mod asking {@code ModList.get()}
+	 * whether another mod is loaded dies on a null receiver. Building the instance with two empty lists is the
+	 * same state the kernel already assumed (an empty mod-file list, an empty mod-info list); the containers go in
+	 * through {@code setLoadedMods} exactly as Forge's own loading does.
+	 */
+	private static Object forgeModList(Class<?> modListCls) {
+		try {
+			Object existing = modListCls.getMethod("get").invoke(null);
+			return existing;
+		} catch (NoSuchMethodException none) {
+			return null; // a line where the list is nothing but statics
+		} catch (Throwable unreadable) {
+			ForbricLog.debug("[Forbric/ModLoader] ModList.get() did not answer: %s", unreadable);
+		}
+		try {
+			Object made = modListCls.getMethod("of", List.class, List.class).invoke(null, List.of(), List.of());
+			if (made != null) {
+				ForbricLog.info("[Forbric/ModLoader] MinecraftForge's ModList had no instance on this boot, so the "
+						+ "kernel made one (ModList.of with no mod files and no mod infos) — a Forge mod asking "
+						+ "ModList.get() got null before, which is a null receiver three calls deep");
+			}
+			return made;
+		} catch (Throwable cannotMake) {
+			ForbricLog.debug("[Forbric/ModLoader] could not build a ModList instance: %s", cannotMake);
+			return null;
 		}
 	}
 

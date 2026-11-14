@@ -45,12 +45,48 @@ public final class KernelScreenProbe {
 	/** One synthetic click per process: a second inventory open must not click again. */
 	private static final java.util.concurrent.atomic.AtomicBoolean CLICKED = new java.util.concurrent.atomic.AtomicBoolean();
 
+	/** The key-mapping list is printed once per process. */
+	private static final java.util.concurrent.atomic.AtomicBoolean KEYMAPS_SAID =
+			new java.util.concurrent.atomic.AtomicBoolean();
+
 	private KernelScreenProbe() {
+	}
+
+	/**
+	 * Lists every key mapping the game registered, once per process, under {@code -Dforbric.probeKeymaps}.
+	 *
+	 * <p>Round 137 measured that the shim posts {@code RegisterKeyMappingsEvent} to 14 buses that hold no listeners, and
+	 * the log cannot say whether that costs the player a key binding: vanilla's own count is 82 either way. The
+	 * authoritative answer is the array the Controls screen reads, and its translation keys name the mod that added
+	 * each entry.
+	 */
+	private static void keymapCensus() {
+		if (!Boolean.getBoolean("forbric.probeKeymaps") || !KEYMAPS_SAID.compareAndSet(false, true)) return;
+		try {
+			Object minecraft = Class.forName("net.minecraft.client.Minecraft").getMethod("getInstance").invoke(null);
+			Object options = field(minecraft, "options");
+			Object mappings = field(options, "keyMappings");
+			int total = mappings == null ? -1 : java.lang.reflect.Array.getLength(mappings);
+			StringBuilder line = new StringBuilder("[Forbric/Keys] ").append(total).append(" key mapping(s)");
+			if (total > 0) {
+				line.append(':');
+				for (int i = 0; i < total; i++) {
+					Object mapping = java.lang.reflect.Array.get(mappings, i);
+					Object name = field(mapping, "name");
+					if (name == null) name = call(mapping, "getName");
+					line.append(' ').append(name);
+				}
+			}
+			say(line.toString());
+		} catch (Throwable unreadable) {
+			say("keymap census unreadable " + unreadable);
+		}
 	}
 
 	/** Called before every return of {@code Screen.init(Minecraft,int,int)}; never throws into the client. */
 	public static void dump(net.minecraft.client.gui.screens.Screen screen) {
 		if (screen == null) return;
+		keymapCensus();
 		try {
 			String name = screen.getClass().getName();
 			if (!isContainer(screen)) return;

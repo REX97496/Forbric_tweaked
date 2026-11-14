@@ -2128,6 +2128,15 @@ public final class PassiveSeeder {
 
 	private static void setStaticIfNull(Class<?> owner, String field, Object value) throws Exception {
 		Field f = owner.getDeclaredField(field);
+		// A non-static field cannot be seeded from outside: Field.get(null) throws NullPointerException because there
+		// is no receiver, and that is exactly what the ModList block above used to do on this line. Forge 1.21.1's
+		// ModList keeps mods/indexedMods/sortedContainers per INSTANCE and hands that instance out of a static
+		// INSTANCE field, so KernelModLoader.publishForgeModList writes the instance rather than these statics.
+		if ((f.getModifiers() & java.lang.reflect.Modifier.STATIC) == 0) {
+			ForbricLog.debug("[Forbric/Seed] %s.%s is an instance field on this line — nothing to seed statically",
+					owner.getName(), field);
+			return;
+		}
 		f.setAccessible(true);
 		if (f.get(null) == null) f.set(null, value);
 	}
