@@ -75,6 +75,13 @@ public record AnchorSet(List<Anchor> anchors, String scanNote) {
 				throw new IllegalArgumentException("an anchor without a cost cannot be reported usefully: "
 						+ binaryName);
 			}
+			// One spelling, or the audit is silently blind. The chain receives dot-separated names and compares
+			// anchor.binaryName().equals(className) literally, so an anchor declared the class-file way
+			// ("net/minecraft/world/item/ItemStack") never matches anything and is reported as "never loaded" on
+			// every single session — which is exactly what ItemTooltipBridgeInjector did: measured at shutdown on
+			// 1.21.1, it was one of the 42 absent targets while its own repair had been applied, and its declining
+			// could not have been reported at all.
+			binaryName = binaryName.indexOf('/') < 0 ? binaryName : binaryName.replace('/', '.');
 		}
 	}
 

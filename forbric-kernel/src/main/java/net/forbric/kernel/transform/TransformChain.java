@@ -210,6 +210,9 @@ public final class TransformChain {
 			ForbricLog.info("[Forbric/Anchor] at shutdown: %d of %d declared repair(s) landed; %d target(s) were never "
 					+ "loaded in this session, and %d hedge(s) correctly found nothing to do", r.hit(), r.declared(),
 					r.absent().size(), r.hedged().size());
+			// The snapshot dump names the ones that looked absent early; this one names what is still absent when the
+			// session ends, which is the only list worth classifying (client-only vs server-only vs unreachable).
+			ForbricLog.debug("[Forbric/Anchor] still never loaded at shutdown: %s", r.absent());
 			if (!r.misses().isEmpty()) {
 				ForbricLog.error("[Forbric/Anchor] at shutdown: %d repair(s) were handed their target and declined it",
 						r.misses().size());
