@@ -47,6 +47,10 @@ public final class KernelForgeRegistryNames {
 	private static final int SAID_LIMIT = 24;
 	/** Misses that were said out loud already, so one bad name cannot fill the log. */
 	private static final Set<String> MISSES = ConcurrentHashMap.newKeySet();
+
+	/** Names Forge had not created yet the last time we looked — see {@link #aboutToBeCreated(Object)}. */
+	private static final Set<String> PENDING = ConcurrentHashMap.newKeySet();
+	private static volatile boolean PENDING_READ;
 	private static final Map<Object, Object> ALIASES = new ConcurrentHashMap<>();
 
 	/**
@@ -89,6 +93,44 @@ public final class KernelForgeRegistryNames {
 	 *
 	 * <p>Cached because {@code ObjectHolderRegistry} asks the same four names once per holder.
 	 */
+	/**
+	 * Whether a {@code DeferredRegister} with a registry factory is still waiting to create {@code key}.
+	 *
+	 * <p>Read once, lazily: the list of waiting registrars only shrinks, and every miss happens during the same
+	 * registration window, so one snapshot answers every question. Any reflection failure means "not pending" — the
+	 * miss then gets reported, which is the honest default.
+	 */
+	private static boolean aboutToBeCreated(Object key) {
+		if (!PENDING_READ) readPending();
+		return PENDING.contains(String.valueOf(key));
+	}
+
+	private static void readPending() {
+		PENDING_READ = true;
+		try {
+			Class<?> forgeRegistries = Class.forName("net.minecraftforge.registries.ForgeRegistries", false,
+					KernelForgeRegistryNames.class.getClassLoader());
+			java.lang.reflect.Field list = forgeRegistries.getDeclaredField("registries");
+			list.setAccessible(true);
+			Object value = list.get(null);
+			if (!(value instanceof java.util.List)) return;
+			for (Object each : (java.util.List<?>) value) {
+				if (each == null) continue;
+				java.lang.reflect.Field factory = each.getClass().getDeclaredField("registryFactory");
+				factory.setAccessible(true);
+				if (factory.get(each) == null) continue;
+				java.lang.reflect.Field registryKey = each.getClass().getDeclaredField("registryKey");
+				registryKey.setAccessible(true);
+				Object name = registryKey.get(each);
+				if (name == null) continue;
+				java.lang.reflect.Method location = name.getClass().getMethod("location");
+				PENDING.add(String.valueOf(location.invoke(name)));
+			}
+		} catch (Throwable t) {
+			ForbricLog.debug("[Forbric/Forge] could not read the list of registries Forge is still creating: " + t);
+		}
+	}
+
 	private static Object renamedName(Object key) {
 		if (key == null) return null;
 		Object cached = ALIASES.get(key);
@@ -194,6 +236,11 @@ public final class KernelForgeRegistryNames {
 		 * alias name.
 		 */
 		private void explainMiss(Object key, Object alias) {
+			// A miss is EXPECTED while Forge is still building its own registries: DeferredRegister.makeRegistry
+			// asks RegistryManager.ACTIVE whether the name already exists precisely so it can create it when it does
+			// not. Measured on the 1.21.1 instance: nine such probes printed nine scary warnings before the nine
+			// registries appeared, and every one of those names existed a moment later.
+			if (aboutToBeCreated(key)) return;
 			String note = key + " -> " + alias + " (delegate " + delegate.getClass().getSimpleName() + ", "
 					+ delegate.size() + " entries)";
 			if (MISSES.size() >= SAID_LIMIT || !MISSES.add(note)) return;

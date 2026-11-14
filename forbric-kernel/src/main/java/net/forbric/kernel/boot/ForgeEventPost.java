@@ -51,18 +51,17 @@ final class ForgeEventPost {
 		}
 
 		int posted = 0;
-		if (eventBus != null) {
-			// The bus's OWN post parameter, never a constant. Measured the hard way: ForeignType.EVENT resolves to
-			// net.minecraftforge.eventbus.internal.Event, which is the 26.2 spelling and does not exist on 1.21.1
-			// (there it is net.minecraftforge.eventbus.api.Event) — Class.forName on the constant threw
-			// ClassNotFoundException before a single listener ran, and the Forge baseline's NewRegistryEvent
-			// listeners were reported as "failed" for a reason that had nothing to do with them.
-			java.lang.reflect.Method post = singleArgumentMethod(eventBus, "post");
-			for (Object handle : handles) {
-				if (!eventBus.isInstance(handle)) continue;
-				post.invoke(handle, event);
-				posted++;
-			}
+		// The bus's OWN post method, found on the bus object itself rather than through a class constant. Measured
+		// the hard way: ForeignType.EVENT_BUS.binary(FORGE) is net.minecraftforge.eventbus.api.bus.EventBus, the
+		// 26.2 spelling; on 1.21.1 the bus is net.minecraftforge.eventbus.api.IEventBus, so the constant threw
+		// ClassNotFoundException and every handle was skipped as "not an IEventBus" — including the container bus
+		// Forge actually registered its DeferredRegisters on.
+		for (Object handle : handles) {
+			if (handle == null) continue;
+			java.lang.reflect.Method post = postOn(handle.getClass(), event);
+			if (post == null) continue;
+			post.invoke(handle, event);
+			posted++;
 		}
 		if (posted > 0) return posted;
 
@@ -90,5 +89,26 @@ final class ForgeEventPost {
 			if (candidate.getName().equals(name) && candidate.getParameterCount() == 1) return candidate;
 		}
 		throw new NoSuchMethodException(owner.getName() + "." + name + "(?)");
+	}
+
+	/**
+	 * The public {@code post(...)} method on {@code bus} that takes {@code event}, or {@code null} when the object is
+	 * not a bus at all.
+	 *
+	 * <p>Looked up on the object's own class and interfaces instead of through a class constant, so a bus whose name
+	 * differs by line (EventBus 6 {@code IEventBus} vs EventBus 7 {@code BusGroup}) still posts.
+	 */
+	private static java.lang.reflect.Method postOn(Class<?> bus, Object event) {
+		for (java.lang.reflect.Method candidate : bus.getMethods()) {
+			if (!candidate.getName().equals("post") || candidate.getParameterCount() != 1) continue;
+			if (!candidate.getParameterTypes()[0].isInstance(event)) continue;
+			return candidate;
+		}
+		for (Class<?> iface : bus.getInterfaces()) {
+			java.lang.reflect.Method found = postOn(iface, event);
+			if (found != null) return found;
+		}
+		Class<?> parent = bus.getSuperclass();
+		return parent == null || parent == Object.class ? null : postOn(parent, event);
 	}
 }
