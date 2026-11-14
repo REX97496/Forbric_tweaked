@@ -203,6 +203,10 @@ public final class TransformChain {
 			ForbricLog.info("[Forbric/Anchor] %d of %d declared repair(s) landed; %d target(s) were never loaded "
 					+ "on this side, and %d hedge(s) correctly found nothing to do", r.hit(), r.declared(),
 					r.absent().size(), r.hedged().size());
+			// The count alone cannot be audited: when a repair lands on one boot and is "never loaded" on the next,
+			// the number moves and there is nothing in the log to say which target moved. Names cost nothing at
+			// debug level and turn the next such question into a diff instead of an argument.
+			ForbricLog.debug("[Forbric/Anchor] target(s) never loaded on this side: %s", r.absent());
 		} else {
 			ForbricLog.error("[Forbric/Anchor] %d of %d declared repair(s) landed, and %d did NOT -- their target "
 					+ "classes were loaded and the repair declined them. Each one is a feature that is gone with "

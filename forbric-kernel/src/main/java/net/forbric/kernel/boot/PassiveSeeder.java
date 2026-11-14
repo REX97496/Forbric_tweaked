@@ -447,6 +447,7 @@ public final class PassiveSeeder {
 				// setupLaunchHandler(IEnvironment, VersionInfo). Seed that field instead of constructing a
 				// loader -- it is the "environment identity only, no lifecycle" this method promises, and it
 				// avoids standing up IEnvironment, which is where lifecycle would start.
+				seedNeoForgeProduction(fmlLoader);
 				seedNeoForgeVersionInfo(fmlLoader, gameLoader, gameVersion, gameDir);
 				return;
 			}
@@ -481,6 +482,46 @@ public final class PassiveSeeder {
 		} catch (Throwable t) {
 			ForbricLog.warn("[Forbric/Seed] could not seed NeoForge FMLLoader identity", unwrap(t));
 		}
+	}
+
+	/**
+	 * Seeds NeoForge's {@code FMLLoader.production}, which nothing in this process ever assigns.
+	 *
+	 * <p>On 1.21.1 that field is written only by the loader's own scan ({@code completeScan}:
+	 * {@code CommonLaunchHandler.isProduction(); putstatic production}), and the kernel never runs the scan — so the
+	 * field stayed at its default {@code false} and {@code FMLLoader.isProduction()} answered "development" in a
+	 * shipped instance. Vanilla reads exactly that answer:
+	 *
+	 * <pre>
+	 * SharedConstants.&lt;clinit&gt;: 30: invokestatic FMLLoader.isProduction(); 33: ifne 40; 36: iconst_1; 37: goto 41;
+	 *                             40: iconst_0; 41: putstatic IS_RUNNING_IN_IDE
+	 * </pre>
+	 *
+	 * <p>So {@code IS_RUNNING_IN_IDE} was TRUE, and with it every development-only check in the merged base ran for the
+	 * player. The visible ones were two {@code Item classes should end with Item and  doesn't.} ERRORs (an anonymous
+	 * {@code Item} subclass has an empty simple name); the rest are the checks vanilla only wants in a workspace.
+	 * The kernel already reports production to MinecraftForge ({@code [Forbric/Seed] MinecraftForge FMLEnvironment
+	 * decided here: dist=… production=true}), so leaving NeoForge's own flag false simply made the two halves of the
+	 * base disagree about what kind of process this is.
+	 */
+	private static void seedNeoForgeProduction(Class<?> fmlLoader) throws Exception {
+		Field productionField;
+		try {
+			productionField = fmlLoader.getDeclaredField("production");
+		} catch (NoSuchFieldException otherLine) {
+			ForbricLog.debug("[Forbric/Seed] no FMLLoader.production on this line — nothing to seed");
+			return;
+		}
+		if ((productionField.getModifiers() & java.lang.reflect.Modifier.STATIC) == 0) {
+			ForbricLog.debug("[Forbric/Seed] FMLLoader.production is an instance field on this line");
+			return;
+		}
+		productionField.setAccessible(true);
+		if (Boolean.TRUE.equals(productionField.get(null))) return;
+		productionField.setBoolean(null, true);
+		ForbricLog.info("[Forbric/Seed] NeoForge FMLLoader.production seeded as true — nothing in this process runs the "
+				+ "scan that assigns it, and SharedConstants.IS_RUNNING_IN_IDE is defined as !FMLLoader.isProduction(), "
+				+ "so it was true and vanilla's development-only checks ran in this shipped instance");
 	}
 
 	/**
