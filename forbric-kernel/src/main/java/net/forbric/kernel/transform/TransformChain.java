@@ -273,20 +273,26 @@ public final class TransformChain {
 			// One message, not four: log4j's appenders can close between two calls at shutdown, and a hook that
 			// writes the summary then silently loses the detail is worse than no summary. Measured — the summary
 			// line landed in latest.log and the two debug lines after it did not.
+			// Two repairs can aim at one class - measured on 1.21.1, both ClientPartTrackingInjector and
+			// ForgePartTrackingInjector declare ClientLevel$EntityCallbacks - and printing the name once per repair
+			// made a sixteen-class list read as seventeen and look like two findings. The list names classes; the
+			// count says how many repairs named them, and the two are spelled out when they differ.
+			int mineClasses = distinct(mine);
 			StringBuilder nameThem = new StringBuilder();
-			nameThem.append(" this session left ").append(mine.size())
-					.append(" shipped target(s) unloaded [").append(names(mine))
-					.append("] and declared ").append(foreign.size()).append(" on another line [")
+			nameThem.append(" this session left ").append(mineClasses).append(" shipped class(es) unloaded")
+					.append(mineClasses == mine.size() ? "" : " (named by " + mine.size() + " repair(s))")
+					.append(" [").append(names(mine))
+					.append("] and declared ").append(distinct(foreign)).append(" on another line [")
 					.append(names(foreign)).append(']');
 			if (!otherSide.isEmpty()) {
-				nameThem.append("; ").append(otherSide.size())
+				nameThem.append("; ").append(distinct(otherSide))
 						.append(" more are this other side's own classes, never loaded here [")
 						.append(names(otherSide)).append(']');
 			}
-			ForbricLog.durableInfo("[Forbric/Anchor] at shutdown: %d of %d declared repair(s) landed; %d target(s) were never "
-					+ "loaded in this session (%d of them are not shipped by this line at all), and %d hedge(s) "
-					+ "found nothing to do;%s", r.hit(), r.declared(), r.absent().size(), foreign.size(),
-					r.hedged().size(), nameThem.toString());
+			ForbricLog.durableInfo("[Forbric/Anchor] at shutdown: %d of %d declared repair(s) landed; %d repair(s) had a "
+					+ "target that was never loaded in this session (%d of those targets are not shipped by this line at "
+					+ "all), and %d hedge(s) found nothing to do;%s", r.hit(), r.declared(), r.absent().size(),
+					foreign.size(), r.hedged().size(), nameThem.toString());
 			if (!r.misses().isEmpty()) {
 				ForbricLog.error("[Forbric/Anchor] at shutdown: %d repair(s) were handed their target and declined it",
 						r.misses().size());
@@ -326,12 +332,21 @@ public final class TransformChain {
 
 	/** {@code a.b.C}, {@code a.b.D} — the shape a reader can paste into a grep, without the record's decoration. */
 	private static String names(java.util.List<AnchorLedger.Absent> absent) {
+		java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+		for (AnchorLedger.Absent one : absent) seen.add(one.className());
 		StringBuilder out = new StringBuilder();
-		for (AnchorLedger.Absent one : absent) {
+		for (String name : seen) {
 			if (out.length() > 0) out.append(", ");
-			out.append(one.className());
+			out.append(name);
 		}
 		return out.toString();
+	}
+
+	/** How many different classes these absent anchors name, which is not the same as how many repairs named them. */
+	private static int distinct(java.util.List<AnchorLedger.Absent> absent) {
+		java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+		for (AnchorLedger.Absent one : absent) seen.add(one.className());
+		return seen.size();
 	}
 
 	/**
@@ -398,10 +413,11 @@ public final class TransformChain {
 		if (r.clean()) {
 			java.util.List<AnchorLedger.Absent> foreign = writtenAgainstAnotherLine(r.absent());
 			int otherSide = ofTheOtherSide(r.absent()).size();
-			ForbricLog.info("[Forbric/Anchor] %d of %d declared repair(s) landed; %d target(s) were never loaded "
-					+ "on this side (%d of them are not in any artefact this line ships, so those repairs are written "
-					+ "against another line; %d belong to the other side), and %d hedge(s) correctly found nothing to "
-					+ "do", r.hit(), r.declared(), r.absent().size(), foreign.size(), otherSide, r.hedged().size());
+			ForbricLog.info("[Forbric/Anchor] %d of %d declared repair(s) landed; %d repair(s) had a target that was "
+					+ "not loaded on this side (%d of those targets are not in any artefact this line ships, so those "
+					+ "repairs are written against another line; %d belong to the other side), and %d hedge(s) correctly "
+					+ "found nothing to do", r.hit(), r.declared(), r.absent().size(), foreign.size(), otherSide,
+					r.hedged().size());
 			// The count alone cannot be audited: when a repair lands on one boot and is "never loaded" on the next,
 			// the number moves and there is nothing in the log to say which target moved. Names cost nothing at
 			// debug level and turn the next such question into a diff instead of an argument.
