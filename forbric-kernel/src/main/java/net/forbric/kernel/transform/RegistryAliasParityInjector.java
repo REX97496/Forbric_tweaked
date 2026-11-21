@@ -47,10 +47,11 @@ import net.forbric.kernel.util.ForbricLog;
  * Same semantics as fabric-api's (it reads fabric-api's own map, so an alias registered through either ecosystem
  * resolves in both), so a caller cannot tell which class answered.
  *
- * <p>Two methods beyond fabric-api's list are covered — {@code getOptional(Identifier)} and
- * {@code getHolder(Identifier)}. On a stock instance those are {@code Registry} defaults that route through
- * {@code getValue}, so fabric-api gets them for free; the wrapper overrides them into direct delegates, which
- * breaks exactly that. Covering them is parity of EFFECT, which is the thing that matters.
+ * <p>Three methods beyond fabric-api's list are covered — {@code getOptional(Identifier)},
+ * {@code getHolder(Identifier)} and {@code getHolder(ResourceKey)}. On a stock instance those are {@code Registry}
+ * defaults that route through {@code getValue} / {@code get(key)}, so fabric-api gets them for free; the wrapper
+ * overrides them into direct reads of a {@code ForgeRegistry} or of its own holder map, which breaks exactly that.
+ * Covering them is parity of EFFECT, which is the thing that matters.
  *
  * <p>Frame-safe by construction: straight-line code at the head, no branch, and the rewritten value goes back into
  * the slot it came from with the same type, so every existing stack-map frame still describes the same state.
@@ -73,9 +74,12 @@ public final class RegistryAliasParityInjector implements ClassTransformer {
 	private static final List<String> BY_IDENTIFIER = List.of(
 			"get", "getValue", "containsKey", "getOptional", "getHolder");
 
-	/** fabric-api's ResourceKey-keyed list, every one of which the wrapper also overrides. */
+	/** fabric-api's ResourceKey-keyed list, all of which the wrapper overrides, plus {@code getHolder}. That one the
+	 * wrapper answers out of its own {@code holdersByName} map (javap: {@code holdersByName.get(key.location())})
+	 * instead of routing through {@code get(key)}, so it bypasses an alias rewrite exactly the way the id-keyed
+	 * overrides do — and on a stock instance it is {@code Registry}'s default that goes through the aliased path. */
 	private static final List<String> BY_RESOURCE_KEY = List.of(
-			"get", "getValue", "containsKey", "registrationInfo", "getOrCreateHolderOrThrow");
+			"get", "getValue", "containsKey", "registrationInfo", "getOrCreateHolderOrThrow", "getHolder");
 
 	@Override
 	public String name() {

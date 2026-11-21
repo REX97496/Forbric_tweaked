@@ -84,6 +84,9 @@ public final class KernelRegistryAliases {
 	private static volatile Method createKey;
 	private static final AtomicBoolean REPORTED = new AtomicBoolean();
 
+	/** Said once, when the key-to-id accessor is first bound: on 1.21.1 that spell is {@code location()}. */
+	private static final AtomicBoolean KEY_ACCESSOR_SAID = new AtomicBoolean();
+
 	private KernelRegistryAliases() {
 	}
 
@@ -127,7 +130,15 @@ public final class KernelRegistryAliases {
 			// Re-derive if the cache was filled by a different key class — one process only ever has one
 			// ResourceKey, but a stale Method would throw on every lookup rather than simply being slower.
 			if (identifier == null || !identifier.getDeclaringClass().isInstance(key)) {
+				// ONE name here, not a try-both loop: this string is handed to getMethod, so it is exactly what
+				// src/main/mc-line/1.21.1.patches rewrites (ResourceKey#identifier -> location). A loop over both
+				// spellings would make the row unmatchable and — worse — would hide the day the accessor moves
+				// behind a silent no-op, because the catch below swallows NoSuchMethodException on purpose.
 				identifier = key.getClass().getMethod("identifier");
+				if (KEY_ACCESSOR_SAID.compareAndSet(false, true)) {
+					ForbricLog.debug("[Forbric/Aliases] key-keyed lookups read a registry key's id through %s.%s() "
+							+ "on this line", key.getClass().getSimpleName(), identifier.getName());
+				}
 				identifierOf = identifier;
 				createKey = null;
 			}
