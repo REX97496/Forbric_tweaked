@@ -642,14 +642,15 @@ public final class GuestJarRemap {
 			for (List<org.objectweb.asm.tree.AnnotationNode> list : annotationLists(method)) {
 				if (list == null) continue;
 				for (org.objectweb.asm.tree.AnnotationNode annotation : list) {
-					if (annotation.desc == null || !annotation.desc.startsWith("Lorg/spongepowered/asm/mixin/injection/")) {
-						continue;
-					}
+					if (!isInjectionAnnotation(annotation.desc)) continue;
 					if (annotation.values == null) continue;
-					// Off by default: rewriting @At targets turned mixins Mixin used to drop softly into 52 hard
-					// InvalidInjectionException failures, and the half-applied hooks it left behind threw while a world
-					// opened (TheEndBiomeSource.fabric_modifyBiomeSet on a null overrides).
-				if (Boolean.getBoolean("forbric.rewriteAtTargets") && rewriteAtTargets(annotation)) changed = true;
+					// The @At half is still behind a switch, but for the reason this round measured rather than the
+					// one it was written for: with the switch on and no refmap consult, one boot went from 97 to 95
+					// missing selectors and from 71 to 71 injection warnings, so the computed targets bought nothing.
+					// The guest's own refmap keys, however, do answer them - see rewriteAtTargets.
+					if (Boolean.getBoolean("forbric.rewriteAtTargets") && rewriteAtTargets(annotation, mine)) {
+						changed = true;
+					}
 					for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
 						if (!"method".equals(annotation.values.get(i))) continue;
 						Object written = annotation.values.get(i + 1);
@@ -681,6 +682,22 @@ public final class GuestJarRemap {
 	}
 
 	/**
+	 * Whether an annotation carries Mixin's {@code method} / {@code @At} grammar.
+	 *
+	 * <p>MixinExtras' injectors use exactly the same two fields as Mixin's own, and a jar full of them was being
+	 * skipped whole: measured on fabric-entity-events-v1's {@code LivingEntityMixin}, {@code
+	 * @WrapOperation(method = ["onDeath"], at = @At(target = "Lnet/minecraft/entity/Entity;onKilledOther(…)"))}
+	 * came out of the rewrite byte-for-byte as authored — Yarn name, Yarn target — while the {@code @Inject} method
+	 * beside it was rewritten correctly. That is one of the four sleep-event handlers this line reports as never
+	 * attaching, and the annotation format says nothing about why it should be treated differently.
+	 */
+	private static boolean isInjectionAnnotation(String desc) {
+		if (desc == null) return false;
+		return desc.startsWith("Lorg/spongepowered/asm/mixin/injection/")
+				|| desc.startsWith("Lcom/llamalad7/mixinextras/");
+	}
+
+	/**
 	 * Rewrites the {@code target} of every {@code @At} nested in an injection annotation.
 	 *
 	 * <p>A guest writes INVOKE targets in intermediary form, e.g. {@code @Redirect(at = @At(value = "INVOKE", target =
@@ -688,8 +705,14 @@ public final class GuestJarRemap {
 	 * the qualified intermediary spelling outright: measured on fabric-entity-events-v1's {@code LivingEntityMixin},
 	 * {@code @Redirect annotation on beforeEntityKilled specifies a target class 'net/minecraft/class_1309', which is
 	 * not supported}. Sixty such failures in one boot came from this one hole.
+	 *
+	 * <p>An {@code @At} target is also answered by the guest's own refmap, which is the only statement of what a Yarn
+	 * spelling meant: measured on the same class, {@code target = "net/minecraft/world/World.sendEntityStatus(…)"} has
+	 * the refmap key of the same text and the value {@code Lnet/minecraft/world/level/Level;broadcastEntityEvent(…)}.
+	 * Only that key is read here — nothing is computed and nothing is written that the jar did not say.
 	 */
-	private static boolean rewriteAtTargets(org.objectweb.asm.tree.AnnotationNode annotation) {
+	private static boolean rewriteAtTargets(org.objectweb.asm.tree.AnnotationNode annotation,
+			Map<String, String> mine) {
 		if (annotation.values == null) return false;
 		boolean changed = false;
 		for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
@@ -699,23 +722,49 @@ public final class GuestJarRemap {
 					for (int n = 0; n + 1 < nested.values.size(); n += 2) {
 						if (!"target".equals(nested.values.get(n))) continue;
 						if (!(nested.values.get(n + 1) instanceof String text)) continue;
-						String fixed = officialTarget(text);
+						String fixed = atTarget(text, mine);
 						if (fixed != null && !fixed.equals(text)) {
 							nested.values.set(n + 1, fixed);
 							changed = true;
 						}
 					}
 				}
-				if (rewriteAtTargets(nested)) changed = true;
+				if (rewriteAtTargets(nested, mine)) changed = true;
 			} else if (value instanceof List<?> many) {
 				for (Object each : many) {
-					if (each instanceof org.objectweb.asm.tree.AnnotationNode nested && rewriteAtTargets(nested)) {
+					if (each instanceof org.objectweb.asm.tree.AnnotationNode nested && rewriteAtTargets(nested, mine)) {
 						changed = true;
 					}
 				}
 			}
 		}
 		return changed;
+	}
+
+	/**
+	 * One {@code @At} target in the base's spelling, or null when the jar has nothing better than what it wrote.
+	 *
+	 * <p>The guest's refmap answers first, by exact text: the key is the selector as the annotation carries it and the
+	 * value is the selector the jar means, so a Yarn target needs no external table. Unlike an {@code @Inject} method
+	 * selector, an {@code @At} target keeps its owner — Mixin resolves the invocation against that owner — so the
+	 * value is returned whole rather than stripped.
+	 *
+	 * <p><b>Measured harmful, so this path only runs behind {@code -Dforbric.rewriteAtTargets}.</b> A cold 1.21.1 boot
+	 * with the switch off reports 65 injection warnings and 63 handlers across 19 mods never attached; with it on, 87
+	 * and 85 across 20 — fabric-entity-events-v1 alone goes from 8 to 17, because answering an {@code @At} from the
+	 * refmap rewrites the targets of injections that were attaching correctly, and a target that no longer matches any
+	 * call site is a handler that stops running. It also produced a hard failure that the off switch does not:
+	 * {@code InvalidInjectionException: @WrapOperation annotation on wrapGetCodec specifies a target class
+	 * 'net/minecraft/network/protocol/common/custom/CustomPacketPayload$1', which is not supported}. The refmap answers
+	 * what the jar meant; whether Mixin wants that answer for this field is a separate question this round did not
+	 * settle.
+	 */
+	private static String atTarget(String text, Map<String, String> mine) {
+		String declared = mine.get(text);
+		if (declared != null && !declared.equals(text) && declared.startsWith("L") && declared.indexOf(';') > 0) {
+			return declared;
+		}
+		return officialTarget(text);
 	}
 
 	/** An {@code @At} target rewritten into the base's spelling, or null when it is already there. */
