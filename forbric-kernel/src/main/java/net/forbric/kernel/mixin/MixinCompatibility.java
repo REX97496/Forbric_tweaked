@@ -158,7 +158,7 @@ public final class MixinCompatibility {
 			if (perMod.length() > 0) perMod.append(", ");
 			perMod.append(entry.getKey()).append('=').append(count);
 		}
-		ForbricLog.info("[Forbric/Mixin] %d handler(s) across %d mod(s) never attached on this base: %s — each is a hook"
+		ForbricLog.durableInfo("[Forbric/Mixin] %d handler(s) across %d mod(s) never attached on this base: %s — each is a hook"
 				+ " the mod registered that the merged game never calls, named individually in the warnings above",
 				total, UNATTACHED.size(), perMod);
 	}

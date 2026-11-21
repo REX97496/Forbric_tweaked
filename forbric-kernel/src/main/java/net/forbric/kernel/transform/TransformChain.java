@@ -151,6 +151,8 @@ public final class TransformChain {
 			throw new IllegalArgumentException("the chain does not run MIXIN; it is applied by the class delegate");
 		}
 
+		noteProbedLoad(className, classBytes);
+
 		byte[] bytes = classBytes;
 
 		TransformPhase[] all = TransformPhase.values();
@@ -229,9 +231,39 @@ public final class TransformChain {
 
 	private final java.util.concurrent.atomic.AtomicBoolean finalHooked = new java.util.concurrent.atomic.AtomicBoolean();
 
+	/**
+	 * For each probed name the books call absent, says whether the system loader can resolve it.
+	 *
+	 * <p>{@code Class.forName(name, false, systemLoader)} loads and links but never initialises, and at shutdown
+	 * that is free. On this line the answer is always yes: the merged base sits on the launcher's classpath, so
+	 * the system loader can resolve every game class. The line therefore proves only that the kernel's chain did
+	 * not define the class — it does not prove a second copy is in use, and the wording says so.
+	 */
+	private void reportProbedAbsences(AnchorLedger.Report r) {
+		if (PROBED_LOADS.isEmpty()) return;
+		java.util.Set<String> absent = new java.util.HashSet<>();
+		for (AnchorLedger.Absent one : r.absent()) absent.add(one.className());
+		for (String name : PROBED_LOADS) {
+			if (!absent.contains(name)) continue;
+			boolean bySystem;
+			try {
+				Class.forName(name, false, ClassLoader.getSystemClassLoader());
+				bySystem = true;
+			} catch (Throwable missing) {
+				bySystem = false;
+			}
+			ForbricLog.durableInfo("[Forbric/Load] %s never reached the chain this session; the system loader %s "
+					+ "resolve it — %s", name, bySystem ? "can also" : "cannot",
+					bySystem ? "which is true of every game class on this classpath, so what this measures is that "
+							+ "the kernel's chain did not define it, not that a second copy is in play"
+							: "so nothing on this classpath can define it and the game must never have asked for it");
+		}
+	}
+
 	private void reportFinal() {
 		try {
 			AnchorLedger.Report r = ledger.report();
+			reportProbedAbsences(r);
 			java.util.List<AnchorLedger.Absent> foreign = writtenAgainstAnotherLine(r.absent());
 			java.util.List<AnchorLedger.Absent> otherSide = ofTheOtherSide(r.absent());
 			java.util.List<AnchorLedger.Absent> mine = new java.util.ArrayList<>();
@@ -251,7 +283,7 @@ public final class TransformChain {
 						.append(" more are this other side's own classes, never loaded here [")
 						.append(names(otherSide)).append(']');
 			}
-			ForbricLog.info("[Forbric/Anchor] at shutdown: %d of %d declared repair(s) landed; %d target(s) were never "
+			ForbricLog.durableInfo("[Forbric/Anchor] at shutdown: %d of %d declared repair(s) landed; %d target(s) were never "
 					+ "loaded in this session (%d of them are not shipped by this line at all), and %d hedge(s) "
 					+ "found nothing to do;%s", r.hit(), r.declared(), r.absent().size(), foreign.size(),
 					r.hedged().size(), nameThem.toString());
@@ -332,6 +364,31 @@ public final class TransformChain {
 			if (only != null && only != AnchorSet.Only.BOTH && only != mine) other.add(one);
 		}
 		return other;
+	}
+
+	/** Names asked for with {@code -Dforbric.probeClassLoads=a.B,c.D}; empty in a normal run. */
+	private static final java.util.Set<String> PROBED_LOADS = java.util.Set.of(
+			System.getProperty("forbric.probeClassLoads", "").split(",")).stream()
+			.map(String::trim).filter(s -> !s.isEmpty()).collect(java.util.stream.Collectors.toUnmodifiableSet());
+
+	private final java.util.Set<String> probedSaid = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+	/**
+	 * Says, out loud, whether a named class reaches the chain at all.
+	 *
+	 * <p>The books can only report "this target never loaded" — they cannot say whether the class was never
+	 * defined, or defined somewhere the chain does not see. Measured on 1.21.1, {@code
+	 * ClientLevel$EntityCallbacks} is constructed unconditionally by {@code ClientLevel.<init>} (javap: {@code
+	 * new ClientLevel$EntityCallbacks} at offset 40), yet with {@code -Dforbric.refmapKeys=true} the shutdown books
+	 * called it never loaded. A run with this probe answers the question the books cannot: whether the chain ever
+	 * saw the class, which is the difference between "the game did not get that far" and "the class was defined
+	 * elsewhere".
+	 */
+	private void noteProbedLoad(String className, byte[] classBytes) {
+		if (PROBED_LOADS.isEmpty() || !PROBED_LOADS.contains(className)) return;
+		if (!probedSaid.add(className)) return;
+		ForbricLog.info("[Forbric/Load] %s reached the transform chain (%d byte(s)) — the game asked for this class "
+				+ "and it was defined through the kernel's loader", className, classBytes == null ? 0 : classBytes.length);
 	}
 
 	private void censusIfLandmark(String className) {

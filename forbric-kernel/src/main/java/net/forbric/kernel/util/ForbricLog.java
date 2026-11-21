@@ -119,6 +119,52 @@ public final class ForbricLog {
 
 	private enum Level { INFO, WARN, ERROR }
 
+	/**
+	 * Logs a line that has to survive the JVM shutting down, and writes it to a file beside the game's log.
+	 *
+	 * <p>Measured on 1.21.1: the summaries taken from a shutdown hook sometimes appear in {@code latest.log} and
+	 * sometimes do not — log4j tears its appenders down while the hooks are still running, so {@link #emit} falls
+	 * back to {@code System.out}, which stock launchers do not capture. The 2026-11-22 00:16 run is the example:
+	 * the mixin-miss summary got out, the anchor summary and the class-load probe did not, and the round had to
+	 * re-run to learn nothing new. A file append cannot lose that race.
+	 */
+	public static void durableInfo(String format, Object... args) {
+		Rendered rendered = render(format, args);
+		emit(Level.INFO, rendered.message(), rendered.thrown());
+		append(rendered.message(), rendered.thrown());
+	}
+
+	/** Where {@link #durableInfo} writes; printed by the first call so the path is never a guess. */
+	private static volatile java.nio.file.Path durableSink;
+	private static final java.util.concurrent.atomic.AtomicBoolean SINK_SAID = new java.util.concurrent.atomic.AtomicBoolean();
+
+	private static void append(String msg, Throwable exc) {
+		try {
+			java.nio.file.Path sink = durableSink;
+			if (sink == null) {
+				java.nio.file.Path dir = java.nio.file.Path.of(System.getProperty("user.dir", "."), "logs");
+				if (!java.nio.file.Files.isDirectory(dir)) dir = dir.getParent();
+				sink = dir.resolve("forbric-shutdown.log");
+				durableSink = sink;
+			}
+			StringBuilder line = new StringBuilder()
+					.append(java.time.LocalTime.now().withNano(0)).append(" [Forbric] ").append(msg)
+					.append(System.lineSeparator());
+			if (exc != null) {
+				java.io.StringWriter sw = new java.io.StringWriter();
+				exc.printStackTrace(new java.io.PrintWriter(sw));
+				line.append(sw);
+			}
+			java.nio.file.Files.writeString(sink, line, java.nio.charset.StandardCharsets.UTF_8,
+					java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+			if (SINK_SAID.compareAndSet(false, true)) {
+				emit(Level.INFO, "shutdown-time lines are also appended to " + sink.toAbsolutePath(), null);
+			}
+		} catch (Throwable cannot) {
+			// Never let diagnostics break shutdown; the ordinary log path already carried the line.
+		}
+	}
+
 	private static void logFormat(Level level, String format, Object... args) {
 		Rendered rendered = render(format, args);
 		emit(level, rendered.message(), rendered.thrown());
