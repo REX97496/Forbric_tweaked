@@ -231,6 +231,17 @@ public final class GuestJarRemap {
 	private static long tableNamesUnresolved;
 	private static volatile MethodIndex minecraftIndex;
 	private static int lambdasUnindexed = 5;
+	/** {@code @At} targets written because the injected method really makes that call, and those left alone. */
+	private static final java.util.concurrent.atomic.AtomicInteger AT_TARGETS_WRITTEN =
+			new java.util.concurrent.atomic.AtomicInteger();
+	private static final java.util.concurrent.atomic.AtomicInteger AT_TARGETS_REFUSED =
+			new java.util.concurrent.atomic.AtomicInteger();
+	/**
+	 * Why the call-site guard refused, by code: 1 no base index, 2 nothing to check against, 3 the mixed class cannot
+	 * be read, 4 no method of that name and shape, 5 the method makes no such call.
+	 */
+	private static final java.util.concurrent.atomic.AtomicIntegerArray AT_REFUSALS =
+			new java.util.concurrent.atomic.AtomicIntegerArray(6);
 
 	private GuestJarRemap() {
 	}
@@ -289,8 +300,7 @@ public final class GuestJarRemap {
 					+ " resolves a yarn-spelled mixin target the same way a cold boot does", classRenamesFromCached);
 		}
 		if (jarsWritten > 0) {
-			ForbricLog.info("[Forbric/Remap] %d guest jar(s) rewritten into %s (%d class(es), %d name(s) mapped,"
-					+ " %d refmap selector(s) resolved%s)", jarsWritten, cacheDir, classesRewritten, namesMapped,
+			ForbricLog.info("[Forbric/Remap] %d guest jar(s) rewritten into %s (%d class(es), %d name(s) mapped,"					+ " %d refmap selector(s) resolved%s)", jarsWritten, cacheDir, classesRewritten, namesMapped,
 					refmapValues,
 					(refmapMisses == 0 ? "" : ", " + refmapMisses + " refmap selector(s) not in the table")
 							+ (failed == 0 ? "" : ", " + failed + " left as they came")
@@ -311,6 +321,14 @@ public final class GuestJarRemap {
 									+ " member in intermediary spelling because the table has no row for it ("
 									+ leftoverMemberCount() + " member(s)); those calls fail at first use, and the"
 									+ " cure is the table, not this rewrite"));
+			if (Boolean.getBoolean("forbric.rewriteAtTargets")) {
+				ForbricLog.info("[Forbric/Remap] %d @At target(s) rewritten because the method they inject into"
+						+ " really makes that call, and %d left as the mod wrote them: %d with no base index,"
+						+ " %d with nothing to check against, %d whose mixed class cannot be read, %d whose method"
+						+ " of that shape is not there, %d whose method makes no such call",
+						AT_TARGETS_WRITTEN.get(), AT_TARGETS_REFUSED.get(), AT_REFUSALS.get(1), AT_REFUSALS.get(2),
+						AT_REFUSALS.get(3), AT_REFUSALS.get(4), AT_REFUSALS.get(5));
+			}
 		}
 		return out;
 	}
@@ -620,7 +638,7 @@ public final class GuestJarRemap {
 	 * silently relaxed away — measured on 1.21.1 as {@code IllegalStateException: Item group has no page} when
 	 * opening the creative inventory.
 	 */
-	private static byte[] rewriteInjectionSelectors(byte[] bytes) {
+	private static byte[] rewriteInjectionSelectors(byte[] bytes, java.util.Set<String> seen) {
 		if (yarn.selectors.isEmpty()) return bytes;
 		ClassNode node = new ClassNode();
 		// Frames are kept: renaming a string constant moves no instruction.
@@ -644,13 +662,10 @@ public final class GuestJarRemap {
 				for (org.objectweb.asm.tree.AnnotationNode annotation : list) {
 					if (!isInjectionAnnotation(annotation.desc)) continue;
 					if (annotation.values == null) continue;
-					// The @At half is still behind a switch, but for the reason this round measured rather than the
-					// one it was written for: with the switch on and no refmap consult, one boot went from 97 to 95
-					// missing selectors and from 71 to 71 injection warnings, so the computed targets bought nothing.
-					// The guest's own refmap keys, however, do answer them - see rewriteAtTargets.
-					if (Boolean.getBoolean("forbric.rewriteAtTargets") && rewriteAtTargets(annotation, mine)) {
-						changed = true;
-					}
+					// The method selectors are settled first: the @At pass below asks whether the method it injects into
+					// actually makes the call it is about to name, and that question only has an answer once the
+					// method selector reads in the base's spelling.
+					List<String> injected = new ArrayList<>(2);
 					for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
 						if (!"method".equals(annotation.values.get(i))) continue;
 						Object written = annotation.values.get(i + 1);
@@ -659,6 +674,9 @@ public final class GuestJarRemap {
 							if (fixed != null) {
 								annotation.values.set(i + 1, fixed);
 								changed = true;
+								injected.add(fixed);
+							} else {
+								injected.add(single);
 							}
 						} else if (written instanceof List<?> many) {
 							@SuppressWarnings("unchecked")
@@ -668,9 +686,20 @@ public final class GuestJarRemap {
 								if (fixed != null) {
 									selectors.set(s, fixed);
 									changed = true;
+									injected.add(fixed);
+								} else {
+									injected.add(selectors.get(s));
 								}
 							}
 						}
+					}
+					// The @At half stays behind a switch for the reason Round 200 measured: answering it from the
+					// refmap alone turned 65 warnings into 87 and 63 unattached handlers into 85, because a target that
+					// no longer matches a call site is a handler that stops running. Round 201's guard is the fix - see
+					// atTarget - and it is measured against that same boot.
+					if (Boolean.getBoolean("forbric.rewriteAtTargets")
+							&& rewriteAtTargets(annotation, mine, targets, injected, seen)) {
+						changed = true;
 					}
 				}
 			}
@@ -712,7 +741,7 @@ public final class GuestJarRemap {
 	 * Only that key is read here — nothing is computed and nothing is written that the jar did not say.
 	 */
 	private static boolean rewriteAtTargets(org.objectweb.asm.tree.AnnotationNode annotation,
-			Map<String, String> mine) {
+			Map<String, String> mine, List<String> targets, List<String> injected, java.util.Set<String> seen) {
 		if (annotation.values == null) return false;
 		boolean changed = false;
 		for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
@@ -722,17 +751,18 @@ public final class GuestJarRemap {
 					for (int n = 0; n + 1 < nested.values.size(); n += 2) {
 						if (!"target".equals(nested.values.get(n))) continue;
 						if (!(nested.values.get(n + 1) instanceof String text)) continue;
-						String fixed = atTarget(text, mine);
+						String fixed = atTarget(text, mine, targets, injected, seen);
 						if (fixed != null && !fixed.equals(text)) {
 							nested.values.set(n + 1, fixed);
 							changed = true;
 						}
 					}
 				}
-				if (rewriteAtTargets(nested, mine)) changed = true;
+				if (rewriteAtTargets(nested, mine, targets, injected, seen)) changed = true;
 			} else if (value instanceof List<?> many) {
 				for (Object each : many) {
-					if (each instanceof org.objectweb.asm.tree.AnnotationNode nested && rewriteAtTargets(nested, mine)) {
+					if (each instanceof org.objectweb.asm.tree.AnnotationNode nested
+							&& rewriteAtTargets(nested, mine, targets, injected, seen)) {
 						changed = true;
 					}
 				}
@@ -749,22 +779,91 @@ public final class GuestJarRemap {
 	 * selector, an {@code @At} target keeps its owner — Mixin resolves the invocation against that owner — so the
 	 * value is returned whole rather than stripped.
 	 *
-	 * <p><b>Measured harmful, so this path only runs behind {@code -Dforbric.rewriteAtTargets}.</b> A cold 1.21.1 boot
-	 * with the switch off reports 65 injection warnings and 63 handlers across 19 mods never attached; with it on, 87
-	 * and 85 across 20 — fabric-entity-events-v1 alone goes from 8 to 17, because answering an {@code @At} from the
-	 * refmap rewrites the targets of injections that were attaching correctly, and a target that no longer matches any
-	 * call site is a handler that stops running. It also produced a hard failure that the off switch does not:
-	 * {@code InvalidInjectionException: @WrapOperation annotation on wrapGetCodec specifies a target class
-	 * 'net/minecraft/network/protocol/common/custom/CustomPacketPayload$1', which is not supported}. The refmap answers
-	 * what the jar meant; whether Mixin wants that answer for this field is a separate question this round did not
-	 * settle.
+	 * <p><b>An answer is only written when the method being injected into really makes that call.</b> Round 200
+	 * measured the unguarded version and it was worse than doing nothing: 65 injection warnings became 87 and 63
+	 * unattached handlers became 85, because rewriting an {@code @At} that had been matching all along moved the
+	 * target off its call site, and a handler whose target matches nothing is a handler that never runs. The guard
+	 * asks the base's own bytecode the only question that separates the two cases: does the method named by the
+	 * annotation's (already rewritten) {@code method} selector contain an invocation of exactly this owner, name and
+	 * descriptor? Yarn-spelled targets can never match a base call site, so they answer "no" and are left alone;
+	 * a target the jar genuinely meant answers "yes" and is written.
 	 */
-	private static String atTarget(String text, Map<String, String> mine) {
+	private static String atTarget(String text, Map<String, String> mine, List<String> targets,
+			List<String> injected, java.util.Set<String> seen) {
+		// A refmap answers in intermediary spelling — its values are the author's names translated one step, not the
+		// base's — so the answer goes through the same rewriting a refmap value gets before anything compares it with
+		// the base's own bytecode. Measured without this step: every answer read
+		// Lnet/minecraft/class_2680;method_26215()Z, matched no call site, and all 65 were refused.
 		String declared = mine.get(text);
-		if (declared != null && !declared.equals(text) && declared.startsWith("L") && declared.indexOf(';') > 0) {
-			return declared;
+		String answer = null;
+		if (declared != null && !declared.equals(text)) {
+			String official = rewriteRefmapValue(text, declared, seen);
+			if (official.startsWith("L") && official.indexOf(';') > 0) answer = official;
 		}
-		return officialTarget(text);
+		if (answer == null) {
+			answer = officialTarget(text);
+		}
+		if (answer == null) return null;
+		int code = whyItDoesNotCall(injected, targets, answer);
+		if (code == 0) {
+			AT_TARGETS_WRITTEN.incrementAndGet();
+			return answer;
+		}
+		AT_TARGETS_REFUSED.incrementAndGet();
+		AT_REFUSALS.incrementAndGet(code);
+		if (code != 0 && AT_REFUSALS.get(code) <= 8 && Boolean.getBoolean("forbric.rewriteAtTargets.verbose")) {
+			ForbricLog.info("[Forbric/Remap] @At left alone (code %d): answer=%s injected=%s mixed=%s", code, answer,
+					injected, targets);
+		}
+		return null;
+	}
+
+	/**
+	 * Reads the base class with code included — the shared {@link MethodIndex} skips code on purpose, so this pass
+	 * keeps its own cache. A method that cannot be read, or a target that is not an invocation (a field or a
+	 * constructor pattern), answers "no": an answer nobody can check is not written.
+	 *
+	 * <p>Why the guard refused, by code: 0 when it says yes, 1 with no base index, 2 with nothing to check against, 3
+	 * when the mixed class cannot be read, 4 when no method of that name and shape is there, 5 when the method does not
+	 * make that call. The split exists because "the guard refused all 65" reads the same for five very different
+	 * causes.
+	 */
+	private static int whyItDoesNotCall(List<String> injected, List<String> targets, String target) {
+		MethodIndex index = minecraftIndex;
+		if (index == null) return 1;
+		if (injected.isEmpty() || targets.isEmpty() || target == null) return 2;
+		if (!target.startsWith("L")) return 2;
+		int close = target.indexOf(';');
+		if (close <= 0) return 2;
+		String owner = target.substring(1, close);
+		String rest = target.substring(close + 1);
+		int paren = rest.indexOf('(');
+		if (paren < 0) return 2;
+		int closeParen = rest.indexOf(')', paren);
+		if (closeParen < 0) return 2;
+		String name = rest.substring(0, paren);
+		// The return type is part of the descriptor and sits past the closing paren: an @At target reads
+		// {@code Lowner;name(parameters)return}, so cutting at ')' leaves {@code ()} and matches no call at all.
+		String described = rest.substring(paren);
+		// A readable target that says "no such call" is better evidence than a target this pass cannot read at all, so
+		// the first answer that is not "could not read" is the one reported.
+		int code = -1;
+		for (String written : injected) {
+			String bare = unqualified(written);
+			int methodParen = bare.indexOf('(');
+			if (methodParen < 0) continue;
+			int methodClose = bare.indexOf(')', methodParen);
+			if (methodClose < 0) continue;
+			String methodName = bare.substring(0, methodParen);
+			String methodDescriptor = bare.substring(methodParen, methodClose + 1);
+			for (String mixed : targets) {
+				String internal = mapInternal(mixed.replace('.', '/'));
+				int answer = index.whyNot(internal, methodName, methodDescriptor, owner, name, described);
+				if (answer == 0) return 0;
+				if (code < 0 || (code == 3 && answer != 3)) code = answer;
+			}
+		}
+		return code < 0 ? 3 : code;
 	}
 
 	/** An {@code @At} target rewritten into the base's spelling, or null when it is already there. */
@@ -1055,7 +1154,7 @@ public final class GuestJarRemap {
 		} finally {
 			currentClass = null;
 		}
-		return rewriteInjectionSelectors(renameOverrides(patchListenableRegistry(renameShadows(writer.toByteArray()))));
+		return rewriteInjectionSelectors(renameOverrides(patchListenableRegistry(renameShadows(writer.toByteArray()))), seen);
 	}
 
 	/**
@@ -2180,9 +2279,64 @@ public final class GuestJarRemap {
 		private final Map<String, java.util.Set<String>> declaredFields = new HashMap<>();
 		/** field descriptor -> the names the type declares with it, for the @Shadow field pass. */
 		private final Map<String, Map<String, List<String>>> fieldShapes = new HashMap<>();
+		/** Classes read with code included, for the one question that needs the body and not just the signature. */
+		private final Map<String, Object> codeCache = new HashMap<>();
+		private final java.util.Set<String> codeTried = new java.util.HashSet<>();
 
 		private MethodIndex(List<Path> jars) {
 			this.jars = jars;
+		}
+
+		/**
+		 * Why {@code methodName+methodDescriptor} of {@code internalOwner} does not invoke that target: 0 when it
+		 * does, 3 when the class cannot be read, 4 when no method of that shape is there, 5 when the method makes no
+		 * such call.
+		 *
+		 * <p>The answer is a bytecode fact: an {@code @At} target only matches where the method really makes that call,
+		 * so a target nothing calls is a handler that would never run. Read with code, because {@link #read} skips it.
+		 */
+		private int whyNot(String internalOwner, String methodName, String methodDescriptor,
+				String targetOwner, String targetName, String targetDescriptor) {
+			ClassNode node = codeOf(internalOwner);
+			if (node == null) return 3;
+			boolean anyMethod = false;
+			for (MethodNode method : node.methods) {
+				if (!method.name.equals(methodName) || !method.desc.startsWith(methodDescriptor)) continue;
+				anyMethod = true;
+				if (method.instructions == null) continue;
+				for (org.objectweb.asm.tree.AbstractInsnNode instruction : method.instructions) {
+					if (instruction instanceof org.objectweb.asm.tree.MethodInsnNode call
+							&& call.owner.equals(targetOwner)
+							&& call.name.equals(targetName)
+							&& call.desc.equals(targetDescriptor)) {
+						return 0;
+					}
+				}
+			}
+			return anyMethod ? 5 : 4;
+		}
+
+		private ClassNode codeOf(String internalOwner) {
+			if (!codeTried.add(internalOwner)) {
+				Object cached = codeCache.get(internalOwner);
+				return cached instanceof ClassNode node ? node : null;
+			}
+			String entryName = internalOwner + ".class";
+			for (Path jar : jars) {
+				try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(jar.toFile())) {
+					java.util.zip.ZipEntry found = zip.getEntry(entryName);
+					if (found == null) continue;
+					ClassNode node = new ClassNode();
+					try (java.io.InputStream in = zip.getInputStream(found)) {
+						new ClassReader(in).accept(node, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+					}
+					codeCache.put(internalOwner, node);
+					return node;
+				} catch (IOException | RuntimeException unreadable) {
+					// A jar that cannot be opened simply does not answer; the next one may carry the class.
+				}
+			}
+			return null;
 		}
 
 		/** The field names the type declares, used to tell a getter from its same-shaped sibling. */
