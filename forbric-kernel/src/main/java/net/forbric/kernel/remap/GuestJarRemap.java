@@ -317,6 +317,9 @@ public final class GuestJarRemap {
 									+ " does not declare replaced by the method it does")
 							+ (tableNamesUnresolved == 0 ? "" : ", " + tableNamesUnresolved + " table name(s) left"
 									+ " unresolved because the base has no method with that shape")
+							+ (LAMBDAS_POINTED.get() == 0 ? ""
+									: ", " + LAMBDAS_POINTED.get() + " lambda selector(s) pointed at the copy this"
+											+ " base actually compiled")
 							+ (LEFTOVERS.isEmpty() ? "" : ", " + LEFTOVERS.size() + " class(es) still name a"
 									+ " member in intermediary spelling because the table has no row for it ("
 									+ leftoverMemberCount() + " member(s)); those calls fail at first use, and the"
@@ -671,25 +674,25 @@ public final class GuestJarRemap {
 						Object written = annotation.values.get(i + 1);
 						if (written instanceof String single) {
 							String fixed = resolveSelector(mine, single, targets);
-							if (fixed != null) {
-								annotation.values.set(i + 1, fixed);
+							if (fixed == null) fixed = single;
+							String lambda = renumberLambda(fixed, mine, targets, annotation, seen);
+							if (!lambda.equals(single)) {
+								annotation.values.set(i + 1, lambda);
 								changed = true;
-								injected.add(fixed);
-							} else {
-								injected.add(single);
 							}
+							injected.add(lambda);
 						} else if (written instanceof List<?> many) {
 							@SuppressWarnings("unchecked")
 							List<String> selectors = (List<String>) many;
 							for (int s = 0; s < selectors.size(); s++) {
 								String fixed = resolveSelector(mine, selectors.get(s), targets);
-								if (fixed != null) {
-									selectors.set(s, fixed);
+								if (fixed == null) fixed = selectors.get(s);
+								String lambda = renumberLambda(fixed, mine, targets, annotation, seen);
+								if (!lambda.equals(selectors.get(s))) {
+									selectors.set(s, lambda);
 									changed = true;
-									injected.add(fixed);
-								} else {
-									injected.add(selectors.get(s));
 								}
+								injected.add(lambda);
 							}
 						}
 					}
@@ -816,6 +819,125 @@ public final class GuestJarRemap {
 					injected, targets);
 		}
 		return null;
+	}
+
+	/** {@code lambda$enclosing$ordinal}, with or without a descriptor and with or without an {@code Lowner;} in front. */
+	private static final java.util.regex.Pattern LAMBDA_SELECTOR = java.util.regex.Pattern
+			.compile("(?:L([^;]+);)?(lambda\\$[A-Za-z0-9_$]+\\$)(\\d+)(\\(.*)?$");
+
+	private static final java.util.concurrent.atomic.AtomicInteger LAMBDAS_POINTED =
+			new java.util.concurrent.atomic.AtomicInteger();
+
+	/**
+	 * Points a {@code lambda$<enclosing>$<ordinal>} selector at the copy this base actually compiled.
+	 *
+	 * <p>A lambda's own name carries the order javac emitted it in, and the merged base is built from two patched
+	 * source trees at once: measured, {@code net.minecraft.world.entity.LivingEntity} on the 1.21.1 base carries
+	 * {@code lambda$stopSleeping$11} and {@code lambda$stopSleeping$12} while the table (and every mod compiled
+	 * against vanilla) says {@code lambda$stopSleeping$9}. Nothing is declared under the name the jar asks for, so
+	 * Mixin reports the anchor missing and the handler never attaches - measured on fabric-entity-events-v1, four of
+	 * its eight sleep handlers inject into exactly such a name.
+	 *
+	 * <p>What this does not do: guess blindly. One candidate of the same descriptor is taken as the answer; several
+	 * candidates are separated by asking which of them contains the call the annotation's {@code @At} names; when that
+	 * separates nothing the lowest ordinal is taken and the count is reported, because the remaining copies are the
+	 * same source lambda compiled in two patch trees - the same code, not rival meanings.
+	 */
+	private static String renumberLambda(String selector, Map<String, String> mine, List<String> targets,
+			org.objectweb.asm.tree.AnnotationNode annotation, java.util.Set<String> seen) {
+		MethodIndex index = minecraftIndex;
+		if (index == null || selector == null || selector.indexOf("lambda$") < 0) return selector;
+		java.util.regex.Matcher m = LAMBDA_SELECTOR.matcher(selector);
+		if (!m.matches()) return selector;
+		String owner = m.group(1);
+		String stem = m.group(2);
+		String asked = stem + m.group(3);
+		// A selector may name the lambda with no descriptor at all ("lambda$tick$32"); that form means "any shape",
+		// so every question below has to read a null descriptor as a wildcard.
+		String descriptor = m.group(4);
+		List<String> owners = new ArrayList<>(2);
+		if (owner != null) {
+			owners.add(owner);
+		} else {
+			for (String mixed : targets) owners.add(mapInternal(mixed.replace('.', '/')));
+		}
+		for (String candidate : owners) if (index.hasMethod(candidate, asked, descriptor)) return selector;
+		Map<String, List<String>> found = new java.util.LinkedHashMap<>();
+		for (String candidate : owners) {
+			List<String> names = index.lambdasNamed(candidate, stem, descriptor);
+			if (!names.isEmpty()) found.put(candidate, names);
+		}
+		if (found.isEmpty()) return selector;
+		List<String> answers = atAnswers(annotation, mine, seen);
+		String chosenOwner = null;
+		String chosen = null;
+		for (Map.Entry<String, List<String>> e : found.entrySet()) {
+			List<String> names = e.getValue();
+			if (names.size() == 1) {
+				chosenOwner = e.getKey();
+				chosen = names.get(0);
+				break;
+			}
+			List<String> matching = new ArrayList<>(2);
+			for (String at : answers) {
+				int semicolon = at.indexOf(';');
+				if (semicolon <= 0) continue;
+				String atOwner = at.substring(1, semicolon);
+				String rest = at.substring(semicolon + 1);
+				int paren = rest.indexOf('(');
+				if (paren < 0) continue;
+				String atName = rest.substring(0, paren);
+				String atDescriptor = rest.substring(paren);
+				for (String name : names) {
+					if (index.methodCalls(e.getKey(), name, descriptor, atOwner, atName, atDescriptor) == 0
+							&& !matching.contains(name)) {
+						matching.add(name);
+					}
+				}
+			}
+			chosenOwner = e.getKey();
+			chosen = matching.size() == 1 ? matching.get(0) : names.get(0);
+			break;
+		}
+		if (chosen == null) return selector;
+		LAMBDAS_POINTED.incrementAndGet();
+		// A null descriptor is the "any shape" form, and it has to stay absent: concatenating it wrote the literal
+		// word "null" into the selector, which is how nine renumbered hooks became "lambda$checkBedExists$10null" and
+		// attached nothing on the boot that measured them.
+		return (owner == null ? "" : "L" + chosenOwner + ';') + chosen + (descriptor == null ? "" : descriptor);
+	}
+
+	/** Every {@code @At} target of this annotation, in the base's spelling, for the tie-break above. */
+	private static List<String> atAnswers(org.objectweb.asm.tree.AnnotationNode annotation, Map<String, String> mine,
+			java.util.Set<String> seen) {
+		List<String> answers = new ArrayList<>(2);
+		if (annotation.values == null) return answers;
+		for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
+			Object value = annotation.values.get(i + 1);
+			if (value instanceof org.objectweb.asm.tree.AnnotationNode nested) {
+				collectAtAnswer(nested, mine, seen, answers);
+			} else if (value instanceof List<?> list) {
+				for (Object element : list) {
+					if (element instanceof org.objectweb.asm.tree.AnnotationNode nested) {
+						collectAtAnswer(nested, mine, seen, answers);
+					}
+				}
+			}
+		}
+		return answers;
+	}
+
+	private static void collectAtAnswer(org.objectweb.asm.tree.AnnotationNode nested, Map<String, String> mine,
+			java.util.Set<String> seen, List<String> answers) {
+		if (nested.desc == null || !nested.desc.endsWith("/At;") || nested.values == null) return;
+		for (int n = 0; n + 1 < nested.values.size(); n += 2) {
+			if (!"target".equals(nested.values.get(n))) continue;
+			if (!(nested.values.get(n + 1) instanceof String text)) continue;
+			String declared = mine.get(text);
+			String answer = declared == null || declared.equals(text) ? officialTarget(text)
+					: rewriteRefmapValue(text, declared, seen);
+			if (answer != null && answer.startsWith("L") && answer.indexOf(';') > 0) answers.add(answer);
+		}
 	}
 
 	/**
@@ -2285,6 +2407,55 @@ public final class GuestJarRemap {
 
 		private MethodIndex(List<Path> jars) {
 			this.jars = jars;
+		}
+
+		/** Whether the type declares this method; a null descriptor matches any shape. */
+		private boolean hasMethod(String internalOwner, String name, String descriptor) {
+			ClassNode node = codeOf(internalOwner);
+			if (node == null) return false;
+			for (MethodNode method : node.methods)
+				if (method.name.equals(name) && (descriptor == null || method.desc.equals(descriptor))) return true;
+			return false;
+		}
+
+		/** Whether the body of a method with that name (any shape when the descriptor is null) makes that call. */
+		private int methodCalls(String internalOwner, String name, String descriptor,
+				String targetOwner, String targetName, String targetDescriptor) {
+			ClassNode node = codeOf(internalOwner);
+			if (node == null) return 3;
+			boolean any = false;
+			for (MethodNode method : node.methods) {
+				if (!method.name.equals(name)) continue;
+				if (descriptor != null && !method.desc.startsWith(descriptor)) continue;
+				any = true;
+				if (method.instructions == null) continue;
+				for (org.objectweb.asm.tree.AbstractInsnNode instruction : method.instructions) {
+					if (instruction instanceof org.objectweb.asm.tree.MethodInsnNode call
+							&& call.owner.equals(targetOwner) && call.name.equals(targetName)
+							&& call.desc.equals(targetDescriptor)) {
+						return 0;
+					}
+				}
+			}
+			return any ? 5 : 4;
+		}
+
+		/** The {@code lambda$<stem>$<digits>} methods of this type, optionally of one shape, sorted. */
+		private List<String> lambdasNamed(String internalOwner, String stem, String descriptor) {
+			ClassNode node = codeOf(internalOwner);
+			if (node == null) return List.of();
+			List<String> found = new ArrayList<>(2);
+			for (MethodNode method : node.methods) {
+				if (!method.name.startsWith(stem)) continue;
+				if (descriptor != null && !method.desc.equals(descriptor)) continue;
+				String rest = method.name.substring(stem.length());
+				if (rest.isEmpty()) continue;
+				boolean digits = true;
+				for (int i = 0; i < rest.length(); i++) if (!Character.isDigit(rest.charAt(i))) { digits = false; break; }
+				if (digits) found.add(method.name);
+			}
+			java.util.Collections.sort(found);
+			return found;
 		}
 
 		/**
