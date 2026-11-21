@@ -66,8 +66,27 @@ public record AnchorSet(List<Anchor> anchors, String scanNote) {
 	 * @param severity   what a miss costs
 	 * @param cost       one sentence naming what stops working, written for whoever reads the failure
 	 */
-	public record Anchor(String binaryName, Severity severity, String cost) {
+	/**
+	 * Which side of the game a target only exists on.
+	 *
+	 * <p>An anchor that names the other side's class is not a miss: on a client the dedicated server class is
+	 * never loaded, and the injector that declares it says so in its own javadoc. Measured on 1.21.1, the
+	 * shutdown books listed {@code net.minecraft.server.dedicated.DedicatedServer} among the "shipped targets this
+	 * session left unloaded" on every client session, which is a category error that hides the real question in a
+	 * list of noise — so the side is declared and counted separately.
+	 */
+	public enum Only {
+		BOTH, CLIENT, SERVER
+	}
+
+	public record Anchor(String binaryName, Severity severity, String cost, Only only) {
+		/** The usual case: the target exists on both sides. */
+		public Anchor(String binaryName, Severity severity, String cost) {
+			this(binaryName, severity, cost, Only.BOTH);
+		}
+
 		public Anchor {
+			Objects.requireNonNull(only, "only");
 			Objects.requireNonNull(binaryName, "binaryName");
 			Objects.requireNonNull(severity, "severity");
 			if (binaryName.isBlank()) throw new IllegalArgumentException("binaryName is blank");

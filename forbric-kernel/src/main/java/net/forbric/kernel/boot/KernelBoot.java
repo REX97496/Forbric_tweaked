@@ -40,6 +40,7 @@ import net.forbric.kernel.discovery.ForbricModDiscoverer;
 import net.forbric.kernel.metadata.forge.EcosystemVersions;
 import net.forbric.kernel.mixin.KernelMixinBootstrap;
 import net.forbric.kernel.mixin.MixinConfigOwners;
+import net.forbric.kernel.transform.AnchorSet;
 import net.forbric.kernel.transform.ChunkExecutorGuardInjector;
 import net.forbric.kernel.transform.ClientPackHookInjector;
 import net.forbric.kernel.transform.ClientSmokeTickInjector;
@@ -1274,7 +1275,8 @@ public final class KernelBoot {
 		TransformContext ctx = new TransformContext(side.envType, false, "named");
 		// One summary, at the point where "never loaded" starts meaning something. The per-repair failures are
 		// already loud where they happen and do not wait for this.
-		chain.reportWhenLoaded(side.censusLandmark);
+		chain.reportWhenLoaded(side.censusLandmark,
+				side == Side.CLIENT ? AnchorSet.Only.CLIENT : AnchorSet.Only.SERVER);
 		loader.setTransformer((name, bytes) -> chain.applyBeforeMixin(name, bytes, loader.contextFor(name, ctx)));
 
 		Thread.currentThread().setContextClassLoader(loader);

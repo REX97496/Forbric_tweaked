@@ -80,6 +80,16 @@ public final class TransformChain {
 	 */
 	private volatile Set<String> watched;
 
+	/**
+	 * Declared target → the side it exists on, taken from {@link AnchorSet.Anchor#only()}.
+	 *
+	 * <p>{@link AnchorLedger.Absent} carries the transformer, class and severity but not the anchor, and the
+	 * shutdown books need the side to tell "the game never loaded this" apart from "this run is a client and the
+	 * class is the dedicated server's". Writing it here, at the one place anchors are declared, keeps the two
+	 * views in step by construction.
+	 */
+	private final java.util.Map<String, AnchorSet.Only> sides = new java.util.concurrent.ConcurrentHashMap<>();
+
 	/** Registers a transformer with default ordering (sort index 0, no pre-depends). */
 	public void register(TransformPhase phase, ClassTransformer transformer) {
 		register(phase, transformer, 0);
@@ -113,9 +123,13 @@ public final class TransformChain {
 
 		for (AnchorSet.Anchor anchor : transformer.anchors().anchors()) {
 			ledger.declare(transformer.name(), anchor);
+			sides.put(anchor.binaryName(), anchor.only());
 		}
 		for (ClassTransformer.Claim claim : transformer.claims()) {
-			for (AnchorSet.Anchor anchor : claim.anchors().anchors()) ledger.declare(claim.id(), anchor);
+			for (AnchorSet.Anchor anchor : claim.anchors().anchors()) {
+				ledger.declare(claim.id(), anchor);
+				sides.put(anchor.binaryName(), anchor.only());
+			}
 		}
 		watched = null; // a late registration must reach the watch set too
 	}
@@ -192,7 +206,18 @@ public final class TransformChain {
 	 * nothing but the chain the books already live in.
 	 */
 	public void reportWhenLoaded(String landmark) {
+		reportWhenLoaded(landmark, AnchorSet.Only.BOTH);
+	}
+
+	/**
+	 * Reports the anchor books once, the first time {@code landmark} passes through, knowing which side this run is.
+	 *
+	 * @param side the side this run is, so an anchor declared {@link AnchorSet.Only#CLIENT} on a server run (or the
+	 *             other way round) is counted as the other side's business instead of as a target that vanished
+	 */
+	public void reportWhenLoaded(String landmark, AnchorSet.Only side) {
 		this.landmark = landmark;
+		this.side = side == null ? AnchorSet.Only.BOTH : side;
 		// The one-shot line above fires when the landmark loads, which on a client is the title screen: measured on
 		// 1.21.1, 32 of the targets it calls "never loaded" load within the next thirteen seconds (world generation,
 		// the server thread, the join packet). A second summary at shutdown costs one string and is the only place
@@ -208,15 +233,24 @@ public final class TransformChain {
 		try {
 			AnchorLedger.Report r = ledger.report();
 			java.util.List<AnchorLedger.Absent> foreign = writtenAgainstAnotherLine(r.absent());
+			java.util.List<AnchorLedger.Absent> otherSide = ofTheOtherSide(r.absent());
+			java.util.List<AnchorLedger.Absent> mine = new java.util.ArrayList<>();
+			for (AnchorLedger.Absent one : r.absent()) {
+				if (!foreign.contains(one) && !otherSide.contains(one)) mine.add(one);
+			}
 			// One message, not four: log4j's appenders can close between two calls at shutdown, and a hook that
 			// writes the summary then silently loses the detail is worse than no summary. Measured — the summary
 			// line landed in latest.log and the two debug lines after it did not.
 			StringBuilder nameThem = new StringBuilder();
-			nameThem.append(" this session left ").append(r.absent().size() - foreign.size())
-					.append(" shipped target(s) unloaded [")
-					.append(names(r.absent().stream().filter(a -> !foreign.contains(a)).toList()))
+			nameThem.append(" this session left ").append(mine.size())
+					.append(" shipped target(s) unloaded [").append(names(mine))
 					.append("] and declared ").append(foreign.size()).append(" on another line [")
 					.append(names(foreign)).append(']');
+			if (!otherSide.isEmpty()) {
+				nameThem.append("; ").append(otherSide.size())
+						.append(" more are this other side's own classes, never loaded here [")
+						.append(names(otherSide)).append(']');
+			}
 			ForbricLog.info("[Forbric/Anchor] at shutdown: %d of %d declared repair(s) landed; %d target(s) were never "
 					+ "loaded in this session (%d of them are not shipped by this line at all), and %d hedge(s) "
 					+ "found nothing to do;%s", r.hit(), r.declared(), r.absent().size(), foreign.size(),
@@ -235,6 +269,9 @@ public final class TransformChain {
 	}
 
 	private volatile String landmark;
+
+	/** Which side this run is; {@link AnchorSet.Only#BOTH} until the boot says otherwise. */
+	private volatile AnchorSet.Only side = AnchorSet.Only.BOTH;
 	private final java.util.concurrent.atomic.AtomicBoolean reported = new java.util.concurrent.atomic.AtomicBoolean();
 
 	/**
@@ -277,16 +314,37 @@ public final class TransformChain {
 		return foreign;
 	}
 
+	/**
+	 * The absent anchors whose target only exists on the other side of the game.
+	 *
+	 * <p>{@code ExitHookInjector} declares both exit owners on purpose — {@code Minecraft.close} for a client,
+	 * {@code DedicatedServer.onServerExit} for a dedicated server — and the one this run is not can never load. The
+	 * books used to list it as a shipped target that did not load, which is a category error: measured on 1.21.1, it
+	 * sat in the shutdown list of every client session, and any real difference between two configurations had to
+	 * be found in a list that always contained it.
+	 */
+	private java.util.List<AnchorLedger.Absent> ofTheOtherSide(java.util.List<AnchorLedger.Absent> absent) {
+		AnchorSet.Only mine = side;
+		if (mine == null || mine == AnchorSet.Only.BOTH) return java.util.List.of();
+		java.util.List<AnchorLedger.Absent> other = new java.util.ArrayList<>();
+		for (AnchorLedger.Absent one : absent) {
+			AnchorSet.Only only = sides.get(one.className());
+			if (only != null && only != AnchorSet.Only.BOTH && only != mine) other.add(one);
+		}
+		return other;
+	}
+
 	private void censusIfLandmark(String className) {
 		if (!className.equals(landmark) || !reported.compareAndSet(false, true)) return;
 
 		AnchorLedger.Report r = ledger.report();
 		if (r.clean()) {
 			java.util.List<AnchorLedger.Absent> foreign = writtenAgainstAnotherLine(r.absent());
+			int otherSide = ofTheOtherSide(r.absent()).size();
 			ForbricLog.info("[Forbric/Anchor] %d of %d declared repair(s) landed; %d target(s) were never loaded "
 					+ "on this side (%d of them are not in any artefact this line ships, so those repairs are written "
-					+ "against another line), and %d hedge(s) correctly found nothing to do", r.hit(), r.declared(),
-					r.absent().size(), foreign.size(), r.hedged().size());
+					+ "against another line; %d belong to the other side), and %d hedge(s) correctly found nothing to "
+					+ "do", r.hit(), r.declared(), r.absent().size(), foreign.size(), otherSide, r.hedged().size());
 			// The count alone cannot be audited: when a repair lands on one boot and is "never loaded" on the next,
 			// the number moves and there is nothing in the log to say which target moved. Names cost nothing at
 			// debug level and turn the next such question into a diff instead of an argument.

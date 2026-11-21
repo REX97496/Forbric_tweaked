@@ -70,13 +70,16 @@ public final class ExitHookInjector implements ClassTransformer {
 
 	@Override
 	public AnchorSet anchors() {
-		// Both sides are declared; whichever one this run is not is simply never loaded, which the books record
-		// as absent rather than as a finding.
+		// Both sides are declared; whichever one this run is not is simply never loaded, so the side is declared
+		// with the target and the books count it apart from a miss instead of listing it every session.
 		String cost = "background executors a mod left running would outlive the game, so quitting looks like a "
 				+ "hang to the launcher and gets reported as a crash";
 		java.util.List<AnchorSet.Anchor> anchors = new java.util.ArrayList<>();
 		for (String owner : new java.util.TreeSet<>(EXIT_METHODS.keySet())) {
-			anchors.add(new AnchorSet.Anchor(owner, AnchorSet.Severity.REQUIRED, cost));
+			AnchorSet.Only only = "net.minecraft.client.Minecraft".equals(owner)
+					? AnchorSet.Only.CLIENT
+					: AnchorSet.Only.SERVER;
+			anchors.add(new AnchorSet.Anchor(owner, AnchorSet.Severity.REQUIRED, cost, only));
 		}
 		return AnchorSet.of(anchors.toArray(new AnchorSet.Anchor[0]));
 	}
