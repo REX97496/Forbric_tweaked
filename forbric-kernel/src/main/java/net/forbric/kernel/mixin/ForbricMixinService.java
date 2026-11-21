@@ -441,6 +441,9 @@ public final class ForbricMixinService
 		// mixins were dropped for exactly that reason (ServerPlayNetworkHandlerMixin.field_28962/28963 and
 		// GameRuleCommandVisitorMixin.field_19419), every one of them a field this call then bound.
 		MixinShadowFieldBind.bind(node, this::mergedBaseNode);
+		// An accessor names its member too, and a name the base spells differently refuses the whole accessor mixin
+		// — so the same rule runs on the annotations that carry a name of their own.
+		MixinAccessorRebind.bind(node, this::mergedBaseNode);
 		// …and a handler whose own body STILL calls a member spelled the intermediary way is left out here rather
 		// than at first use: no official-mapped base declares method_1234 or field_567, so attaching the handler moves
 		// the NoSuchMethodError into game time. Before remember, so the ledger does not expect a handler that is gone.

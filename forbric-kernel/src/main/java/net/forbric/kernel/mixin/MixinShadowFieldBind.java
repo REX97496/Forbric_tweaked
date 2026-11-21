@@ -157,7 +157,7 @@ final class MixinShadowFieldBind {
 	}
 
 	/** The classes this mixin applies to, from {@code @Mixin(value = …, targets = …)}. */
-	private static List<String> targetsOf(ClassNode node) {
+	static List<String> targetsOf(ClassNode node) {
 		Set<String> targets = new LinkedHashSet<>();
 		AnnotationNode mixin = null;
 		if (node.visibleAnnotations != null) {

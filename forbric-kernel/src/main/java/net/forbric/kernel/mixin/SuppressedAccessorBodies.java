@@ -160,18 +160,27 @@ public final class SuppressedAccessorBodies {
 		boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
 		InsnList code = new InsnList();
 		if (args.length == 0 && ret.getSort() != Type.VOID) {
-			if (!isStatic) code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			// The helper takes (caller, targets, field, desc, receiver), so the descriptor goes on after the name and
+			// before the receiver. pushLookup already pushes a null receiver for a static accessor, which is why only
+			// an instance one loads `this` here — and why that load cannot happen before pushLookup: it would put the
+			// receiver underneath the caller and the helper would see it as the first argument.
 			pushLookup(code, owner, targets, field, isStatic);
+			code.add(new LdcInsnNode(method.desc));
+			if (!isStatic) code.add(new VarInsnNode(Opcodes.ALOAD, 0));
 			code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, "get",
-					"(Ljava/lang/Class;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;"));
+					"(Ljava/lang/Class;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)"
+							+ "Ljava/lang/Object;"));
 			unbox(code, ret);
 			code.add(new InsnNode(ret.getOpcode(Opcodes.IRETURN)));
 		} else if (args.length == 1 && ret.getSort() == Type.VOID) {
 			pushLookup(code, owner, targets, field, isStatic);
+			code.add(new LdcInsnNode(method.desc));
+			if (!isStatic) code.add(new VarInsnNode(Opcodes.ALOAD, 0));
 			code.add(new VarInsnNode(loadOpcode(args[0]), isStatic ? 0 : 1));
 			box(code, args[0]);
 			code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, "put",
-					"(Ljava/lang/Class;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V"));
+					"(Ljava/lang/Class;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;"
+							+ "Ljava/lang/Object;)V"));
 			code.add(new InsnNode(Opcodes.RETURN));
 		} else {
 			return false;
@@ -192,6 +201,7 @@ public final class SuppressedAccessorBodies {
 		code.add(new LdcInsnNode(Type.getObjectType(owner)));
 		pushStrings(code, targets);
 		code.add(new LdcInsnNode(name));
+		code.add(new LdcInsnNode(method.desc));
 		if (isStatic) {
 			code.add(new InsnNode(Opcodes.ACONST_NULL));
 		} else {
@@ -199,7 +209,8 @@ public final class SuppressedAccessorBodies {
 		}
 		pushBoxedArgs(code, args, firstArg);
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, "call",
-				"(Ljava/lang/Class;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;"));
+				"(Ljava/lang/Class;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;"
+						+ "[Ljava/lang/Object;)Ljava/lang/Object;"));
 		if (ret.getSort() == Type.VOID) {
 			code.add(new InsnNode(Opcodes.POP));
 			code.add(new InsnNode(Opcodes.RETURN));
