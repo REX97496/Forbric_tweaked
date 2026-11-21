@@ -320,6 +320,10 @@ public final class GuestJarRemap {
 							+ (LAMBDAS_POINTED.get() == 0 ? ""
 									: ", " + LAMBDAS_POINTED.get() + " lambda selector(s) pointed at the copy this"
 											+ " base actually compiled")
+							+ (AT_CLASSES_MAPPED.get() == 0 ? ""
+									: ", " + AT_CLASSES_MAPPED.get() + " @At selector(s) had a class name moved to"
+											+ " the name this base declares (owner and descriptor types only, never a"
+											+ " member) — Round 203 measured that as a loss, see mapAtSelectorClasses")
 							+ (LEFTOVERS.isEmpty() ? "" : ", " + LEFTOVERS.size() + " class(es) still name a"
 									+ " member in intermediary spelling because the table has no row for it ("
 									+ leftoverMemberCount() + " member(s)); those calls fail at first use, and the"
@@ -696,6 +700,12 @@ public final class GuestJarRemap {
 							}
 						}
 					}
+					// Moving even just the CLASS NAMES of an @At selector is behind a switch: Round 203 measured it on
+					// the merged base and it cost 19 handlers. See mapAtSelectorClasses.
+					if (Boolean.getBoolean("forbric.atTargetClasses")
+							&& mapAtSelectorClasses(annotation)) {
+						changed = true;
+					}
 					// The @At half stays behind a switch for the reason Round 200 measured: answering it from the
 					// refmap alone turned 65 warnings into 87 and 63 unattached handlers into 85, because a target that
 					// no longer matches a call site is a handler that stops running. Round 201's guard is the fix - see
@@ -775,6 +785,65 @@ public final class GuestJarRemap {
 	}
 
 	/**
+	 * Maps the CLASS NAMES an {@code @At} selector spells — the owner and the descriptor's types — and nothing else.
+	 *
+	 * <p><b>Measured, and it lost.</b> Round 203 ran this unconditionally on the merged base: 63 selectors had a class
+	 * name moved, and the session went from 58 injection warnings to 77 while {@code required injection unavailable}
+	 * went 44 to 60 — {@code fabric-entity-events-v1} alone doubled from 7 to 14. A class name is not a guess
+	 * ({@link #mapInternal} answers 1:1 or not at all, and members are left byte for byte), but Mixin remaps an
+	 * annotation's selectors through the mod's own refmap, and a selector already in the spelling Mixin expects is
+	 * not improved by being rewritten to the same class under another name: the points that moved stopped matching.
+	 * So it stays behind {@code -Dforbric.atTargetClasses=true}, off by default, with its numbers written down.
+	 *
+	 * <p>The one thing it did NOT fix is why it was written: fabric-networking-api-v1's
+	 * {@code CustomPayloadPacketCodecMixin} still reads
+	 * {@code @At target="Lnet/minecraft/network/packet/CustomPayload$1;getCodec(...)"} afterwards, because that Yarn
+	 * spelling is in no refmap row and no table row, so there is nothing to map it through.
+	 */
+	private static boolean mapAtSelectorClasses(org.objectweb.asm.tree.AnnotationNode annotation) {
+		if (annotation.values == null) return false;
+		boolean changed = false;
+		for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
+			Object value = annotation.values.get(i + 1);
+			if (value instanceof org.objectweb.asm.tree.AnnotationNode nested) {
+				if (nested.desc != null && nested.desc.endsWith("/At;") && nested.values != null) {
+					for (int n = 0; n + 1 < nested.values.size(); n += 2) {
+						if (!"target".equals(nested.values.get(n))) continue;
+						if (!(nested.values.get(n + 1) instanceof String text)) continue;
+						String mapped = withMappedClasses(text);
+						if (!mapped.equals(text)) {
+							nested.values.set(n + 1, mapped);
+							AT_CLASSES_MAPPED.incrementAndGet();
+							changed = true;
+						}
+					}
+				}
+				if (mapAtSelectorClasses(nested)) changed = true;
+			} else if (value instanceof List<?> many) {
+				for (Object each : many) {
+					if (each instanceof org.objectweb.asm.tree.AnnotationNode nested && mapAtSelectorClasses(nested)) {
+						changed = true;
+					}
+				}
+			}
+		}
+		return changed;
+	}
+
+	/** One selector with only its class names moved to the base's spelling. Members are left byte for byte. */
+	private static String withMappedClasses(String selector) {
+		String mapped = officialClassesInside(selector);
+		if (mapped.startsWith("L")) return mapped;
+		int paren = mapped.indexOf('(');
+		int limit = paren < 0 ? mapped.length() : paren;
+		int dot = mapped.lastIndexOf('.', limit - 1);
+		if (dot <= 0) return mapped;
+		String owner = mapped.substring(0, dot);
+		if (owner.indexOf('/') < 0) return mapped;
+		return mapInternal(owner) + mapped.substring(dot);
+	}
+
+	/**
 	 * One {@code @At} target in the base's spelling, or null when the jar has nothing better than what it wrote.
 	 *
 	 * <p>The guest's refmap answers first, by exact text: the key is the selector as the annotation carries it and the
@@ -824,6 +893,10 @@ public final class GuestJarRemap {
 	/** {@code lambda$enclosing$ordinal}, with or without a descriptor and with or without an {@code Lowner;} in front. */
 	private static final java.util.regex.Pattern LAMBDA_SELECTOR = java.util.regex.Pattern
 			.compile("(?:L([^;]+);)?(lambda\\$[A-Za-z0-9_$]+\\$)(\\d+)(\\(.*)?$");
+
+	/** How many {@code @At} selectors had a class name — and only a class name — moved to the base's spelling. */
+	private static final java.util.concurrent.atomic.AtomicInteger AT_CLASSES_MAPPED =
+			new java.util.concurrent.atomic.AtomicInteger();
 
 	private static final java.util.concurrent.atomic.AtomicInteger LAMBDAS_POINTED =
 			new java.util.concurrent.atomic.AtomicInteger();
