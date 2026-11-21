@@ -2,6 +2,7 @@
 package net.forbric.kernel.mixin;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -33,6 +34,9 @@ import org.objectweb.asm.tree.MethodNode;
  * guess. This is the same rule {@link MixinShadowFieldBind} applies to {@code @Shadow}, applied to the annotation that
  * carries a name of its own — and the same rule the kernel's suppressed-accessor stubs use at call time, so a member
  * that is rebound here and a stub that is implemented there agree about which member is meant.
+ *
+ * <p>{@link #staysUnbound} answers the same question without changing anything, for the report that used to say a
+ * member "cannot bind" before this pass had run: what is left after the rebind is the part that really will throw.
  */
 final class MixinAccessorRebind {
 	private static final String ACCESSOR = "Lorg/spongepowered/asm/mixin/gen/Accessor;";
@@ -42,9 +46,37 @@ final class MixinAccessorRebind {
 	}
 
 	static void bind(ClassNode node, Function<String, ClassNode> base) {
-		if (node == null) return;
+		Plan plan = plan(node, base);
+		if (plan == null) return;
+		for (String guess : plan.guesses) ForbricLog.debug("[Forbric/Accessor] %s", guess);
+		if (!plan.unbound.isEmpty()) {
+			// Said here, where the target could be read, and nowhere else: the config scan that used to say it could
+			// not read the target yet and called every one of these missing (thirty-eight of them, while this pass was
+			// pointing forty-five). What is left in this list is what really will throw.
+			ForbricLog.info("[Forbric/Accessor] %s asks this base for %d member(s) it does not declare, and no single"
+					+ " member of the same shape is there to point them at, so the generated accessor will throw when"
+					+ " called: %s", node.name.replace('/', '.'), plan.unbound.size(), plan.unbound);
+		}
+		if (plan.points.isEmpty()) return;
+		for (int i = 0; i < plan.points.size(); i++) setStringValue(plan.points.get(i), plan.aims.get(i));
+		ForbricLog.info("[Forbric/Accessor] pointed %d accessor member(s) of %s at the only member of their shape in"
+				+ " the target, because it answers to neither the name the annotation asks for nor any refmap row: %s",
+				plan.points.size(), node.name.replace('/', '.'), plan.described);
+	}
+
+	/** Everything one pass decides, held so that the same pass can be either applied or only asked about. */
+	private static final class Plan {
+		private final List<AnnotationNode> points = new ArrayList<>();
+		private final List<String> aims = new ArrayList<>();
+		private final List<String> described = new ArrayList<>();
+		private final List<String> guesses = new ArrayList<>();
+		private final Set<String> unbound = new LinkedHashSet<>();
+	}
+
+	private static Plan plan(ClassNode node, Function<String, ClassNode> base) {
+		if (node == null) return null;
 		List<String> targets = MixinShadowFieldBind.targetsOf(node);
-		if (targets.isEmpty()) return;
+		if (targets.isEmpty()) return null;
 		List<String> resolved = new ArrayList<>();
 		for (String target : targets) {
 			resolved.add(target);
@@ -60,34 +92,24 @@ final class MixinAccessorRebind {
 				// A spelling the loader will not hand out says nothing about what the target declares.
 			}
 		}
-		if (readable.isEmpty()) return;
-		List<String> bound = new ArrayList<>();
+		Plan plan = new Plan();
 		for (FieldNode field : node.fields) {
 			AnnotationNode accessor = annotationIn(field.visibleAnnotations, ACCESSOR);
 			if (accessor == null) accessor = annotationIn(field.invisibleAnnotations, ACCESSOR);
 			if (accessor == null) continue;
 			String asked = stringValue(accessor);
 			String name = asked == null ? field.name : asked;
-			if (declaresField(base, readable, name, field.desc)) continue;
-			Set<String> candidates = new TreeSet<>();
-			for (ClassNode targetNode : readable) {
-				for (FieldNode candidate : targetNode.fields) {
-					if (!candidate.desc.equals(field.desc)) continue;
-					if ((candidate.access & Opcodes.ACC_STATIC) != (field.access & Opcodes.ACC_STATIC)) continue;
-					candidates.add(candidate.name);
-				}
-			}
-			if (candidates.size() != 1) {
-				if (!candidates.isEmpty()) {
-					ForbricLog.debug("[Forbric/Accessor] %s reads %s.%s, which the target does not declare; %d field(s)"
-							+ " of its type are there, so which one it means is a guess and nothing is changed",
-							node.name.replace('/', '.'), readable.get(0).name.replace('/', '.'), name, candidates.size());
-				}
+			String answer = readable.isEmpty() ? null
+					: answerField(base, readable, name, field.desc, (field.access & Opcodes.ACC_STATIC) != 0);
+			if (NAME_DECLARED.equals(answer)) continue;
+			if (answer == null) {
+				plan.unbound.add(name + ":" + field.desc);
+				guess(plan, node, readable, name, candidatesOfFields(readable, field.desc, field.access));
 				continue;
 			}
-			String actual = candidates.iterator().next();
-			setStringValue(accessor, actual);
-			bound.add(field.name + " reads " + actual);
+			plan.points.add(accessor);
+			plan.aims.add(answer);
+			plan.described.add(field.name + " reads " + answer);
 		}
 		for (MethodNode method : node.methods) {
 			AnnotationNode invoker = annotationIn(method.visibleAnnotations, INVOKER);
@@ -98,39 +120,36 @@ final class MixinAccessorRebind {
 				// from a field declaration, which is why the field loop above never sees AxeItemAccessor and friends.
 				AnnotationNode accessor = annotationIn(method.visibleAnnotations, ACCESSOR);
 				if (accessor == null) accessor = annotationIn(method.invisibleAnnotations, ACCESSOR);
-				if (accessor != null) accessorFieldName(node, base, readable, method, accessor, bound);
+				if (accessor != null) accessorFieldName(node, base, readable, method, accessor, plan);
 				continue;
 			}
 			String asked = stringValue(invoker);
 			String name = asked == null ? method.name : asked;
-			if (declaresMethod(base, readable, name, method.desc)) continue;
-			Set<String> candidates = new TreeSet<>();
-			for (ClassNode targetNode : readable) {
-				for (MethodNode candidate : targetNode.methods) {
-					if (!candidate.desc.equals(method.desc)) continue;
-					if ((candidate.access & Opcodes.ACC_STATIC) != (method.access & Opcodes.ACC_STATIC)) continue;
-					candidates.add(candidate.name);
-				}
+			String answer = readable.isEmpty() ? null
+					: answerMethod(base, readable, name, method.desc, (method.access & Opcodes.ACC_STATIC) != 0);
+			if (NAME_DECLARED.equals(answer)) continue;
+			if (answer == null) {
+				plan.unbound.add(name + ":" + method.desc);
+				continue;
 			}
-			if (candidates.size() != 1) continue;
-			String actual = candidates.iterator().next();
-			setStringValue(invoker, actual);
-			bound.add(method.name + " calls " + actual);
+			plan.points.add(invoker);
+			plan.aims.add(answer);
+			plan.described.add(method.name + " calls " + answer);
 		}
-		if (bound.isEmpty()) return;
-		ForbricLog.info("[Forbric/Accessor] pointed %d accessor member(s) of %s at the only member of their shape in"
-				+ " the target, because it answers to neither the name the annotation asks for nor any refmap row: %s",
-				bound.size(), node.name.replace('/', '.'), bound);
+		return plan;
 	}
 
+	/** The sentinel {@link #answerField}/{@link #answerMethod} return when the target declares the name as asked. */
+	private static final String NAME_DECLARED = "\u0000declared";
+
 	/**
-	 * Points one {@code @Accessor} on a method at the field the target has, and reports it into {@code bound}.
+	 * Points one {@code @Accessor} on a method at the field the target has, and records it into {@code plan}.
 	 *
 	 * <p>A getter asks for the type it returns, a setter for the type it takes; anything else is not a field accessor
 	 * and is left alone.
 	 */
 	private static void accessorFieldName(ClassNode node, Function<String, ClassNode> base, List<ClassNode> readable,
-			MethodNode method, AnnotationNode accessor, List<String> bound) {
+			MethodNode method, AnnotationNode accessor, Plan plan) {
 		Type[] args = Type.getArgumentTypes(method.desc);
 		Type ret = Type.getReturnType(method.desc);
 		String desc;
@@ -143,46 +162,77 @@ final class MixinAccessorRebind {
 		}
 		String asked = stringValue(accessor);
 		String name = asked == null ? method.name : asked;
-		if (declaresField(base, readable, name, desc)) return;
+		String answer = readable.isEmpty() ? null
+				: answerField(base, readable, name, desc, (method.access & Opcodes.ACC_STATIC) != 0);
+		if (NAME_DECLARED.equals(answer)) return;
+		if (answer == null) {
+			plan.unbound.add(name + ":" + desc);
+			guess(plan, node, readable, name, candidatesOfFields(readable, desc, method.access));
+			return;
+		}
+		plan.points.add(accessor);
+		plan.aims.add(answer);
+		plan.described.add(method.name + " reads " + answer);
+	}
+
+	/** Records the debug line for a name that is not there and has more than one member of its shape. */
+	private static void guess(Plan plan, ClassNode node, List<ClassNode> readable, String name, Set<String> candidates) {
+		if (candidates.isEmpty() || readable.isEmpty()) return;
+		plan.guesses.add(String.format("%s names %s, which the target does not declare; %d field(s) of its type are"
+				+ " there, so which one it means is a guess and nothing is changed",
+				node.name.replace('/', '.'), name, candidates.size()));
+	}
+
+	private static Set<String> candidatesOfFields(List<ClassNode> readable, String desc, int access) {
 		Set<String> candidates = new TreeSet<>();
 		for (ClassNode targetNode : readable) {
 			for (FieldNode candidate : targetNode.fields) {
 				if (!candidate.desc.equals(desc)) continue;
-				if ((candidate.access & Opcodes.ACC_STATIC) != (method.access & Opcodes.ACC_STATIC)) continue;
+				if ((candidate.access & Opcodes.ACC_STATIC) != (access & Opcodes.ACC_STATIC)) continue;
 				candidates.add(candidate.name);
 			}
 		}
-		if (candidates.size() != 1) {
-			if (!candidates.isEmpty()) {
-				ForbricLog.debug("[Forbric/Accessor] %s names %s, which the target does not declare; %d field(s) of"
-						+ " its type are there, so which one it means is a guess and nothing is changed",
-						node.name.replace('/', '.'), name, candidates.size());
-			}
-			return;
-		}
-		String actual = candidates.iterator().next();
-		setStringValue(accessor, actual);
-		bound.add(method.name + " reads " + actual);
+		return candidates;
 	}
 
-	private static boolean declaresField(Function<String, ClassNode> base, List<ClassNode> targets, String name,
-			String desc) {
-		for (ClassNode target : targets) {
+	/**
+	 * The one field of that shape the target has, {@link #NAME_DECLARED} when it declares the name as asked, null when
+	 * there is nothing or more than one thing to choose from.
+	 */
+	private static String answerField(Function<String, ClassNode> base, List<ClassNode> readable, String name,
+			String desc, boolean isStatic) {
+		for (ClassNode target : readable) {
 			for (FieldNode field : target.fields) {
-				if (field.name.equals(name) && field.desc.equals(desc)) return true;
+				if (field.name.equals(name) && field.desc.equals(desc)) return NAME_DECLARED;
 			}
 		}
-		return false;
+		Set<String> candidates = new TreeSet<>();
+		for (ClassNode targetNode : readable) {
+			for (FieldNode candidate : targetNode.fields) {
+				if (!candidate.desc.equals(desc)) continue;
+				if (((candidate.access & Opcodes.ACC_STATIC) != 0) != isStatic) continue;
+				candidates.add(candidate.name);
+			}
+		}
+		return candidates.size() == 1 ? candidates.iterator().next() : null;
 	}
 
-	private static boolean declaresMethod(Function<String, ClassNode> base, List<ClassNode> targets, String name,
-			String desc) {
-		for (ClassNode target : targets) {
+	private static String answerMethod(Function<String, ClassNode> base, List<ClassNode> readable, String name,
+			String desc, boolean isStatic) {
+		for (ClassNode target : readable) {
 			for (MethodNode method : target.methods) {
-				if (method.name.equals(name) && method.desc.equals(desc)) return true;
+				if (method.name.equals(name) && method.desc.equals(desc)) return NAME_DECLARED;
 			}
 		}
-		return false;
+		Set<String> candidates = new TreeSet<>();
+		for (ClassNode targetNode : readable) {
+			for (MethodNode candidate : targetNode.methods) {
+				if (!candidate.desc.equals(desc)) continue;
+				if (((candidate.access & Opcodes.ACC_STATIC) != 0) != isStatic) continue;
+				candidates.add(candidate.name);
+			}
+		}
+		return candidates.size() == 1 ? candidates.iterator().next() : null;
 	}
 
 	private static AnnotationNode annotationIn(List<AnnotationNode> annotations, String desc) {
@@ -214,6 +264,4 @@ final class MixinAccessorRebind {
 		annotation.values.add("value");
 		annotation.values.add(value);
 	}
-
-
 }

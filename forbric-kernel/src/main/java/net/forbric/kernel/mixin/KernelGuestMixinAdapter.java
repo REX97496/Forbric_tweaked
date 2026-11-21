@@ -306,16 +306,11 @@ public final class KernelGuestMixinAdapter {
 			try {
 				if (reportTargetsArbitratedAway(configName, pkg, mixin, pluginClass, classBytes)) continue;
 				if (isPureAccessorMixin(classBytes)) {
-					// Never suppressed (the cast to its generated interface must keep working), but a member it
-					// cannot bind is worth a line here: Mixin's own report is an InvalidAccessorException naming a
-					// descriptor and nothing about which mod or why.
-					MixinFit.Result accessors = MixinFit.evaluate(classBytes, resource,
-							net.forbric.kernel.classloading.DelegationPolicy::alwaysGame);
-					if (!accessors.unresolved().isEmpty()) {
-						ForbricLog.info("[Forbric/Mixin] guest accessor mixin %s:%s cannot bind — %s (kept; the merge "
-								+ "re-typed or removed the member, so the generated accessor will throw when called)",
-								MixinConfigOwners.describe(configName), mixin, String.join(", ", accessors.unresolved()));
-					}
+					// Never suppressed (the cast to its generated interface must keep working), and nothing is said
+					// about its members here: a member the target spells otherwise is pointed at it later by
+					// MixinAccessorRebind, which can read the target and so is the only place that can tell a name
+					// difference from a member that is really gone. A line here said "cannot bind … will throw when
+					// called" for all thirty-eight of them, and meant none of it (Round 158 pointed 45 members).
 					continue;
 				}
 				if (isExplicitlyKept(configName, mixin)) continue;
