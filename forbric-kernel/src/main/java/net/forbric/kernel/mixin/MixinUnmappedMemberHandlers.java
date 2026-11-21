@@ -40,8 +40,21 @@ import org.objectweb.asm.tree.MethodNode;
  * <p>Runs before {@code FinalMixinApplications.remember(node)}, so the ledger does not expect a handler that is
  * gone. Silent when the class calls no unmapped member, which is every class of every jar that was rewritten
  * completely.
+ *
+ * <p><b>How a leftover is recognised (Round 157).</b> The first version asked
+ * {@code GuestJarRemap.leftoverMembersOf(className)}, a map the rewrite filled while it answered names. A warm boot
+ * hands back the cached jars without rewriting anything, so that map came up empty and this guard did nothing —
+ * measured: 85 handlers never attached on a cold boot, 83 on a warm one, the two the guard had left out being
+ * attached again. The question this class actually asks is narrower than "which members did the table miss": a class
+ * file that calls a member literally named {@code method_1234} or {@code field_567} cannot work on a mojmap base no
+ * matter how it got there, because the official names are camel case. So the test is now made from the handler's own
+ * body, and a cold and a warm boot answer it the same way.
  */
 final class MixinUnmappedMemberHandlers {
+	/** A member name no official-mapped base declares; yarn/intermediary spellings look exactly like this. */
+	private static final java.util.regex.Pattern INTERMEDIARY_MEMBER =
+			java.util.regex.Pattern.compile("^(?:method|field)_\\d+$");
+
 	/** Method annotations that make Mixin run a body. {@code @At}/{@code @Slice}/{@code @Desc} are nested, never here. */
 	private static final Set<String> HANDLERS = Set.of(
 			"Lorg/spongepowered/asm/mixin/injection/Inject;",
@@ -73,38 +86,36 @@ final class MixinUnmappedMemberHandlers {
 	/** Why the guard exists, and how often it had to act, at shutdown: zero is a measurement, not an assumption. */
 	static void summarise() {
 		if (!SAID.compareAndSet(false, true)) return;
-		if (SEEN.get() == 0) {
-			ForbricLog.durableInfo("[Forbric/Mixin] no guest mixin still named a member in intermediary spelling, so"
-					+ " the guard that leaves out a handler calling one had nothing to do this session");
+		if (HANDLERS_SEEN.get() == 0) {
+			ForbricLog.durableInfo("[Forbric/Mixin] no guest mixin declared an injection handler this session, so the"
+					+ " guard that leaves out a handler calling an intermediary-spelled member had nothing to look at");
 			return;
 		}
-		ForbricLog.durableInfo("[Forbric/Mixin] %d mixin class(es) still name a member in intermediary spelling"
-				+ " (the table has no row for it); their %d handler(s) were checked and %d left out because the"
-				+ " handler itself calls one, which is the difference between 'the hook is not attached' and"
-				+ " 'the hook runs and throws NoSuchMethodError in game time'",
-				SEEN.get(), HANDLERS_SEEN.get(), LEFT_OUT.get());
+		ForbricLog.durableInfo("[Forbric/Mixin] %d handler(s) were checked for calls to a member still spelled the"
+				+ " intermediary way; %d of them in %d mixin class(es) were left out because their own body makes such"
+				+ " a call, which is the difference between 'the hook is not attached' and 'the hook runs and throws"
+				+ " NoSuchMethodError in game time'",
+				HANDLERS_SEEN.get(), LEFT_OUT.get(), SEEN.get());
 	}
 
 	/** Removes the injection annotation of every handler in this mixin that reaches an unmapped member. */
 	static void leaveOut(ClassNode node) {
 		if (node == null || node.name == null) return;
-		Set<String> unmapped = GuestJarRemap.leftoverMembersOf(node.name);
-		if (unmapped == null || unmapped.isEmpty()) return;
-		SEEN.incrementAndGet();
 		Map<String, Set<String>> leftOut = new LinkedHashMap<>();
 		for (MethodNode method : node.methods) {
 			if (!isHandler(method)) continue;
 			HANDLERS_SEEN.incrementAndGet();
-			Set<String> reached = reachedUnmapped(node, method, unmapped);
+			Set<String> reached = reachedIntermediary(node, method);
 			if (reached.isEmpty()) continue;
 			stripHandlerAnnotations(method);
 			leftOut.put(method.name + method.desc, reached);
 		}
 		if (leftOut.isEmpty()) return;
+		SEEN.incrementAndGet();
 		LEFT_OUT.addAndGet(leftOut.size());
-		ForbricLog.info("[Forbric/Mixin] left out %d handler(s) of %s: the member they call has no row in this line's"
-				+ " namespace table, so attaching one would raise NoSuchMethodError at first use instead of not"
-				+ " attaching here; the rest of the mixin still applies: %s",
+		ForbricLog.info("[Forbric/Mixin] left out %d handler(s) of %s: the body calls a member still spelled the"
+				+ " intermediary way, which no official-mapped base declares, so attaching one would raise"
+				+ " NoSuchMethodError at first use instead of not attaching here; the rest of the mixin still applies: %s",
 				leftOut.size(), node.name.replace('/', '.'), leftOut);
 	}
 
@@ -123,11 +134,12 @@ final class MixinUnmappedMemberHandlers {
 	}
 
 	/**
-	 * The unmapped members this handler's body reaches, following the lambdas it names in this same class: a
-	 * handler that calls a {@code lambda$…} body which makes the call is exactly as fatal, and javac puts the call
-	 * inside the lambda body.
+	 * The intermediary-spelled members this handler's body reaches, following the lambdas it names in this same
+	 * class: a handler that calls a {@code lambda$…} body which makes the call is exactly as fatal, and javac puts
+	 * the call inside the lambda body. Each answer is spelled {@code owner.name} so the log can be compared with
+	 * {@code javap} without guessing which call it was.
 	 */
-	private static Set<String> reachedUnmapped(ClassNode owner, MethodNode handler, Set<String> unmapped) {
+	private static Set<String> reachedIntermediary(ClassNode owner, MethodNode handler) {
 		Set<String> reached = new LinkedHashSet<>();
 		Set<MethodNode> pending = new LinkedHashSet<>();
 		Set<String> visited = new LinkedHashSet<>();
@@ -138,9 +150,9 @@ final class MixinUnmappedMemberHandlers {
 				if (!visited.add(method.name + method.desc) || method.instructions == null) continue;
 				for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
 					if (insn instanceof MethodInsnNode call) {
-						if (unmapped.contains(call.name)) reached.add(call.name);
+						if (INTERMEDIARY_MEMBER.matcher(call.name).matches()) reached.add(call.owner + "." + call.name);
 					} else if (insn instanceof FieldInsnNode field) {
-						if (unmapped.contains(field.name)) reached.add(field.name);
+						if (INTERMEDIARY_MEMBER.matcher(field.name).matches()) reached.add(field.owner + "." + field.name);
 					} else if (insn instanceof InvokeDynamicInsnNode dynamic) {
 						for (Object argument : dynamic.bsmArgs) {
 							if (!(argument instanceof org.objectweb.asm.Handle handle)) continue;
@@ -161,10 +173,8 @@ final class MixinUnmappedMemberHandlers {
 	static java.util.List<String> wouldLeaveOut(ClassNode node) {
 		java.util.List<String> names = new ArrayList<>();
 		if (node == null || node.name == null) return names;
-		Set<String> unmapped = GuestJarRemap.leftoverMembersOf(node.name);
-		if (unmapped == null || unmapped.isEmpty()) return names;
 		for (MethodNode method : node.methods) {
-			if (isHandler(method) && !reachedUnmapped(node, method, unmapped).isEmpty()) names.add(method.name + method.desc);
+			if (isHandler(method) && !reachedIntermediary(node, method).isEmpty()) names.add(method.name + method.desc);
 		}
 		return names;
 	}

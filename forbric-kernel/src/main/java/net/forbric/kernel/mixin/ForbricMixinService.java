@@ -433,14 +433,20 @@ public final class ForbricMixinService
 		// code: the rule asks whether the injector's @At finds a point in the method its name binds.
 		net.forbric.kernel.transform.GuestInjectorPruner.pruneRefused(node,
 				(mixin, handler) -> MixinFit.stillRejected(mixin, handler, this::mergedBaseNodeWithCode));
-		// …and a handler whose own body calls a member this line's namespace table has no row for is left out here
-		// rather than at first use: the rewrite leaves such a name in intermediary spelling, so attaching the handler
-		// moves the NoSuchMethodError into game time. Before remember, so the ledger does not expect a handler that is
-		// gone. Only reachable while refmap keys are rewritten, which is what makes these handlers attach at all.
-		MixinUnmappedMemberHandlers.leaveOut(node);
 		// …and an @Shadow field whose name the target answers to neither directly nor through a refmap row is bound
-		// to the one field of its type the target does have, instead of Mixin refusing the whole mixin for it.
+		// to the one field of its type the target does have, instead of Mixin refusing the whole mixin for it. This
+		// has to run BEFORE the leftover guard below: a handler that reads its own @Shadow field is spelled
+		// field_19419 until this line renames it, so guarding first would read that reference as an unmapped member
+		// and leave out a handler that works. Measured on the cold boot that introduced the guard: 3 handlers in 2
+		// mixins were dropped for exactly that reason (ServerPlayNetworkHandlerMixin.field_28962/28963 and
+		// GameRuleCommandVisitorMixin.field_19419), every one of them a field this call then bound.
 		MixinShadowFieldBind.bind(node, this::mergedBaseNode);
+		// …and a handler whose own body STILL calls a member spelled the intermediary way is left out here rather
+		// than at first use: no official-mapped base declares method_1234 or field_567, so attaching the handler moves
+		// the NoSuchMethodError into game time. Before remember, so the ledger does not expect a handler that is gone.
+		// The test reads the handler's own body, not a record of what the rewrite happened to miss, so a cold and a
+		// warm boot answer it identically.
+		MixinUnmappedMemberHandlers.leaveOut(node);
 		FinalMixinApplications.remember(node);
 		// The call sites its injectors take, as they will apply: a raw post-Mixin patch of another mod that finds one
 		// gone is reported as a contention between the two (ContendedCallSites), not arbitrated.
