@@ -1028,8 +1028,12 @@ public final class ForbricMixinService
 		m.put("fabric-loot-api-v2.mixins.json",
 				"LootTableBuilderMixin's @Shadow field LootTable$Builder.field_949 is not in the merged base, so the"
 						+ " builder interface kept its \"Implemented via mixin\" stubs and reloading loot tables threw");
-		m.put("fabric-loot-api-v3.mixins.json",
-				"same contract as v2: the implementation mixin is UNFIT on this base, the interface is not");
+		// fabric-loot-api-v3 was turned off here for the same reason as v2. Re-measured on Round 195 and no longer
+		// off: the two readings it rested on have both changed. Its builder mixins' @Shadow fields are named `pools`,
+		// `functions`, `entries`, `conditions` in the jar this kernel serves (the class rewriter mapped them), and the
+		// merged base declares exactly those; and its accessor names a field (`LootTable.randomSequenceId`) the merge
+		// re-typed, which MixinAccessorRebind now points at the one field of that shape (`randomSequence`). What the
+		// config is worth is whether the loot bridge starts firing REPLACE/MODIFY, not whether the entry reads well.
 		m.put("fabric-data-attachment-api-v1.mixins.json",
 				"AttachmentTargetImpl's stubs are completed by an UNFIT mixin: chunk load threw"
 						+ " \"Implemented via mixin\" from fabric_shouldTryToSync");
