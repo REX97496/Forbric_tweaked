@@ -12,10 +12,25 @@ public final class MixinCompatibility {
 	private static final java.util.Map<String, Boolean> ORIGINAL_REQUIRED = new java.util.concurrent.ConcurrentHashMap<>();
 	private record InjectionWarning(String config, String mixin, String handler, String target, String reason) { }
 	private static final java.util.Set<InjectionWarning> WARNED_INJECTIONS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+	/**
+	 * How many handlers each mod registered that the final class never references, counted per mod so one line can
+	 * answer "how much of the installed set is only half wired". Round 182 measured 172 separate warning lines on the
+	 * 1.21.1 instance and no total anywhere: the count is what a reader can track round to round, and the per-mod split
+	 * is what says which mod is worth chasing.
+	 */
+	private static final java.util.Map<String, java.util.concurrent.atomic.AtomicInteger> UNATTACHED =
+			new java.util.concurrent.ConcurrentHashMap<>();
+	private static final java.util.concurrent.atomic.AtomicBoolean SUMMARY_HOOK = new java.util.concurrent.atomic.AtomicBoolean();
 	private MixinCompatibility() { }
 
 	/** Every new loader session re-reads its own original declarations. */
-	public static void reset() { ORIGINAL_REQUIRED.clear(); WARNED_INJECTIONS.clear(); FinalMixinApplications.reset(); SupersededMixins.reset(); }
+	public static void reset() {
+		ORIGINAL_REQUIRED.clear();
+		WARNED_INJECTIONS.clear();
+		UNATTACHED.clear();
+		FinalMixinApplications.reset();
+		SupersededMixins.reset();
+	}
 
 	/** Keep the mod's declaration before Forbric relaxes required=true in the bytes handed to Mixin. */
 	static void rememberOriginalConfig(String config, byte[] bytes) {
@@ -109,8 +124,43 @@ public final class MixinCompatibility {
 		// Definitions may be observed again when a deferred replacement is checked. One line per observation,
 		// per launch, rather than repeating it every time the same final class is inspected.
 		if (!WARNED_INJECTIONS.add(new InjectionWarning(config, mixin, handler, target, reason))) return;
+		UNATTACHED.computeIfAbsent(owner(config), mod -> new java.util.concurrent.atomic.AtomicInteger()).incrementAndGet();
+		announceOnce();
 		ForbricLog.warn("[Forbric/Mixin] injection warning: mod=%s config=%s mixin=%s handler=%s target=%s — %s",
 				owner(config), config, mixin, handler, target, reason);
+	}
+
+	/**
+	 * The per-mod total, printed once when the process ends. It is a shutdown hook rather than a load-time line
+	 * because misses are still being observed while the client constructs its later screens: the round-182 run logged
+	 * its last one 40 s after the load report, so a load-time total would have under-counted the same session.
+	 */
+	private static void announceOnce() {
+		if (!SUMMARY_HOOK.compareAndSet(false, true)) return;
+		try {
+			Runtime.getRuntime().addShutdownHook(new Thread(MixinCompatibility::summarise, "forbric-mixin-misses"));
+		} catch (IllegalStateException shuttingDown) {
+			// Already in shutdown: the caller's own report is the last thing this process will write.
+		}
+	}
+
+	private static void summarise() {
+		if (UNATTACHED.isEmpty()) return;
+		java.util.List<java.util.Map.Entry<String, java.util.concurrent.atomic.AtomicInteger>> ranked =
+				new java.util.ArrayList<>(UNATTACHED.entrySet());
+		ranked.sort(java.util.Map.Entry.<String, java.util.concurrent.atomic.AtomicInteger>comparingByValue(
+				java.util.Comparator.comparingInt(java.util.concurrent.atomic.AtomicInteger::get)).reversed());
+		StringBuilder perMod = new StringBuilder();
+		int total = 0;
+		for (java.util.Map.Entry<String, java.util.concurrent.atomic.AtomicInteger> entry : ranked) {
+			int count = entry.getValue().get();
+			total += count;
+			if (perMod.length() > 0) perMod.append(", ");
+			perMod.append(entry.getKey()).append('=').append(count);
+		}
+		ForbricLog.info("[Forbric/Mixin] %d handler(s) across %d mod(s) never attached on this base: %s — each is a hook"
+				+ " the mod registered that the merged game never calls, named individually in the warnings above",
+				total, UNATTACHED.size(), perMod);
 	}
 
 	/** Whole-mixin skips have no final handler to observe. Report them after plugins and repairs settle. */
