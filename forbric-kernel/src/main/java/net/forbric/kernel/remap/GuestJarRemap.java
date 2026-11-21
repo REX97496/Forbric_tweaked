@@ -1531,12 +1531,39 @@ public final class GuestJarRemap {
 		String mapped = mapClassNamesInText(mapRefmapValues(pair, seen), seen);
 		Matcher again = REFMAP_LEAF.matcher(mapped);
 		String answered = again.find() ? again.group(2) : value;
+		// A selector that is only a descriptor — "(" … ")" and nothing else — carries no member name for the passes
+		// above to translate, so its class names are the whole answer and were left in intermediary spelling.
+		// Measured in 51 rewritten guest jars: 4 refmap rows of that shape, and each one belongs to a handler Mixin
+		// reported as never attached - fabric-item-api-v1's BrewingStandBlockEntityMixin, fabric-networking-api-v1's
+		// ClientConfigurationNetworkHandlerMixin, and fabric-resource-loader-v0's SimpleResourceReloadMixin and
+		// TestServerMixin. E.g. "(Lnet/minecraft/class_1935;)Lnet/minecraft/class_1799;" became the statement that a
+		// handler wants a method taking Intermediary types, which no base class declares.
+		String described = officialClassesInside(answered);
+		if (!described.equals(answered)) answered = described;
 		if (!answered.equals(value) && key.indexOf('(') < 0 && key.indexOf(':') < 0
 				&& key.startsWith("net/") && answered.startsWith("net/") && answered.indexOf('(') < 0
 				&& answered.indexOf(':') < 0) {
 			rememberClassRename(key, answered);
 		}
 		return answered;
+	}
+
+	/**
+	 * Every {@code L…;} token in a selector, mapped to the class this base declares.
+	 *
+	 * <p>Idempotent: {@link #mapInternal} answers with its input when the name is already official or unknown, so a
+	 * value the tuned passes already finished is returned unchanged.
+	 */
+	private static String officialClassesInside(String selector) {
+		if (selector == null || selector.indexOf("Lnet/") < 0 && selector.indexOf("Lnet.") < 0) return selector;
+		Matcher matcher = java.util.regex.Pattern.compile("L([A-Za-z0-9_$/]+);").matcher(selector);
+		StringBuilder out = new StringBuilder(selector.length());
+		while (matcher.find()) {
+			String mapped = mapInternal(matcher.group(1));
+			matcher.appendReplacement(out, Matcher.quoteReplacement("L" + mapped + ";"));
+		}
+		matcher.appendTail(out);
+		return out.toString();
 	}
 
 	/**
