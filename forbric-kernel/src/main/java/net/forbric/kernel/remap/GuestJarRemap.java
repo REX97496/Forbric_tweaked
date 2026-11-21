@@ -560,9 +560,29 @@ public final class GuestJarRemap {
 		return out.toByteArray();
 	}
 
-	/** Whether a refmap's keys keep the mod's own spelling while only its values are rewritten. */
+	/**
+	 * Whether a refmap's keys keep the mod's own spelling while only its values are rewritten.
+	 *
+	 * <p>On by default since the namespace table was repaired and the handlers were given a guard. A refmap's
+	 * {@code mappings} are keyed by the selector the mixin's own annotation carries, so rewriting the key while the
+	 * annotation keeps its Yarn spelling makes Mixin look up a selector nobody wrote: the handler never resolves and
+	 * never runs. Measured on cold boots, keys kept: {@code injection warning} 172 -> 87 and unattached handlers
+	 * 169 -> 85 on this line.
+	 *
+	 * <p>Turning it on was refused twice before, for a measured reason and only that: the handlers that start
+	 * resolving also start executing, and a guest jar whose member has no row in the shipped table keeps the
+	 * intermediary name, so the JVM raised {@code NoSuchMethodError} at first use — once, from
+	 * {@code ServerLoginNetworkAddon.sendCompressionPacket} through {@code ServerLoginNetworkHandlerMixin}, which took
+	 * the integrated server down. Both halves of that are now answered: the table's 34 dropped classes were joined
+	 * (Round 148, {@code MinecraftServer.method_3773 = getCompressionThreshold} among them), and
+	 * {@code MixinUnmappedMemberHandlers} leaves out any handler whose own body still calls a member with no row,
+	 * instead of letting it attach and fail in game time.
+	 *
+	 * <p>{@code -Dforbric.refmapKeys=false} restores the old behaviour for an A/B, and is what a boot that crashes
+	 * inside a guest handler should be retried with.
+	 */
 	private static final boolean REFMAP_KEYS =
-			Boolean.parseBoolean(System.getProperty("forbric.refmapKeys", "false"));
+			Boolean.parseBoolean(System.getProperty("forbric.refmapKeys", "true"));
 
 	/** One class through {@link ClassRemapper}, with every name the resolver knows. */
 	/**

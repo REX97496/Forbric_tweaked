@@ -145,6 +145,7 @@ public final class MixinCompatibility {
 	}
 
 	private static void summarise() {
+		MixinUnmappedMemberHandlers.summarise();
 		if (UNATTACHED.isEmpty()) return;
 		java.util.List<java.util.Map.Entry<String, java.util.concurrent.atomic.AtomicInteger>> ranked =
 				new java.util.ArrayList<>(UNATTACHED.entrySet());

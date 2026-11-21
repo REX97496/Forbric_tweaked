@@ -433,6 +433,11 @@ public final class ForbricMixinService
 		// code: the rule asks whether the injector's @At finds a point in the method its name binds.
 		net.forbric.kernel.transform.GuestInjectorPruner.pruneRefused(node,
 				(mixin, handler) -> MixinFit.stillRejected(mixin, handler, this::mergedBaseNodeWithCode));
+		// …and a handler whose own body calls a member this line's namespace table has no row for is left out here
+		// rather than at first use: the rewrite leaves such a name in intermediary spelling, so attaching the handler
+		// moves the NoSuchMethodError into game time. Before remember, so the ledger does not expect a handler that is
+		// gone. Only reachable while refmap keys are rewritten, which is what makes these handlers attach at all.
+		MixinUnmappedMemberHandlers.leaveOut(node);
 		FinalMixinApplications.remember(node);
 		// The call sites its injectors take, as they will apply: a raw post-Mixin patch of another mod that finds one
 		// gone is reported as a contention between the two (ContendedCallSites), not arbitrated.
