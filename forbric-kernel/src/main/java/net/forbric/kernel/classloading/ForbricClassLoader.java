@@ -443,19 +443,57 @@ public final class ForbricClassLoader extends URLClassLoader {
 					throw new ClassNotFoundException(name + " (withheld: -D" + FabricLoaderInternals.SWITCH + "=off)");
 				}
 				if (DelegationPolicy.alwaysParent(name)) {
+					noteProbedLoad(name, "delegated to the parent (DelegationPolicy.alwaysParent)");
 					c = parent.loadClass(name);
 				} else if (DelegationPolicy.alwaysGame(name)) {
+					noteProbedLoad(name, "defined here (DelegationPolicy.alwaysGame)");
 					c = defineGameClass(name); // must be here; if bytes missing this throws (a real error)
 				} else {
 					// Child-first for owned jars, else parent. Catches game/mod classes without a package list,
 					// while MC libraries (DataFixerUpper, Brigadier, netty, guava, joptsimple) fall to the parent.
 					c = tryDefineGameClass(name);
-					if (c == null) c = parent.loadClass(name);
+					if (c == null) {
+						noteProbedLoad(name, "not in any owned jar — delegated to the parent");
+						c = parent.loadClass(name);
+					} else {
+						noteProbedLoad(name, "defined here (child-first, owned jar)");
+					}
 				}
+			} else {
+				noteProbedLoad(name, "already loaded in this loader");
 			}
 			if (resolve) resolveClass(c);
 			return c;
 		}
+	}
+
+	/** Names asked for with {@code -Dforbric.probeClassLoads=a.B,c.D}; empty in a normal run. */
+	private static final java.util.Set<String> PROBED_LOADS = java.util.Set.of(
+			System.getProperty("forbric.probeClassLoads", "").split(",")).stream()
+			.map(String::trim).filter(s -> !s.isEmpty()).collect(java.util.stream.Collectors.toUnmodifiableSet());
+
+	private static final java.util.Set<String> PROBED_SAID = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+	/**
+	 * Says which branch of {@link #loadClass} answered a probed name, and who asked.
+	 *
+	 * <p>{@code TransformChain} can only report classes it was handed; a class that never reached the chain is
+	 * either never asked for or served by another loader, and the two look identical in every other line of the log.
+	 * Measured on 1.21.1 with {@code -Dforbric.refmapKeys=true}: {@code ClientLevel$EntityCallbacks} never reached
+	 * the chain in two boots, while the client joined a world in both — so the question is not "did it load" but
+	 * "who answered", and this line answers that one.
+	 */
+	private static void noteProbedLoad(String name, String how) {
+		if (PROBED_LOADS.isEmpty() || !PROBED_LOADS.contains(name)) return;
+		if (!PROBED_SAID.add(name + "|" + how)) return;
+		StringBuilder who = new StringBuilder();
+		StackTraceElement[] trace = new Throwable().getStackTrace();
+		for (int i = 0; i < trace.length && who.length() < 220; i++) {
+			StackTraceElement frame = trace[i];
+			if (frame.getClassName().equals(ForbricClassLoader.class.getName())) continue;
+			who.append(who.length() == 0 ? "" : " <- ").append(frame.getClassName()).append('.').append(frame.getMethodName());
+		}
+		ForbricLog.durableInfo("[Forbric/LoadProbe] %s: %s; asked by %s", name, how, who);
 	}
 
 	private Class<?> defineGameClass(String name) throws ClassNotFoundException {
