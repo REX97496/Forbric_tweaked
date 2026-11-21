@@ -703,7 +703,7 @@ public final class GuestJarRemap {
 					// Moving even just the CLASS NAMES of an @At selector is behind a switch: Round 203 measured it on
 					// the merged base and it cost 19 handlers. See mapAtSelectorClasses.
 					if (Boolean.getBoolean("forbric.atTargetClasses")
-							&& mapAtSelectorClasses(annotation)) {
+							&& mapAtSelectorClasses(annotation, mine)) {
 						changed = true;
 					}
 					// The @At half stays behind a switch for the reason Round 200 measured: answering it from the
@@ -799,8 +799,14 @@ public final class GuestJarRemap {
 	 * {@code CustomPayloadPacketCodecMixin} still reads
 	 * {@code @At target="Lnet/minecraft/network/packet/CustomPayload$1;getCodec(...)"} afterwards, because that Yarn
 	 * spelling is in no refmap row and no table row, so there is nothing to map it through.
+	 *
+	 * <p><b>The guard Round 204 added.</b> Round 203's pass was unconditional, so it also rewrote selectors the
+	 * mod's own refmap answers — the ones Mixin remaps by itself, and the ones that stopped matching when the
+	 * spelling under them changed. Now a selector the refmap has a row for is left exactly as authored, and only a
+	 * selector Mixin has nothing to say about gets its class names moved.
 	 */
-	private static boolean mapAtSelectorClasses(org.objectweb.asm.tree.AnnotationNode annotation) {
+	private static boolean mapAtSelectorClasses(org.objectweb.asm.tree.AnnotationNode annotation,
+			Map<String, String> mine) {
 		if (annotation.values == null) return false;
 		boolean changed = false;
 		for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
@@ -810,6 +816,7 @@ public final class GuestJarRemap {
 					for (int n = 0; n + 1 < nested.values.size(); n += 2) {
 						if (!"target".equals(nested.values.get(n))) continue;
 						if (!(nested.values.get(n + 1) instanceof String text)) continue;
+						if (mine.containsKey(text)) continue;
 						String mapped = withMappedClasses(text);
 						if (!mapped.equals(text)) {
 							nested.values.set(n + 1, mapped);
@@ -818,10 +825,11 @@ public final class GuestJarRemap {
 						}
 					}
 				}
-				if (mapAtSelectorClasses(nested)) changed = true;
+				if (mapAtSelectorClasses(nested, mine)) changed = true;
 			} else if (value instanceof List<?> many) {
 				for (Object each : many) {
-					if (each instanceof org.objectweb.asm.tree.AnnotationNode nested && mapAtSelectorClasses(nested)) {
+					if (each instanceof org.objectweb.asm.tree.AnnotationNode nested
+							&& mapAtSelectorClasses(nested, mine)) {
 						changed = true;
 					}
 				}
@@ -1195,14 +1203,44 @@ public final class GuestJarRemap {
 		List<String> parts = new ArrayList<>(2);
 		int depth = 0;
 		int from = 0;
+		boolean returnType = false;
+		boolean inClassReference = false;
 		for (int i = 0; i < written.length(); i++) {
 			char c = written.charAt(i);
+			if (returnType) {
+				// The return type stands outside the brackets, so its terminating semicolon is part of this selector
+				// and not a separator: measured on fabric-networking-api-v1's CustomPayloadPacketCodecMixin, whose
+				// authored "decode(Lnet/minecraft/network/PacketByteBuf;)Lnet/minecraft/network/packet/CustomPayload;"
+				// was cut there into a piece plus an empty one, neither of which the refmap had a row for, while the
+				// jar's own refmap holds that exact row answered with the base's decode(FriendlyByteBuf).
+				if (c == '[') {
+					continue;
+				}
+				if (c == 'L') {
+					inClassReference = true;
+					returnType = false;
+					continue;
+				}
+				returnType = false;
+				continue;
+			}
+			if (inClassReference) {
+				if (c == ';') inClassReference = false;
+				continue;
+			}
 			if (c == '(') {
 				depth++;
 			} else if (c == ')') {
 				depth--;
+				if (depth == 0) returnType = true;
 			} else if (c == ';' && depth == 0) {
-				parts.add(written.substring(from, i));
+				String sofar = written.substring(from, i);
+				if (sofar.startsWith("L") && sofar.indexOf('(') < 0) {
+					// An owner prefix in internal spelling, "Lnet/minecraft/class_8710$1;method_56487(…)": the
+					// semicolon closes the owner, so what follows still belongs to the same selector.
+					continue;
+				}
+				parts.add(sofar);
 				from = i + 1;
 			}
 		}
