@@ -2055,7 +2055,20 @@ public final class KernelBoot {
 		}
 		for (Path root : roots) {
 			Path table = root.resolve(".forbric-kernel").resolve(name);
-			if (java.nio.file.Files.isRegularFile(table)) return table;
+			if (java.nio.file.Files.isRegularFile(table)) {
+				// Name, size and mtime, because two boots that disagree about which repairs landed can only be
+				// compared when the reader can see which table answered and when it was last written. Regenerating
+				// the table and forgetting to copy it is otherwise invisible.
+				try {
+					ForbricLog.info("[Forbric/Mappings] this boot reads %s (%d byte(s), written %s)", table,
+							java.nio.file.Files.size(table),
+							java.nio.file.Files.getLastModifiedTime(table).toInstant());
+				} catch (java.io.IOException unreadable) {
+					ForbricLog.info("[Forbric/Mappings] this boot reads %s (its size and date are unreadable: %s)",
+							table, String.valueOf(unreadable));
+				}
+				return table;
+			}
 		}
 		return null;
 	}

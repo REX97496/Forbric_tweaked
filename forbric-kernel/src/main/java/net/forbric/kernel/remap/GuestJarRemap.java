@@ -217,6 +217,7 @@ public final class GuestJarRemap {
 			"\"([A-Za-z0-9_$<>()\\[\\];/]+)\"\\s*:\\s*\"L([A-Za-z0-9_$/]+);([A-Za-z0-9_$<>]+)([:(][^\"\\r\\n]*)\"");
 
 	private static int jarsWritten;
+	private static int jarsReused;
 	private static long classesRewritten;
 	private static long namesMapped;
 	private static long classFailures;
@@ -265,6 +266,7 @@ public final class GuestJarRemap {
 		}
 		List<Path> out = new ArrayList<>(jars.size());
 		int failed = 0;
+		long cachedBefore = regularFilesIn(cacheDir);
 		for (Path jar : jars) {
 			try {
 				out.add(remapOne(jar, cacheDir));
@@ -274,6 +276,17 @@ public final class GuestJarRemap {
 						jar.getFileName(), String.valueOf(unreadable));
 				out.add(jar);
 			}
+		}
+		// Always say what the cache did, warm boot included. A run that rewrites nothing used to print nothing at
+		// all, so "this boot reused yesterday's jars" and "this boot never ran the rewriter" read the same from the
+		// log - and two boots of one jar disagreed about which repairs landed because of exactly that.
+		ForbricLog.info("[Forbric/Remap] guest jar cache %s: %d reused from an earlier boot, %d rewritten now,"
+				+ " %d left as they came (of %d jar(s)); %d file(s) were on disk when this boot started, so the"
+				+ " rewrite was %s", cacheDir, jarsReused, jarsWritten, failed, jars.size(), cachedBefore,
+				cachedBefore < 0 ? "unknown" : (jarsWritten == 0 ? "warm" : (jarsReused == 0 ? "cold" : "partial")));
+		if (classRenamesFromCached > 0) {
+			ForbricLog.info("[Forbric/Remap] %d class rename(s) read back out of the cached refmaps, so this boot"
+					+ " resolves a yarn-spelled mixin target the same way a cold boot does", classRenamesFromCached);
 		}
 		if (jarsWritten > 0) {
 			ForbricLog.info("[Forbric/Remap] %d guest jar(s) rewritten into %s (%d class(es), %d name(s) mapped,"
@@ -390,6 +403,15 @@ public final class GuestJarRemap {
 		}
 	}
 
+	/** How many files the cache directory held before this boot touched it; -1 when the answer cannot be read. */
+	private static long regularFilesIn(Path dir) {
+		if (dir == null || !java.nio.file.Files.isDirectory(dir)) return 0;
+		try (java.util.stream.Stream<Path> entries = java.nio.file.Files.list(dir)) {
+			return entries.filter(java.nio.file.Files::isRegularFile).count();
+		} catch (IOException unreadable) {
+			return -1;
+		}
+	}
 	private static Path remapOne(Path jar, Path cacheDir) throws IOException {
 		// Read the refmaps first: they are the only place a guest says what its Yarn-spelled names mean, and the class
 		// pass below needs that dictionary while it is still rewriting.
@@ -411,7 +433,11 @@ public final class GuestJarRemap {
 		// regenerated mappings file, since every answer here comes from that table.
 		String key = digest(fingerprintOf(bytes));
 		Path target = cacheDir.resolve(key + '-' + jar.getFileName());
-		if (Files.isRegularFile(target) && Files.size(target) > 0) return target;
+		if (Files.isRegularFile(target) && Files.size(target) > 0) {
+			jarsReused++;
+			readClassRenamesFrom(target);
+			return target;
+		}
 		Files.createDirectories(cacheDir);
 
 		Set<String> names = new LinkedHashSet<>();
@@ -1424,10 +1450,54 @@ public final class GuestJarRemap {
 		if (!answered.equals(value) && key.indexOf('(') < 0 && key.indexOf(':') < 0
 				&& key.startsWith("net/") && answered.startsWith("net/") && answered.indexOf('(') < 0
 				&& answered.indexOf(':') < 0) {
-			CLASS_RENAMES.put(key, answered);
+			rememberClassRename(key, answered);
 		}
 		return answered;
 	}
+
+	/**
+	 * Records one refmap class rename, and says whether it was new.
+	 *
+	 * <p>Both sides must be bare internal class names, because a refmap entry that names a method or a field is not a
+	 * rename and must never be consulted as one.
+	 */
+	private static boolean rememberClassRename(String key, String answered) {
+		if (key == null || answered == null || key.equals(answered)) return false;
+		if (!key.startsWith("net/") || !answered.startsWith("net/")) return false;
+		if (key.indexOf('(') >= 0 || key.indexOf(':') >= 0
+				|| answered.indexOf('(') >= 0 || answered.indexOf(':') >= 0) return false;
+		return CLASS_RENAMES.putIfAbsent(key, answered) == null;
+	}
+
+	/**
+	 * Reads the class renames back out of a jar that was rewritten on an earlier boot.
+	 *
+	 * <p>Why this exists. The rename table used to be a by-product of rewriting: {@link #rewriteRefmapValue} filled it
+	 * while it answered selectors. A warm boot hands back the cached jar without rewriting anything, so the table came
+	 * up empty, {@code MixinShadowFieldBind} could not resolve a mixin's yarn-spelled target, and the two
+	 * {@code @Shadow} repairs that cleared eight {@code InvalidMixinException} came back on the second launch.
+	 * Measured: cold boot {@code invalid=0 bound=4}, warm boot {@code invalid=8 bound=0}, same jar and same cache
+	 * contents. The cached refmap still holds both spellings, so reading it costs one pass over a few hundred bytes
+	 * per jar and makes the two boots agree.
+	 */
+	private static void readClassRenamesFrom(Path cached) {
+		try (java.util.zip.ZipInputStream in = new java.util.zip.ZipInputStream(Files.newInputStream(cached))) {
+			for (java.util.zip.ZipEntry entry; (entry = in.getNextEntry()) != null; ) {
+				if (entry.isDirectory() || !entry.getName().endsWith("-refmap.json")) continue;
+				String json = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+				Matcher names = REFMAP_LEAF.matcher(json);
+				while (names.find()) {
+					if (rememberClassRename(names.group(1), names.group(2))) classRenamesFromCached++;
+				}
+			}
+		} catch (IOException | RuntimeException unreadable) {
+			ForbricLog.debug("[Forbric/Remap] the cached %s has no readable refmap, so the class renames it carries"
+					+ " stay unknown on this boot: %s", cached.getFileName(), String.valueOf(unreadable));
+		}
+	}
+
+	/** Class renames read back out of cached refmaps on a warm boot. */
+	private static int classRenamesFromCached;
 
 	/** Class renames this pass read out of the guest refmaps, key and value in internal form. */
 	private static final java.util.Map<String, String> CLASS_RENAMES = new java.util.concurrent.ConcurrentHashMap<>();
