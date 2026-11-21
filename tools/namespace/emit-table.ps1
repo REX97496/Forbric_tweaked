@@ -67,7 +67,12 @@ foreach ($line in [System.IO.File]::ReadLines($tiny)) {
     }
     $f = $line.Split("`t")
     if ($f.Count -eq 3 -and $f[0] -eq 'c') {
-        $curOwnerInt = $f[2]; $curOwnerObf = $f[1]
+        # tiny spells an obf name that is already a real name with slashes (net/minecraft/server/MinecraftServer)
+        # and client.txt spells every obf name with dots, so a verbatim lookup dropped those classes whole:
+        # measured on 1.21.1, 34 class rows - among them MinecraftServer with all 307 of its members, method_3773
+        # included - were missing from the emitted table. That missing row is what fabric's login addon called at
+        # runtime. Normalising here makes the two sides agree.
+        $curOwnerInt = $f[2]; $curOwnerObf = $f[1].Replace('/', '.')
         $intToObfOwner[$curOwnerInt] = $curOwnerObf
     } else { $curOwnerInt = $null; $curOwnerObf = $null }
 }
@@ -164,7 +169,9 @@ foreach ($k in $memberIntToObf.Keys) {
         $missing = $false
         foreach ($m in [regex]::Matches($desc, 'L([^;]+);')) {
             $name = $m.Groups[1].Value
-            if ($obfToMojmapClass.ContainsKey($name)) { $resolved = $resolved.Replace('L' + $name + ';', 'L' + ($obfToMojmapClass[$name] -replace '\.', '/') + ';'); continue }
+            # The descriptor prints a type the way the obf jar spells it; the dictionary is keyed the client.txt way.
+            $lookup = $name.Replace('/', '.')
+            if ($obfToMojmapClass.ContainsKey($lookup)) { $resolved = $resolved.Replace('L' + $name + ';', 'L' + ($obfToMojmapClass[$lookup] -replace '\.', '/') + ';'); continue }
             # `java/util/List` is printed with its separators already, and only a short lowercase token is an obf name.
             if ($name -match '^[a-z]{1,4}\d*(\$[a-z0-9]+)*$') { $missing = $true; break }
         }
