@@ -565,6 +565,28 @@ public final class ForbricMixinService
 					if (!drop.contains(owned)) drop.add(owned);
 				}
 			}
+			// A mixin that reaches a guest class which still names a member in intermediary spelling cannot run:
+			// attaching it only moves the failure to the first execution, where the cause is nowhere in the stack.
+			// Measured: this is what took the integrated server down with NoSuchMethodError for
+			// MinecraftServer.method_3773()I from ServerLoginNetworkAddon.sendCompressionPacket, reached through
+			// ServerLoginNetworkHandlerMixin - before the refmap fix that mixin never attached, so the broken call
+			// never ran. Refusing it here keeps the handler counted as unattached, which is the honest state.
+			// Measured, not acted on: a guest class can still hold a member name the table has no row for, and a
+			// mixin that reaches one of them fails at first use rather than at attach time. Dropping such a mixin was
+			// tried and made things worse: it also drops the mixins that IMPLEMENT an interface the remaining code
+			// still calls, which turned a NoSuchMethodError inside fabric's login addon into an AbstractMethodError
+			// from net.minecraft.network.Connection.disconnectAddon three minutes later. The residue is reported in
+			// the [Forbric/Remap] summary line instead, and the cure belongs in the namespace table.
+			for (String declared : mixinsDeclaredIn(json)) {
+				if (drop.contains(declared)) continue;
+				String internal = internalNameOf(json, declared);
+				if (internal == null) continue;
+				String reaching = reachesAClassStillSpeakingIntermediary(internal);
+				if (reaching == null) continue;
+				ForbricLog.debug("[Forbric/Mixin] %s from %s reaches %s, which still names %s in intermediary"
+						+ " spelling; it will fail at first use, not here", declared, name, reaching,
+						net.forbric.kernel.remap.GuestJarRemap.leftoverMembersOf(reaching));
+			}
 			if (!named.isEmpty()) {
 				java.util.Map<String, String> sources = new java.util.LinkedHashMap<>();
 				for (String mixin : named) sources.put(mixin, suppressionSource(name, mixin));
@@ -726,6 +748,42 @@ public final class ForbricMixinService
 	 * mod that merely REFERENCES the accessor (fabric-data-attachment-api-v1's {@code AttachmentChange.<clinit>} does)
 	 * loses its whole entrypoint to it. The loader asks here first and defines the class unchanged instead.
 	 */
+	/**
+	 * The first guest class this mixin's own bytecode reaches that still names a member in intermediary spelling.
+	 *
+	 * <p>Read from the mixin's constant pool through ASM rather than by text: a mixin names the classes it calls, so
+	 * a type or field or method owner is exactly the question being asked. Null when the mixin reaches none of them,
+	 * which is every mixin of every jar that was rewritten completely.
+	 *
+	 * <p>Walks the tree rather than subclassing {@code ClassVisitor}: the boot half of this module compiles against
+	 * the ASM surface it declares (ClassReader, ClassNode), and a visitor subclass was rejected there as not
+	 * overriding anything.
+	 */
+	private static String reachesAClassStillSpeakingIntermediary(String mixinInternal) {
+		java.util.Set<String> leftovers = net.forbric.kernel.remap.GuestJarRemap.classesStillSpeakingIntermediary();
+		if (leftovers.isEmpty()) return null;
+		byte[] bytes = readGameResource(mixinInternal + ".class");
+		if (bytes == null) return null;
+		ClassNode node = new ClassNode();
+		new ClassReader(bytes).accept(node, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+			if (method.instructions == null) continue;
+			for (org.objectweb.asm.tree.AbstractInsnNode insn = method.instructions.getFirst(); insn != null;
+					insn = insn.getNext()) {
+				String reached = null;
+				if (insn instanceof org.objectweb.asm.tree.MethodInsnNode call) {
+					reached = call.owner;
+				} else if (insn instanceof org.objectweb.asm.tree.FieldInsnNode field) {
+					reached = field.owner;
+				} else if (insn instanceof org.objectweb.asm.tree.TypeInsnNode type) {
+					reached = type.desc;
+				}
+				if (reached != null && leftovers.contains(reached)) return reached;
+			}
+		}
+		return null;
+	}
+
 	private static final java.util.Set<String> DROPPED = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
 	/** True when this service removed the mixin with this binary name (or its outermost simple name) from a config. */
@@ -1008,8 +1066,7 @@ public final class ForbricMixinService
 	}
 
 	/** The entries of a mixin config's {@code mixins}, {@code client} and {@code server} arrays. */
-	private static List<String> mixinsDeclaredIn(String json) {
-		List<String> out = new ArrayList<>();
+	private static List<String> mixinsDeclaredIn(String json) {		List<String> out = new ArrayList<>();
 		java.util.regex.Matcher m = java.util.regex.Pattern
 				.compile("\"(?:mixins|client|server)\"\\s*:\\s*\\[(.*?)\\]", java.util.regex.Pattern.DOTALL)
 				.matcher(json);
@@ -1021,6 +1078,23 @@ public final class ForbricMixinService
 		}
 		return out;
 	}
+
+	/**
+	 * A config entry's binary class name, from the config's own {@code package} plus the entry.
+	 *
+	 * <p>The entries are simple names ({@code ServerLoginNetworkHandlerMixin}); the class resource only exists under
+	 * the package the config declares. Null when the config declares no package, because guessing one would read the
+	 * wrong class or none.
+	 */
+	private static String internalNameOf(String json, String simpleName) {
+		java.util.regex.Matcher pkg = java.util.regex.Pattern
+				.compile("\"package\"\\s*:\\s*\"([A-Za-z0-9_$.]+)\"")
+				.matcher(json);
+		if (!pkg.find()) return null;
+		String prefix = pkg.group(1).replace('.', '/');
+		return prefix.isEmpty() ? simpleName : prefix + '/' + simpleName;
+	}
+
 	/** Which list put {@code configName:mixin} in {@link #suppressedMixinsFor}, in the words the report uses. */
 	static String suppressionSource(String configName, String mixin) {
 		String entry = configName + ":" + mixin;

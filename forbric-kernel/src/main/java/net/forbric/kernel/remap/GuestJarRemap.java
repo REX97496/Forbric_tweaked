@@ -288,10 +288,16 @@ public final class GuestJarRemap {
 									+ " because more than one method there accepts the descriptor")
 							+ (descriptorsPicked == 0 ? "" : ", " + descriptorsPicked + " member(s) named by their"
 									+ " descriptor because the table had no row for them")
+							+ (ownersReversed == 0 ? "" : ", " + ownersReversed + " owner(s) translated through the"
+									+ " table's reverse class row because the jar's own dictionary did not carry them")
 							+ (tableNamesCorrected == 0 ? "" : ", " + tableNamesCorrected + " table name(s) the base"
 									+ " does not declare replaced by the method it does")
 							+ (tableNamesUnresolved == 0 ? "" : ", " + tableNamesUnresolved + " table name(s) left"
-									+ " unresolved because the base has no method with that shape"));
+									+ " unresolved because the base has no method with that shape")
+							+ (LEFTOVERS.isEmpty() ? "" : ", " + LEFTOVERS.size() + " class(es) still name a"
+									+ " member in intermediary spelling because the table has no row for it ("
+									+ leftoverMemberCount() + " member(s)); those calls fail at first use, and the"
+									+ " cure is the table, not this rewrite"));
 		}
 		return out;
 	}
@@ -443,12 +449,26 @@ public final class GuestJarRemap {
 					}
 				} else if (name.endsWith(".json")) {
 					String text = new String(content, StandardCharsets.UTF_8);
-					// A refmap's values are selectors - "Lowner;member(args)ret" - and they are read BEFORE the
-					// plain text pass: that pass maps the owner half, while the member lookup needs the owner
-					// exactly as the mod wrote it (intermediary). Both passes are idempotent, so the order only
-					// decides which of them gets to see a selector whole.
-					String mapped = name.endsWith("-refmap.json") ? mapRefmapValues(text, names) : text;
-					mapped = mapClassNamesInText(mapped, names);
+					// A refmap's values are selectors - "Lowner;member(args)ret" - and its keys are the same selectors
+					// spelled exactly as the mod's annotation spells them. Mixin looks an annotation up in that map by
+					// its literal text, so a refmap goes through rewriteRefmapSelectors, which rewrites the values and
+					// copies the keys through untouched.
+					//
+					// MEASURED, AND OFF BY DEFAULT ON PURPOSE. Keeping the keys as written is what makes a guest
+					// @At anchor resolvable at all: the previous two-pass rewrite renamed the keys to mojmap while the
+					// annotation kept its yarn text, so Mixin's lookup could never hit and 172 handler(s) across 28
+					// mod(s) stayed unattached. Turning this on took that to 88 and InvalidMixinException from 8 to 4 -
+					// and then took the integrated server down, because handlers that had never attached started
+					// running: fabric-networking-api-v1's login addon calls MinecraftServer.method_3773()I, the
+					// shipped table has no row for that member, and the failure is a NoSuchMethodError in the server
+					// tick loop. The fix for that is the table (its class_1132 row names IntegratedServer and carries
+					// 11 of that class's members), not this flag; until the table is repaired the switch stays off so
+					// the client keeps starting. -Dforbric.refmapKeys=true is the A/B lever.
+					String mapped = name.endsWith("-refmap.json") && REFMAP_KEYS
+							? rewriteRefmapSelectors(text, names)
+							: (name.endsWith("-refmap.json")
+									? mapClassNamesInText(mapRefmapValues(text, names), names)
+									: mapClassNamesInText(text, names));
 					if (!mapped.equals(text)) rewritten = mapped.getBytes(StandardCharsets.UTF_8);
 				}
 				ZipEntry copy = new ZipEntry(rewrittenName);
@@ -539,6 +559,10 @@ public final class GuestJarRemap {
 		}
 		return out.toByteArray();
 	}
+
+	/** Whether a refmap's keys keep the mod's own spelling while only its values are rewritten. */
+	private static final boolean REFMAP_KEYS =
+			Boolean.parseBoolean(System.getProperty("forbric.refmapKeys", "false"));
 
 	/** One class through {@link ClassRemapper}, with every name the resolver knows. */
 	/**
@@ -846,7 +870,12 @@ public final class GuestJarRemap {
 		// constant - and fabric-api chooses its targets in exactly that form: @Mixin(targets = "net.minecraft.
 		// class_2591"). Measured after the first pass, which only handled descriptors: 251 "Error loading class:
 		// net/minecraft/class_2591" lines survived a jar that had been rewritten top to bottom.
-		reader.accept(new StringConstants(remapper, seen, owners), 0);
+		currentClass = reader.getClassName();
+		try {
+			reader.accept(new StringConstants(remapper, seen, owners), 0);
+		} finally {
+			currentClass = null;
+		}
 		return rewriteInjectionSelectors(renameOverrides(patchListenableRegistry(renameShadows(writer.toByteArray()))));
 	}
 
@@ -1310,6 +1339,61 @@ public final class GuestJarRemap {
 	 * <p>The keys are left alone on purpose: {@code "Lnet/minecraft/block/Block;onBroken(...)V"} is the spelling
 	 * the mod's own annotation uses, and mixin looks the entry up by it.
 	 */
+	/**
+	 * A refmap leaf entry: {@code "key": "value"}, both sides captured whole.
+	 */
+	private static final Pattern REFMAP_LEAF = Pattern.compile(
+			"\"((?:[^\"\\\\]|\\\\.)*)\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+
+	/**
+	 * Rewrites a refmap's <b>values</b> and leaves its keys exactly as the mod wrote them.
+	 *
+	 * <p>Measured need, and the reason a refmap cannot go through the plain document passes: the guest jar
+	 * {@code fabric-entity-events-v1} ships one selector twice - inside its annotation as
+	 * {@code Lnet/minecraft/world/World;spawnEntity(Lnet/minecraft/entity/Entity;)Z}, and as the key of its refmap
+	 * entry spelled identically, with the intermediary selector {@code Lnet/minecraft/class_1937;method_8649(...)Z}
+	 * as the value. Mixin resolves an annotation by looking its literal text up in that map, so a renamed key is a
+	 * key nothing looks up. Measured on the written cache with every value correct: the key had become
+	 * {@code Lnet/minecraft/world/level/Level;spawnEntity(...)} while the annotation stayed as authored, the selector
+	 * never resolved, and 22 handlers of that one mod were counted unattached while their targets were all present.
+	 *
+	 * <p>So each leaf entry is passed to {@link #mapRefmapValues} on its own, which is where the tuned selector
+	 * passes live, and only the value half of the answer is kept.
+	 */
+	private static String rewriteRefmapSelectors(String json, Set<String> seen) {
+		int start = json.indexOf("\"mappings\"");
+		if (start < 0) return json;
+		int data = json.indexOf("\"data\"", start);
+		int end = data > start ? data : json.length();
+		String head = json.substring(0, start);
+		String mappings = json.substring(start, end);
+		String tail = json.substring(end);
+		Matcher matcher = REFMAP_LEAF.matcher(mappings);
+		StringBuilder out = new StringBuilder(mappings.length());
+		int last = 0;
+		boolean touched = false;
+		while (matcher.find()) {
+			String key = matcher.group(1);
+			String value = matcher.group(2);
+			String mapped = rewriteRefmapValue(key, value, seen);
+			if (mapped.equals(value)) continue;
+			touched = true;
+			out.append(mappings, last, matcher.start(2)).append(mapped);
+			last = matcher.end(2);
+		}
+		if (!touched) return json;
+		out.append(mappings, last, mappings.length());
+		return head + out + tail;
+	}
+
+	/** One refmap leaf: the selector passes see the pair, and only the value half of their answer is kept. */
+	private static String rewriteRefmapValue(String key, String value, Set<String> seen) {
+		String pair = "\"" + key + "\": \"" + value + "\"";
+		String mapped = mapClassNamesInText(mapRefmapValues(pair, seen), seen);
+		Matcher again = REFMAP_LEAF.matcher(mapped);
+		return again.find() ? again.group(2) : value;
+	}
+
 	private static String mapRefmapValues(String json, Set<String> seen) {
 		if (KernelMappingResolver.INSTANCE.getNamespaces().size() < 2) return json;
 		// An ownerless value first: "field_19315:Ljava/util/Set;" carries its owner in no part of the document, and
@@ -1739,6 +1823,59 @@ public final class GuestJarRemap {
 	 */
 	private static final java.util.regex.Pattern INTERMEDIARY_MEMBER = java.util.regex.Pattern.compile("(?:method|field)_\\d+");
 	private static long descriptorsPicked;
+	/**
+	 * Owners translated to intermediary by asking the joined table rather than a guest jar's own dictionary.
+	 *
+	 * <p>Counted because it is a whole class of earlier misses: the dictionary is built from the refmap's
+	 * {@code data} section, which only lists what that one jar mentions, so a call site into a class the jar never
+	 * shadowed kept its yarn spelling and every qualified lookup under it missed. Measured consequence:
+	 * {@code fabric-networking-api-v1} called {@code MinecraftServer.method_3773()I}, the qualified and unqualified
+	 * lookups both missed, the descriptor index found two {@code ()I} methods there and refused to guess, and the
+	 * first login tick threw {@code NoSuchMethodError}; the class row was in the table all along.
+	 */
+	private static long ownersReversed;
+	/**
+	 * Guest classes whose own bytecode still names a member in intermediary spelling after every lookup missed.
+	 *
+	 * <p>Such a class is broken on this base: the call it makes names a method the game does not declare, so it
+	 * throws {@code NoSuchMethodError} the first time it runs. That is not theoretical - fabric-networking-api-v1's
+	 * {@code ServerLoginNetworkAddon.sendCompressionPacket} calls {@code MinecraftServer.method_3773()I}, the table
+	 * has no row for that member, and the first login tick after the mixin that calls it started attaching took the
+	 * integrated server down. Recording it lets the mixin service refuse a mixin that reaches one of these classes
+	 * instead of attaching bytecode that is guaranteed to fail later, far from the cause.
+	 */
+	private static final Map<String, java.util.Set<String>> LEFTOVERS = new java.util.concurrent.ConcurrentHashMap<>();
+	/** The class being rewritten right now, so a miss is filed under the class that holds it. */
+	private static volatile String currentClass;
+
+	/** Guest classes (internal names) that still speak intermediary, for the mixin service's fit judgement. */
+	public static java.util.Set<String> classesStillSpeakingIntermediary() {
+		return java.util.Set.copyOf(LEFTOVERS.keySet());
+	}
+
+	/**
+	 * What a class wanted that the table could not name, for a caller that has to decide whether it can run it.
+	 *
+	 * <p>Answers empty for a class that was fully rewritten, which is the normal case.
+	 */
+	public static java.util.Set<String> leftoverMembersOf(String internalName) {
+		java.util.Set<String> members = LEFTOVERS.get(internalName);
+		return members == null ? java.util.Set.of() : java.util.Set.copyOf(members);
+	}
+
+	private static void recordLeftover(String member) {
+		String owner = currentClass;
+		if (owner == null) return;
+		LEFTOVERS.computeIfAbsent(owner, key -> java.util.concurrent.ConcurrentHashMap.newKeySet()).add(member);
+	}
+
+	/** How many distinct member names across all classes were left in intermediary spelling. */
+	private static int leftoverMemberCount() {
+		int total = 0;
+		for (java.util.Set<String> members : LEFTOVERS.values()) total += members.size();
+		return total;
+	}
+
 	private static int shapeProbes = 0;
 	private static int debugShapes = 6;
 	private static final Map<String, String> KNOWN_LAMBDA_TARGETS = Map.of(
@@ -1886,6 +2023,19 @@ public final class GuestJarRemap {
 			// them, and everything downstream (qualified lookup, inheritance fallback, descriptor answer) then works
 			// on the intermediary spelling it was written for.
 			String intermediaryOwner = yarn.classes.get(owner);
+			if (intermediaryOwner == null) {
+				// The dictionary only knows the classes this one jar's refmap data section mentions. A call site into
+				// anything else arrives in its yarn spelling, and the table is keyed by the intermediary one, so the
+				// qualified lookup missed whenever yarn and official disagree about a member's name. Ask the table for
+				// the reverse class row instead of giving up: it is the same authority, read in the other direction.
+				// Measured: fabric-networking-api-v1 calls MinecraftServer.method_3773()I; without this the name stayed
+				// intermediary and the first login tick threw NoSuchMethodError.
+				String reversed = KernelMappingResolver.INSTANCE.unmapClassName("intermediary", owner);
+				if (reversed != null && !reversed.equals(owner) && reversed.indexOf("class_") >= 0) {
+					intermediaryOwner = reversed;
+					ownersReversed++;
+				}
+			}
 			if (intermediaryOwner == null) intermediaryOwner = owner;
 			// The dictionary only speaks for Minecraft members. Applying it to a JDK owner renamed
 			// java/util/stream/Stream.toList into Stream.lambda$fromCodec$4 (yarn's table has that spelling for
@@ -1919,8 +2069,10 @@ public final class GuestJarRemap {
 					return byShape;
 				}
 			}
-			return verifyTheTableAgainstTheBase(owner, name, descriptor,
+			String answered = verifyTheTableAgainstTheBase(owner, name, descriptor,
 					lambdaShape(owner, resolved, descriptor));
+			if (INTERMEDIARY_MEMBER.matcher(answered).matches()) recordLeftover(answered);
+			return answered;
 		}
 
 		/**
