@@ -438,6 +438,9 @@ public final class ForbricMixinService
 		// moves the NoSuchMethodError into game time. Before remember, so the ledger does not expect a handler that is
 		// gone. Only reachable while refmap keys are rewritten, which is what makes these handlers attach at all.
 		MixinUnmappedMemberHandlers.leaveOut(node);
+		// …and an @Shadow field whose name the target answers to neither directly nor through a refmap row is bound
+		// to the one field of its type the target does have, instead of Mixin refusing the whole mixin for it.
+		MixinShadowFieldBind.bind(node, this::mergedBaseNode);
 		FinalMixinApplications.remember(node);
 		// The call sites its injectors take, as they will apply: a raw post-Mixin patch of another mod that finds one
 		// gone is reported as a contention between the two (ContendedCallSites), not arbitrated.

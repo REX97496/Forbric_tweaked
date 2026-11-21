@@ -1406,12 +1406,41 @@ public final class GuestJarRemap {
 		return head + out + tail;
 	}
 
-	/** One refmap leaf: the selector passes see the pair, and only the value half of their answer is kept. */
+	/**
+	 * One refmap leaf: the selector passes see the pair, and only the value half of their answer is kept.
+	 *
+	 * <p>A bare class-name pair ({@code "net/minecraft/server/command/GameRuleCommand$1":
+	 * "net/minecraft/server/commands/GameRuleCommand$1"}) is also the rename Mixin applies to a mixin's
+	 * {@code @Mixin(targets = …)}, so it is remembered here: that is the only place in this process that holds the
+	 * guest jar's own refmap in its hands, and a later pass (binding a shadow field) has to resolve a target the same
+	 * way Mixin does. Reading the refmap again at mixin time was tried and answered nothing — the loader hands out no
+	 * resource for a mixin class at that point.
+	 */
 	private static String rewriteRefmapValue(String key, String value, Set<String> seen) {
 		String pair = "\"" + key + "\": \"" + value + "\"";
 		String mapped = mapClassNamesInText(mapRefmapValues(pair, seen), seen);
 		Matcher again = REFMAP_LEAF.matcher(mapped);
-		return again.find() ? again.group(2) : value;
+		String answered = again.find() ? again.group(2) : value;
+		if (!answered.equals(value) && key.indexOf('(') < 0 && key.indexOf(':') < 0
+				&& key.startsWith("net/") && answered.startsWith("net/") && answered.indexOf('(') < 0
+				&& answered.indexOf(':') < 0) {
+			CLASS_RENAMES.put(key, answered);
+		}
+		return answered;
+	}
+
+	/** Class renames this pass read out of the guest refmaps, key and value in internal form. */
+	private static final java.util.Map<String, String> CLASS_RENAMES = new java.util.concurrent.ConcurrentHashMap<>();
+
+	/** What a guest refmap renames this class to, or the name itself when no refmap mentioned it. */
+	public static String classRenamedTo(String internalName) {
+		if (internalName == null) return null;
+		String renamed = CLASS_RENAMES.get(internalName);
+		if (renamed != null) return renamed;
+		// A refmap may spell the nested class with dots; the loader and the base both use slashes.
+		String slashed = internalName.replace('.', '/');
+		renamed = CLASS_RENAMES.get(slashed);
+		return renamed != null ? renamed : slashed;
 	}
 
 	private static String mapRefmapValues(String json, Set<String> seen) {
