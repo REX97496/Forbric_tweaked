@@ -625,8 +625,10 @@ public final class GuestJarRemap {
 		ClassNode node = new ClassNode();
 		// Frames are kept: renaming a string constant moves no instruction.
 		new ClassReader(bytes).accept(node, 0);
-		Map<String, String> mine = yarn.selectors.get(node.name);
-		if (mine == null) return bytes;
+		// A mixin whose own refmap carries no section still needs this pass: measured on fabric-registry-sync-v0's
+		// SimpleRegistryMixin, whose selector keeps a Yarn class inside its descriptor and has no refmap row at all,
+		// so the refmap cannot answer it and Mixin is left reading the string exactly as the author wrote it.
+		Map<String, String> mine = yarn.selectors.getOrDefault(node.name, Map.of());
 		List<String> targets = new ArrayList<>();
 		for (List<org.objectweb.asm.tree.AnnotationNode> list : annotationLists(node)) {
 			if (list == null) continue;
@@ -652,7 +654,7 @@ public final class GuestJarRemap {
 						if (!"method".equals(annotation.values.get(i))) continue;
 						Object written = annotation.values.get(i + 1);
 						if (written instanceof String single) {
-							String fixed = resolveSelector(mine, single);
+							String fixed = resolveSelector(mine, single, targets);
 							if (fixed != null) {
 								annotation.values.set(i + 1, fixed);
 								changed = true;
@@ -661,7 +663,7 @@ public final class GuestJarRemap {
 							@SuppressWarnings("unchecked")
 							List<String> selectors = (List<String>) many;
 							for (int s = 0; s < selectors.size(); s++) {
-								String fixed = resolveSelector(mine, selectors.get(s));
+								String fixed = resolveSelector(mine, selectors.get(s), targets);
 								if (fixed != null) {
 									selectors.set(s, fixed);
 									changed = true;
@@ -799,9 +801,17 @@ public final class GuestJarRemap {
 	 * not supported", dropping all nine of its injections.
 	 */
 	private static String resolveSelector(Map<String, String> mine, String written) {
+		return resolveSelector(mine, written, List.of());
+	}
+
+	/**
+	 * The same, told which classes the mixin mixes into, so a selector whose member keeps its own name can still be
+	 * checked against the class that has to declare it.
+	 */
+	private static String resolveSelector(Map<String, String> mine, String written, List<String> targets) {
 		if (written == null || written.isEmpty()) return null;
-		String answer = selectorFrom(mine, written);
-		if (answer == null) answer = officialSelector(written);
+		String answer = selectorFrom(mine, written, targets);
+		if (answer == null) answer = officialSelector(written, targets);
 		if (answer == null) answer = written;
 		String bare = unqualified(answer);
 		return bare.equals(written) ? null : bare;
@@ -809,20 +819,52 @@ public final class GuestJarRemap {
 
 	/** One authored selector, or a semicolon-separated run of them, in the base's own spelling. */
 	private static String selectorFrom(Map<String, String> mine, String written) {
+		return selectorFrom(mine, written, List.of());
+	}
+
+	private static String selectorFrom(Map<String, String> mine, String written, List<String> targets) {
 		if (written == null || written.isEmpty()) return null;
-		if (!written.contains(";")) {
-			return answerFor(mine, written);
+		List<String> parts = splitSelectors(written);
+		if (parts.size() == 1) {
+			return answerFor(mine, written, targets);
 		}
 		StringBuilder out = new StringBuilder();
 		boolean any = false;
-		for (String part : written.split(";")) {
-			String answer = answerFor(mine, part);
+		for (String part : parts) {
+			String answer = answerFor(mine, part, targets);
 			if (answer == null) answer = part;
 			else any = true;
 			if (out.length() > 0) out.append(';');
 			out.append(answer);
 		}
 		return any ? out.toString() : null;
+	}
+
+	/**
+	 * The authored selectors in one annotation value, split on the semicolons that separate them.
+	 *
+	 * <p>Not {@code String.split(";")}: every descriptor that takes an object holds a semicolon of its own, so a
+	 * selector like {@code <init>(Lnet/minecraft/registry/RegistryKey;…Z)V} was cut into three pieces, none of which
+	 * the refmap had a row for, and the whole answer was "nothing changed". Measured on fabric-registry-sync-v0's
+	 * {@code SimpleRegistryMixin}, whose refmap holds the exact row that was never looked up.
+	 */
+	private static List<String> splitSelectors(String written) {
+		List<String> parts = new ArrayList<>(2);
+		int depth = 0;
+		int from = 0;
+		for (int i = 0; i < written.length(); i++) {
+			char c = written.charAt(i);
+			if (c == '(') {
+				depth++;
+			} else if (c == ')') {
+				depth--;
+			} else if (c == ';' && depth == 0) {
+				parts.add(written.substring(from, i));
+				from = i + 1;
+			}
+		}
+		parts.add(written.substring(from));
+		return parts;
 	}
 
 	/**
@@ -834,10 +876,14 @@ public final class GuestJarRemap {
 	 * selector only becomes usable once the table has turned the member name into the official one.
 	 */
 	private static String answerFor(Map<String, String> mine, String written) {
+		return answerFor(mine, written, List.of());
+	}
+
+	private static String answerFor(Map<String, String> mine, String written, List<String> targets) {
 		String candidate = mine.get(written);
 		if (candidate == null) candidate = mine.get(memberOf(written));
-		if (candidate == null) return officialSelector(written);
-		String official = officialSelector(candidate);
+		if (candidate == null) return officialSelector(written, targets);
+		String official = officialSelector(candidate, targets);
 		if (official != null) return official;
 		// Never hand back a selector the table could not finish. An intermediary owner in an @Inject selector is a
 		// hard Mixin failure ("specifies a target class …, which is not supported"), while leaving the authored name
@@ -858,15 +904,53 @@ public final class GuestJarRemap {
 
 	/** An intermediary selector rewritten into the official spelling, or null when it is not one. */
 	private static String officialSelector(String selector) {
-		if (!selector.startsWith("L") || selector.indexOf(';') < 0) return null;
-		int close = selector.indexOf(';');
-		String owner = selector.substring(1, close);
-		String rest = selector.substring(close + 1);
+		return officialSelector(selector, List.of());
+	}
+
+	/**
+	 * The same, plus the one case an intermediary member name is not the whole story: a selector whose member is
+	 * already official but whose descriptor still carries Yarn class names.
+	 *
+	 * <p>Measured on fabric-registry-sync-v0's {@code SimpleRegistryMixin}: the annotation reads
+	 * {@code <init>(Lnet/minecraft/registry/RegistryKey;Lcom/mojang/serialization/Lifecycle;Z)V} while the base
+	 * declares {@code MappedRegistry(ResourceKey, Lifecycle, boolean)}. The callback descriptor beside it had already
+	 * been mapped — only the string constant had not — so the mixin reported {@code 14 of 15 anchors} and that last
+	 * injection silently did nothing. Nothing here renames a member: when the name is not intermediary it is written
+	 * back unchanged, and the rewrite is refused unless the class that has to declare it confirms the shape.
+	 */
+	private static String officialSelector(String selector, List<String> targets) {
+		if (selector == null || selector.isEmpty()) return null;
+		String owner = null;
+		String rest = selector;
+		if (selector.startsWith("L")) {
+			int close = selector.indexOf(';');
+			if (close < 0) return null;
+			owner = selector.substring(1, close);
+			rest = selector.substring(close + 1);
+		}
 		int paren = rest.indexOf('(');
 		if (paren < 0) return null;
 		String name = rest.substring(0, paren);
 		String descriptor = rest.substring(paren);
-		if (!INTERMEDIARY_MEMBER.matcher(name).matches()) return null;
+		if (!INTERMEDIARY_MEMBER.matcher(name).matches()) {
+			// The member keeps the spelling its author wrote; only the classes inside the descriptor were Yarn.
+			String officialParameters = officialDescriptor(descriptor);
+			if (officialParameters.equals(descriptor)) return null;
+			if (owner != null) {
+				String officialOwner = mapInternal(owner);
+				if (!baseDeclares(officialOwner, name, officialParameters)) return null;
+				return "L" + officialOwner + ';' + name + officialParameters;
+			}
+			for (String target : targets) {
+				if (baseDeclares(mapInternal(target.replace('.', '/')), name, officialParameters)) {
+					return name + officialParameters;
+				}
+			}
+			return null;
+		}
+		// A bare intermediary member name names no owner, and Mixin's @Inject selector cannot carry one, so there is
+		// nothing to check the answer against and nothing is written. Unchanged from before this overload existed.
+		if (owner == null) return null;
 		String officialName = KernelMappingResolver.INSTANCE.mapMethodName("intermediary", owner, name, descriptor);
 		if (officialName.equals(name)) {
 			// The selector may name a subclass of the class that declares the member: method_25426 (`init`) is
