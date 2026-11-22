@@ -1040,10 +1040,19 @@ public final class ForbricMixinService
 		// merged base declares exactly those; and its accessor names a field (`LootTable.randomSequenceId`) the merge
 		// re-typed, which MixinAccessorRebind now points at the one field of that shape (`randomSequence`). What the
 		// config is worth is whether the loot bridge starts firing REPLACE/MODIFY, not whether the entry reads well.
-		m.put("fabric-data-attachment-api-v1.mixins.json",
-				"AttachmentTargetImpl's stubs are completed by an UNFIT mixin: chunk load threw"
-						+ " \"Implemented via mixin\" from fabric_shouldTryToSync");
-		m.put("fabric-data-attachment-api-v1.client.mixins.json", "client half of the same contract");
+		// fabric-data-attachment-api-v1 was turned off here because "AttachmentTargetImpl's stubs are completed by
+		// an UNFIT mixin: chunk load threw 'Implemented via mixin' from fabric_shouldTryToSync". Re-measured on
+		// Round 208 and no longer off, because that reading has changed and the entry was doing damage of its own:
+		// the config is served again (keepMixins override, then the shipped default), `Implemented via mixin` occurs
+		// 0 times in a full boot, and ClientConnectionMixin — the mixin that makes Connection implement
+		// SupportedAttachmentsClientConnection — now applies. Its absence was not cosmetic: fabric's attachment-sync
+		// reply threw ClassCastException("Connection cannot be cast to SupportedAttachmentsClientConnection") on the
+		// server thread, and the integrated server kicked the client about 90 seconds after world entry. Three boots
+		// in a row dropped that way (Round 199 05:27:24, Round 206 09:10:56, Round 207 10:40:33); with this config
+		// served the client stayed in the world past four minutes, and the loss it costs is 5 more reported
+		// unattached handlers (52 across 19 mods -> 57 across 21) while landing 4 more declared repairs (131 -> 135).
+		// A player who wants the old behaviour back can still ask for it:
+		// -Dforbric.suppressMixins=fabric-data-attachment-api-v1.mixins.json:*,fabric-data-attachment-api-v1.client.mixins.json:*
 		m.put("fabric-lifecycle-events-v1.mixins.json",
 				"ServerWorldMixin/ChunkHolderMixin apply only partially, so ServerLevel never received its"
 						+ " LoadedChunksCache and the first chunk load threw ClassCastException");
