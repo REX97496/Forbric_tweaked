@@ -327,6 +327,10 @@ public final class KernelGuestMixinAdapter {
 				// …and a callback on a vanilla method the merged class no longer declares (StructureTemplate.placeEntities),
 				// which binds nothing as compiled, is judged where the adapter moves it.
 				judged = MixinStructurePlacementAdapter.asLoaded(judged, resource);
+				// …and a @Shadow of a field Forge/NeoForge re-typed (BlockColors.blockColors is a Map here, an
+				// IdMapper in vanilla), which the base therefore does not declare as written and which this repair
+				// points at the map it does declare — judged where the weave path will hand it to Mixin.
+				judged = MixinRetypedShadowBind.asLoaded(judged, resource);
 				MixinFit.Result fit = MixinFit.evaluate(judged, resource,
 						net.forbric.kernel.classloading.DelegationPolicy::alwaysGame, added, nativeView);
 				List<String> groupFailures = MixinGroupConstraints.failures(MixinFit.parse(judged), resource, added);

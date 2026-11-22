@@ -2040,6 +2040,17 @@ public final class GuestJarRemap {
 	}
 
 	/**
+	 * The name the merged base declares for this class, for callers outside this package. Same answer as
+	 * {@link #classRenamedTo(String)} but it also consults the intermediary table, which is what a class read straight
+	 * out of a guest jar needs: those bytes still say {@code net/minecraft/class_2361} for {@code IdMapper}, while the
+	 * base and every other pass speak the official name.
+	 */
+	public static String officialClass(String internalName) {
+		if (internalName == null) return null;
+		return mapInternal(internalName.replace('.', '/'));
+	}
+
+	/**
 	 * Every spellings a guest refmap gave for one class: the base's name plus the Yarn and intermediary names that
 	 * mean the same class, all in internal form.
 	 *

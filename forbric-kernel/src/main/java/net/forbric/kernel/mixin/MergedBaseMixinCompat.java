@@ -119,6 +119,12 @@ public final class MergedBaseMixinCompat {
      */
     static String refusal(ClassNode node,Function<String,byte[]> resources,BiFunction<net.forbric.api.Ecosystem,String,ClassNode> natives) {
         Function<String,ClassNode> classes=name->parse(resources.apply(name+".class"));
+        // Before any gate reads a @Shadow: a field whose type this base re-typed (Forge and NeoForge both replace
+        // BlockColors' IdMapper with a Map) is pointed at the field the base really declares, so the gates below judge
+        // the mixin as it will be handed to Mixin rather than as the other lines compiled it. Round 206: without this
+        // the source-protocol gate answered "source @Shadow field(s) field_1995 are not declared by
+        // net/minecraft/client/color/block/BlockColors" and suppressed the whole mixin before any repair could run.
+        MixinRetypedShadowBind.apply(node,classes);
         String shadow=unresolvedShadow(node,classes);
         if(shadow!=null)return shadow;
         // The pair is proved through the host's local variable table (the callback's @Local names the Reader), which

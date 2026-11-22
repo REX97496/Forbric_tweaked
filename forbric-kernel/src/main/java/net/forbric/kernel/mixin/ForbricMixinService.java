@@ -441,6 +441,12 @@ public final class ForbricMixinService
 		// mixins were dropped for exactly that reason (ServerPlayNetworkHandlerMixin.field_28962/28963 and
 		// GameRuleCommandVisitorMixin.field_19419), every one of them a field this call then bound.
 		MixinShadowFieldBind.bind(node, this::mergedBaseNode);
+		// …and when the target does declare the member but under a TYPE a Forge/NeoForge patch re-typed, the field is
+		// re-typed to the base's shape and its one read moved onto that shape. Measured: vanilla 1.21.1 keeps
+		// BlockColors' providers in an IdMapper, both patched copies keep them in a Map, and fabric-rendering-v1's
+		// BlockColorsMixin/ItemColorsMixin shadow the IdMapper — so Mixin refused both mixins and the whole fabric
+		// colour API stayed uninitialised on this base.
+		MixinRetypedShadowBind.bind(node, this::mergedBaseNode);
 		// An accessor names its member too, and a name the base spells differently refuses the whole accessor mixin
 		// — so the same rule runs on the annotations that carry a name of their own.
 		MixinAccessorRebind.bind(node, this::mergedBaseNode);
