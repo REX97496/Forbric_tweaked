@@ -94,7 +94,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores", "makeTheGeneratedDispatcherTargetsPublic", "mirrorTheDefaultedRegistriesTheMergeWidened", "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", "answerTheStreamCodecCastTheGuestCalls", "readTheStageIdTheGuestRebuiltAsTheIdItAlreadyIs");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "letFabricFluidsAnswerTheMergedTesselate", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores", "makeTheGeneratedDispatcherTargetsPublic", "mirrorTheDefaultedRegistriesTheMergeWidened", "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", "answerTheStreamCodecCastTheGuestCalls", "readTheStageIdTheGuestRebuiltAsTheIdItAlreadyIs");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -258,6 +258,14 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				"MinecraftForge ingredient types (forge:intersection, …) fail to parse — every recipe using one is dropped"));
 		out.add(fixed("letMinecraftForgeFluidsChooseTheirModel", FLUID_RENDERER,
 				"a MinecraftForge fluid renders with vanilla water's model and tint"));
+		// scanned(), not fixed(): the class this repairs is 1.21.1's LiquidBlockRenderer, and 26.2 ships no such
+		// class at all — an anchor there could never be handed its target, which the census treats as a defect
+		// rather than as "this line has nothing to repair". Same shape, and the same reasoning, as
+		// pointSelfReadsAtTheFieldsTheClassActuallyDeclares above.
+		out.add(scanned("letFabricFluidsAnswerTheMergedTesselate",
+				"net/minecraft/client/renderer/block/LiquidBlockRenderer is the 1.21.1 fluid renderer; on 26.2 the same "
+						+ "seam is FluidRenderer, which letMinecraftForgeFluidsChooseTheirModel already widens, so "
+						+ "finding nothing to repair here is the expected outcome"));
 		out.add(fixed("giveMinecraftForgesParticleLookupItsFirstVariant", WEIGHTED_VARIANTS,
 				"WeightedVariants.first is never written — MinecraftForge's particle lookup reads null"));
 		out.add(scanned("dropStubsThatBypassARealSuperclassMethod", "native-absent delegates with a proved public current superclass implementation"));
@@ -474,6 +482,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			changed |= claim(reporter, "giveMinecraftForgesReloadEventItsConditionContext", giveMinecraftForgesReloadEventItsConditionContext(node));
 			changed |= claim(reporter, "letMinecraftForgeIngredientTypesDecode", letMinecraftForgeIngredientTypesDecode(node));
 			changed |= claim(reporter, "letMinecraftForgeFluidsChooseTheirModel", letMinecraftForgeFluidsChooseTheirModel(node));
+		changed |= claim(reporter, "letFabricFluidsAnswerTheMergedTesselate", letFabricFluidsAnswerTheMergedTesselate(node));
 			changed |= claim(reporter, "giveMinecraftForgesParticleLookupItsFirstVariant", giveMinecraftForgesParticleLookupItsFirstVariant(node));
 			changed |= claim(reporter, "dropStubsThatBypassARealSuperclassMethod", dropStubsThatBypassARealSuperclassMethod(node));
 			changed |= claim(reporter, "inlineTheSwitchMapTheMergeLost", inlineTheSwitchMapTheMergeLost(node));
@@ -622,7 +631,12 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	private static final String KERNEL_FORGE_RELOAD = "net/forbric/kernel/runtime/KernelForgeReload";
 	private static final String KERNEL_FORGE_INGREDIENTS = "net/forbric/kernel/runtime/KernelForgeIngredients";
 	private static final String KERNEL_FORGE_FLUIDS = "net/forbric/kernel/runtime/KernelForgeFluids";
+	private static final String KERNEL_FABRIC_FLUIDS = "net/forbric/kernel/runtime/KernelFabricFluids";
 	private static final String FLUID_RENDERER = "net/minecraft/client/renderer/block/FluidRenderer";
+	/** 1.21.1's fluid renderer: the class the merge gave Fabric's five fluid handlers no seam in. */
+	private static final String LIQUID_BLOCK_RENDERER = "net/minecraft/client/renderer/block/LiquidBlockRenderer";
+	private static final String SPRITE = "Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;";
+	private static final String SPRITE_ARRAY = "[" + SPRITE;
 	private static final String FLUID_MODEL = "Lnet/minecraft/client/renderer/block/FluidModel;";
 	private static final String FLUID_STATE = "Lnet/minecraft/world/level/material/FluidState;";
 	private static final String TESSELATE_DESC = "(Lnet/minecraft/client/renderer/block/BlockAndTintGetter;Lnet/minecraft/core/BlockPos;"
@@ -630,6 +644,16 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			+ FLUID_STATE + ")V";
 	private static final String FLUID_MODEL_FUNNEL_DESC = "(" + FLUID_MODEL + FLUID_STATE
 			+ "Lnet/minecraft/client/renderer/block/BlockAndTintGetter;Lnet/minecraft/core/BlockPos;)" + FLUID_MODEL;
+	private static final String LBR_TESSELATE_DESC = "(Lnet/minecraft/world/level/BlockAndTintGetter;"
+			+ "Lnet/minecraft/core/BlockPos;Lcom/mojang/blaze3d/vertex/VertexConsumer;"
+			+ "Lnet/minecraft/world/level/block/state/BlockState;" + FLUID_STATE + ")V";
+	private static final String NEO_FLUID_SPRITE_CACHE = "net/neoforged/neoforge/client/textures/FluidSpriteCache";
+	private static final String NEO_SPRITES_DESC = "(Lnet/minecraft/world/level/BlockAndTintGetter;"
+			+ "Lnet/minecraft/core/BlockPos;" + FLUID_STATE + ")" + SPRITE_ARRAY;
+	private static final String NEO_FLUID_EXTENSIONS =
+			"net/neoforged/neoforge/client/extensions/common/IClientFluidTypeExtensions";
+	private static final String NEO_TINT_DESC = "(" + FLUID_STATE
+			+ "Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/core/BlockPos;)I";
 	private static final String WEIGHTED_VARIANTS = "net/minecraft/client/renderer/block/dispatch/WeightedVariants";
 	private static final String BLOCK_STATE_MODEL = "net/minecraft/client/renderer/block/dispatch/BlockStateModel";
 	/** NeoForge-only: MinecraftForge composes its ingredient codec in ForgeHooks, so ForeignType has no pair. */
@@ -1363,6 +1387,77 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		ForbricLog.info("[Forbric/MergedBaseCompat] FluidRenderer.tesselate now asks a MinecraftForge fluid's client "
 				+ "extensions for its model and tint — the merge kept NeoForge's tesselate, which never asks, so every "
 				+ "Forge modded fluid drew as the missing texture");
+		return true;
+	}
+
+	/**
+	 * Lets a Fabric {@code FluidRenderHandler} supply the sprites and tint the merged {@code tesselate} asks for.
+	 *
+	 * <p>fabric-rendering-fluids-v1 drives fluid rendering from {@code FluidRendererMixin}, and on this line four of
+	 * its five handlers cannot attach at all: it hooks {@code LiquidBlockRenderer.isSameFluid} (declared, never
+	 * called), reads {@code waterOverlaySprite} (this base's field is {@code waterOverlay}, written by
+	 * {@code setupSprites()} and read by nothing), and redirects {@code BlockState.getBlock()} inside
+	 * {@code tesselate} (a call that does not occur in the method). Everything a Fabric mod registers through
+	 * {@code FluidRenderHandlerRegistry} was therefore stored where nothing looks. The NeoForge patch this base
+	 * carries does ask two things in {@code tesselate}: {@code FluidSpriteCache.getFluidSprites(level, pos, state)}
+	 * for the array and {@code IClientFluidTypeExtensions.of(state).getTintColor(state, level, pos)} for the colour,
+	 * and both are stack-neutral seams — an array and an int are the only values on the stack at each. Two inserts,
+	 * each followed by this method's own parameters (locals 1, 2 and 5: {@code this} is 0, then level, pos, consumer,
+	 * blockState, fluidState) and a call into {@code KernelFabricFluids}, which answers NeoForge's value unless a
+	 * Fabric handler exists for that fluid. Whole-or-nothing: unless each seam appears exactly once the method is
+	 * left untouched and the reason is logged. Idempotent once the kernel owner is named. The kill switch
+	 * ({@code -Dforbric.fabricFluids=off}) lives in the helper, which then returns both by identity.
+	 */
+	private static boolean letFabricFluidsAnswerTheMergedTesselate(ClassNode node) {
+		if (!LIQUID_BLOCK_RENDERER.equals(node.name)) return false;
+		MethodNode tesselate = findMethod(node, "tesselate", LBR_TESSELATE_DESC);
+		if (tesselate == null) return false;
+		MethodInsnNode spriteLookup = null, tintLookup = null;
+		int spriteLookups = 0, tintLookups = 0;
+		for (AbstractInsnNode insn = tesselate.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (!(insn instanceof MethodInsnNode call)) continue;
+			if (KERNEL_FABRIC_FLUIDS.equals(call.owner)) return false;
+			if (call.getOpcode() == Opcodes.INVOKESTATIC && NEO_FLUID_SPRITE_CACHE.equals(call.owner)
+					&& "getFluidSprites".equals(call.name) && NEO_SPRITES_DESC.equals(call.desc)) {
+				spriteLookups++;
+				spriteLookup = call;
+			}
+			if (call.getOpcode() == Opcodes.INVOKEINTERFACE && NEO_FLUID_EXTENSIONS.equals(call.owner)
+					&& "getTintColor".equals(call.name) && NEO_TINT_DESC.equals(call.desc)) {
+				tintLookups++;
+				tintLookup = call;
+			}
+		}
+		if (spriteLookups != 1 || tintLookups != 1) {
+			ForbricLog.warn("[Forbric/MergedBaseCompat] LiquidBlockRenderer.tesselate does not have the expected "
+					+ "shape (%d sprite lookup(s), %d tint lookup(s)) — leaving Fabric fluid render handlers "
+					+ "unbridged rather than editing half of it", spriteLookups, tintLookups);
+			return false;
+		}
+
+		InsnList sprites = new InsnList();
+		sprites.add(new VarInsnNode(Opcodes.ALOAD, 1));
+		sprites.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		sprites.add(new VarInsnNode(Opcodes.ALOAD, 5));
+		sprites.add(new MethodInsnNode(Opcodes.INVOKESTATIC, KERNEL_FABRIC_FLUIDS, "sprites",
+				"(" + SPRITE_ARRAY + "Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/core/BlockPos;"
+						+ FLUID_STATE + ")" + SPRITE_ARRAY, false));
+		tesselate.instructions.insert(spriteLookup, sprites);
+
+		InsnList tint = new InsnList();
+		tint.add(new VarInsnNode(Opcodes.ALOAD, 1));
+		tint.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		tint.add(new VarInsnNode(Opcodes.ALOAD, 5));
+		tint.add(new MethodInsnNode(Opcodes.INVOKESTATIC, KERNEL_FABRIC_FLUIDS, "tintColor",
+				"(ILnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/core/BlockPos;" + FLUID_STATE + ")I",
+				false));
+		tesselate.instructions.insert(tintLookup, tint);
+
+		tesselate.maxStack = Math.max(tesselate.maxStack, 5);
+		ForbricLog.info("[Forbric/MergedBaseCompat] LiquidBlockRenderer.tesselate now asks a Fabric fluid's "
+				+ "FluidRenderHandler for its sprites and tint — this base asks NeoForge's fluid type extensions "
+				+ "instead, and the fabric mixin that would have bridged them anchors on calls this base does not "
+				+ "make, so every Fabric modded fluid drew with NeoForge's sprites and no tint");
 		return true;
 	}
 
