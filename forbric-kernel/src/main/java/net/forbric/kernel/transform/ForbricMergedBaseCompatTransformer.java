@@ -94,7 +94,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "letFabricFluidsAnswerTheMergedTesselate", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores", "makeTheGeneratedDispatcherTargetsPublic", "mirrorTheDefaultedRegistriesTheMergeWidened", "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", "answerTheStreamCodecCastTheGuestCalls", "readTheStageIdTheGuestRebuiltAsTheIdItAlreadyIs");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "letFabricFluidsAnswerTheMergedTesselate", "letFabricParticleFactoriesReachTheRegisterTheBaseDeclares", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores", "makeTheGeneratedDispatcherTargetsPublic", "mirrorTheDefaultedRegistriesTheMergeWidened", "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", "answerTheStreamCodecCastTheGuestCalls", "readTheStageIdTheGuestRebuiltAsTheIdItAlreadyIs");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -266,6 +266,11 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				"net/minecraft/client/renderer/block/LiquidBlockRenderer is the 1.21.1 fluid renderer; on 26.2 the same "
 						+ "seam is FluidRenderer, which letMinecraftForgeFluidsChooseTheirModel already widens, so "
 						+ "finding nothing to repair here is the expected outcome"));
+		// scanned, not fixed: the class being repaired belongs to fabric-particles-v1, a guest jar that neither
+		// staged base carries, so an anchor here could never be handed its target.
+		out.add(scanned("letFabricParticleFactoriesReachTheRegisterTheBaseDeclares",
+				"fabric-particles-v1's own registry class is a guest jar's, not the base's; there is nothing of it in "
+						+ "either staged base to hand this anchor, which is the expected outcome"));
 		out.add(fixed("giveMinecraftForgesParticleLookupItsFirstVariant", WEIGHTED_VARIANTS,
 				"WeightedVariants.first is never written — MinecraftForge's particle lookup reads null"));
 		out.add(scanned("dropStubsThatBypassARealSuperclassMethod", "native-absent delegates with a proved public current superclass implementation"));
@@ -483,6 +488,8 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			changed |= claim(reporter, "letMinecraftForgeIngredientTypesDecode", letMinecraftForgeIngredientTypesDecode(node));
 			changed |= claim(reporter, "letMinecraftForgeFluidsChooseTheirModel", letMinecraftForgeFluidsChooseTheirModel(node));
 		changed |= claim(reporter, "letFabricFluidsAnswerTheMergedTesselate", letFabricFluidsAnswerTheMergedTesselate(node));
+		changed |= claim(reporter, "letFabricParticleFactoriesReachTheRegisterTheBaseDeclares",
+				letFabricParticleFactoriesReachTheRegisterTheBaseDeclares(node));
 			changed |= claim(reporter, "giveMinecraftForgesParticleLookupItsFirstVariant", giveMinecraftForgesParticleLookupItsFirstVariant(node));
 			changed |= claim(reporter, "dropStubsThatBypassARealSuperclassMethod", dropStubsThatBypassARealSuperclassMethod(node));
 			changed |= claim(reporter, "inlineTheSwitchMapTheMergeLost", inlineTheSwitchMapTheMergeLost(node));
@@ -632,6 +639,18 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	private static final String KERNEL_FORGE_INGREDIENTS = "net/forbric/kernel/runtime/KernelForgeIngredients";
 	private static final String KERNEL_FORGE_FLUIDS = "net/forbric/kernel/runtime/KernelForgeFluids";
 	private static final String KERNEL_FABRIC_FLUIDS = "net/forbric/kernel/runtime/KernelFabricFluids";
+	/** fabric-particles-v1's own implementation of {@code ParticleFactoryRegistry}: it stores a provider by
+	 *  particle-type id in {@code ParticleEngine.providers}. */
+	private static final String FABRIC_PARTICLE_FACTORIES =
+			"net/fabricmc/fabric/impl/client/particle/ParticleFactoryRegistryImpl$DirectParticleFactoryRegistry";
+	/** The accessor interface that implementation casts the engine to, and that cannot bind on this base. */
+	private static final String PARTICLE_MANAGER_ACCESSOR =
+			"net/fabricmc/fabric/mixin/client/particle/ParticleManagerAccessor";
+	private static final String PARTICLE_ENGINE = "net/minecraft/client/particle/ParticleEngine";
+	private static final String PARTICLE_ENGINE_DESC = "Lnet/minecraft/client/particle/ParticleEngine;";
+	private static final String PARTICLE_TYPE = "Lnet/minecraft/core/particles/ParticleType;";
+	private static final String PARTICLE_PROVIDER = "Lnet/minecraft/client/particle/ParticleProvider;";
+	private static final String PARTICLE_FACTORIES_DESC = "(" + PARTICLE_TYPE + PARTICLE_PROVIDER + ")V";
 	private static final String FLUID_RENDERER = "net/minecraft/client/renderer/block/FluidRenderer";
 	/** 1.21.1's fluid renderer: the class the merge gave Fabric's five fluid handlers no seam in. */
 	private static final String LIQUID_BLOCK_RENDERER = "net/minecraft/client/renderer/block/LiquidBlockRenderer";
@@ -1459,6 +1478,109 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				+ "instead, and the fabric mixin that would have bridged them anchors on calls this base does not "
 				+ "make, so every Fabric modded fluid drew with NeoForge's sprites and no tint");
 		return true;
+	}
+
+	/**
+	 * Points fabric-particles-v1's own registry at the {@code register} this base declares.
+	 *
+	 * <p>Vanilla 1.21.1 keys {@code ParticleEngine.providers} by particle-type id — the base's own untouched copy
+	 * ({@code META-INF/forbric/native-reference/FABRIC/.../ParticleEngine.class.bin}) declares
+	 * {@code Int2ObjectMap<ParticleProvider<?>> providers} — and both patches replace it with
+	 * {@code Map<ResourceLocation, ParticleProvider<?>>}; the FORGE and NEOFORGE copies say so, and the merged base
+	 * carries the patched field. Fabric's {@code ParticleManagerAccessor#getFactories()} declares
+	 * {@code Int2ObjectMap} because vanilla has one, so on this base it binds to nothing:
+	 * {@code InvalidAccessorException: No candidates were found matching providers:Lit/unimi/dsi/fastutil/ints/Int2ObjectMap;}
+	 * in {@code net.minecraft.client.particle.ParticleEngine}. Its one caller then stored providers where nothing
+	 * reads them, so a Fabric mod registering a particle factory got no particle.
+	 *
+	 * <p>The caller's body is four instructions of real work: cast the engine to the accessor, ask it for the map,
+	 * take the type's numeric id, and put. The patched base has a public {@code register(ParticleType,
+	 * ParticleProvider)} that does the same job against the map it actually keeps, so that whole sequence becomes a
+	 * call to it. Everything is verified before anything is removed — the accessor call, the {@code Int2ObjectMap.put}
+	 * after it, the {@code ParticleEngine} the receiver came from, and the {@code POP} that discards the old put's
+	 * answer — and the method is left untouched otherwise. Rewiring the accessor while leaving the put in place would
+	 * turn a class that fails to bind into one that throws at runtime.
+	 */
+	private static boolean letFabricParticleFactoriesReachTheRegisterTheBaseDeclares(ClassNode node) {
+		if (!FABRIC_PARTICLE_FACTORIES.equals(node.name)) return false;
+		MethodNode register = findMethod(node, "register", PARTICLE_FACTORIES_DESC);
+		if (register == null) return false;
+
+		MethodInsnNode factories = null;
+		MethodInsnNode put = null;
+		for (AbstractInsnNode insn = register.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (!(insn instanceof MethodInsnNode call)) continue;
+			if (PARTICLE_ENGINE.equals(call.owner) && "register".equals(call.name)
+					&& PARTICLE_FACTORIES_DESC.equals(call.desc)) {
+				return false; // already rewired
+			}
+			if (call.getOpcode() == Opcodes.INVOKEINTERFACE && PARTICLE_MANAGER_ACCESSOR.equals(call.owner)
+					&& "getFactories".equals(call.name)) {
+				factories = call;
+			}
+			if (call.getOpcode() == Opcodes.INVOKEINTERFACE
+					&& "it/unimi/dsi/fastutil/ints/Int2ObjectMap".equals(call.owner) && "put".equals(call.name)) {
+				put = call;
+			}
+		}
+		if (factories == null || put == null || factories.getNext() == null) {
+			ForbricLog.warn("[Forbric/MergedBaseCompat] fabric-particles-v1's particle registry does not have the "
+					+ "shape this repair rewires (accessor call %s, Int2ObjectMap.put %s) — leaving it alone rather "
+					+ "than editing half of it", factories != null, put != null);
+			return false;
+		}
+
+		FieldInsnNode engine = null;
+		for (AbstractInsnNode back = previousCode(factories); back != null; back = previousCode(back)) {
+			// The field is declared by the guest's own class, so the owner is that class and only the
+			// descriptor says the map came out of a ParticleEngine.
+			if (back instanceof FieldInsnNode field
+					&& (PARTICLE_ENGINE.equals(field.owner) || PARTICLE_ENGINE_DESC.equals(field.desc))) {
+				engine = field;
+				break;
+			}
+			if (back instanceof VarInsnNode local && local.getOpcode() == Opcodes.ALOAD && local.var == 0) break;
+		}
+		AbstractInsnNode pop = nextCode(put);
+		if (engine == null || pop == null || pop.getOpcode() != Opcodes.POP) {
+			ForbricLog.warn("[Forbric/MergedBaseCompat] fabric-particles-v1's particle registry reads its map from "
+					+ "somewhere this repair cannot follow (engine field %s, pop after put %s) — leaving it alone",
+					engine != null, pop != null && pop.getOpcode() == Opcodes.POP);
+			return false;
+		}
+
+		for (AbstractInsnNode insn = engine.getNext(); insn != null; ) {
+			AbstractInsnNode next = insn.getNext();
+			boolean last = insn == pop;
+			register.instructions.remove(insn);
+			if (last) break;
+			insn = next;
+		}
+		InsnList call = new InsnList();
+		call.add(new VarInsnNode(Opcodes.ALOAD, 1));
+		call.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		call.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, PARTICLE_ENGINE, "register", PARTICLE_FACTORIES_DESC, false));
+		register.instructions.insert(engine, call);
+		register.maxStack = Math.max(register.maxStack, 3);
+		ForbricLog.info("[Forbric/MergedBaseCompat] fabric-particles-v1's ParticleFactoryRegistry now calls this "
+				+ "base's ParticleEngine.register(ParticleType, ParticleProvider) instead of storing by particle-type "
+				+ "id — both patches key that field by ResourceLocation, so the accessor it used bound to nothing and "
+				+ "every Fabric mod's particle factory was written where nothing reads");
+		return true;
+	}
+
+	/** The next instruction that carries code, skipping labels, line numbers and frames. */
+	private static AbstractInsnNode nextCode(AbstractInsnNode node) {
+		AbstractInsnNode next = node == null ? null : node.getNext();
+		while (next != null && next.getOpcode() < 0) next = next.getNext();
+		return next;
+	}
+
+	/** The previous instruction that carries code, skipping labels, line numbers and frames. */
+	private static AbstractInsnNode previousCode(AbstractInsnNode node) {
+		AbstractInsnNode before = node == null ? null : node.getPrevious();
+		while (before != null && before.getOpcode() < 0) before = before.getPrevious();
+		return before;
 	}
 
 	/**
