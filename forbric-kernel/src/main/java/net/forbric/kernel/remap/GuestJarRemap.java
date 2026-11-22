@@ -243,6 +243,10 @@ public final class GuestJarRemap {
 	private static final java.util.concurrent.atomic.AtomicIntegerArray AT_REFUSALS =
 			new java.util.concurrent.atomic.AtomicIntegerArray(6);
 
+	/** {@code @At} points that were asked about and had no answer to offer at all (neither refmap row nor table shape). */
+	private static final java.util.concurrent.atomic.AtomicInteger AT_NO_ANSWER =
+			new java.util.concurrent.atomic.AtomicInteger();
+
 	private GuestJarRemap() {
 	}
 
@@ -757,20 +761,26 @@ public final class GuestJarRemap {
 			Map<String, String> mine, List<String> targets, List<String> injected, java.util.Set<String> seen) {
 		if (annotation.values == null) return false;
 		boolean changed = false;
+		// The point itself is answered here, at the top of the frame, because Mixin allows an injection annotation to
+		// carry its points either as {@code at = @At(...)} or as {@code at = {@At(...)}}, and in the list form the node
+		// only ever arrived through the recursion below — where its own values were then read as children instead of as
+		// the point's own keys. Measured on fabric-networking-api-v1's CustomPayloadPacketCodecMixin: its
+		// WrapOperation carries {@code at=[@At(value="INVOKE", target="L…CustomPayload$1;getCodec(…)")]}, the walk
+		// reported one point, and the target was never rewritten while the method selectors beside it were.
+		if (annotation.desc != null && annotation.desc.endsWith("/At;")) {
+			for (int n = 0; n + 1 < annotation.values.size(); n += 2) {
+				if (!"target".equals(annotation.values.get(n))) continue;
+				if (!(annotation.values.get(n + 1) instanceof String text)) continue;
+				String fixed = atTarget(text, mine, targets, injected, seen);
+				if (fixed != null && !fixed.equals(text)) {
+					annotation.values.set(n + 1, fixed);
+					changed = true;
+				}
+			}
+		}
 		for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
 			Object value = annotation.values.get(i + 1);
 			if (value instanceof org.objectweb.asm.tree.AnnotationNode nested) {
-				if (nested.desc != null && nested.desc.endsWith("/At;") && nested.values != null) {
-					for (int n = 0; n + 1 < nested.values.size(); n += 2) {
-						if (!"target".equals(nested.values.get(n))) continue;
-						if (!(nested.values.get(n + 1) instanceof String text)) continue;
-						String fixed = atTarget(text, mine, targets, injected, seen);
-						if (fixed != null && !fixed.equals(text)) {
-							nested.values.set(n + 1, fixed);
-							changed = true;
-						}
-					}
-				}
 				if (rewriteAtTargets(nested, mine, targets, injected, seen)) changed = true;
 			} else if (value instanceof List<?> many) {
 				for (Object each : many) {
@@ -883,7 +893,17 @@ public final class GuestJarRemap {
 		if (answer == null) {
 			answer = officialTarget(text);
 		}
-		if (answer == null) return null;
+		if (answer == null) {
+			// A point that is not even counted is one the refmap has no row for and the table cannot spell either, so
+			// the only thing left to report is what was asked. Measured on fabric-networking-api-v1's
+			// CustomPayloadPacketCodecMixin, whose refmap carries the row: the point never reached the counting code.
+			if (Boolean.getBoolean("forbric.rewriteAtTargets.verbose")
+					&& AT_NO_ANSWER.incrementAndGet() <= Integer.getInteger("forbric.rewriteAtTargets.print", 8)) {
+				ForbricLog.info("[Forbric/Remap] @At has no answer at all: text=%s rows=%d targets=%s", text, mine.size(),
+						targets);
+			}
+			return null;
+		}
 		int code = whyItDoesNotCall(injected, targets, answer);
 		if (code == 0) {
 			AT_TARGETS_WRITTEN.incrementAndGet();
@@ -891,7 +911,8 @@ public final class GuestJarRemap {
 		}
 		AT_TARGETS_REFUSED.incrementAndGet();
 		AT_REFUSALS.incrementAndGet(code);
-		if (code != 0 && AT_REFUSALS.get(code) <= 8 && Boolean.getBoolean("forbric.rewriteAtTargets.verbose")) {
+		if (code != 0 && AT_REFUSALS.get(code) <= Integer.getInteger("forbric.rewriteAtTargets.print", 8)
+				&& Boolean.getBoolean("forbric.rewriteAtTargets.verbose")) {
 			ForbricLog.info("[Forbric/Remap] @At left alone (code %d): answer=%s injected=%s mixed=%s", code, answer,
 					injected, targets);
 		}
@@ -1060,7 +1081,12 @@ public final class GuestJarRemap {
 			String methodName = bare.substring(0, methodParen);
 			String methodDescriptor = bare.substring(methodParen, methodClose + 1);
 			for (String mixed : targets) {
-				String internal = mapInternal(mixed.replace('.', '/'));
+				// A target written as {@code @Mixin(targets = "net.minecraft.network.packet.CustomPayload$1")} is in
+				// Yarn spelling, and mapInternal only knows the table's intermediary-to-official rows, so the class was
+				// looked for under a name the base does not have and every such point read as "cannot be read"
+				// (code 3). Measured on fabric-networking-api-v1's CustomPayloadPacketCodecMixin: 24 @At answers were
+				// written and 41 refused, 13 of them code 3, with the codec point among them.
+				String internal = mapInternal(classRenamedTo(mixed.replace('.', '/')));
 				int answer = index.whyNot(internal, methodName, methodDescriptor, owner, name, described);
 				if (answer == 0) return 0;
 				if (code < 0 || (code == 3 && answer != 3)) code = answer;
@@ -1638,9 +1664,17 @@ public final class GuestJarRemap {
 			if (value instanceof List<?> list) {
 				for (Object item : list) {
 					if (item instanceof org.objectweb.asm.Type type) into.add(type.getInternalName());
+					else if (item instanceof String name) into.add(name.replace('.', '/'));
 				}
 			} else if (value instanceof org.objectweb.asm.Type type) {
 				into.add(type.getInternalName());
+			} else if (value instanceof String name) {
+				// `@Mixin(targets = "net.minecraft…CustomPacketPayload$1")` is the form every mixin uses for a target
+				// that cannot be written as a class literal (an anonymous class), and it was read as "no targets at
+				// all": measured on fabric-networking-api-v1's CustomPayloadPacketCodecMixin, the @At guard saw an
+				// empty target list, refused to check the call site (code 2, "nothing to check against") and left the
+				// Yarn owner in place, which is what MixinExtras then rejected outright.
+				into.add(name.replace('.', '/'));
 			}
 		}
 	}
@@ -2003,6 +2037,30 @@ public final class GuestJarRemap {
 		String slashed = internalName.replace('.', '/');
 		renamed = CLASS_RENAMES.get(slashed);
 		return renamed != null ? renamed : slashed;
+	}
+
+	/**
+	 * Every spellings a guest refmap gave for one class: the base's name plus the Yarn and intermediary names that
+	 * mean the same class, all in internal form.
+	 *
+	 * <p>Why the inverse is needed. The merge renamed {@code CustomPacketPayload$1} to a {@code $forbricneo} twin,
+	 * and {@code MixinMergedTwin} drops the owner of any {@code @At} that pins such a class — but it could only match
+	 * the spelling the mixin's own annotation used. fabric-networking-api-v1 writes the Yarn one
+	 * ({@code Lnet/minecraft/network/packet/CustomPayload$1;getCodec(…)…}), which equals no name the merge knows, so
+	 * the owner survived, MixinExtras refused the point ("specifies a target class … which is not supported") and the
+	 * whole class failed. The jar's own refmap already says the two names are the same class
+	 * ({@code net/minecraft/network/packet/CustomPayload$1 -> …custom/CustomPacketPayload$1}), so the inverse is a
+	 * measurement, not a guess.
+	 */
+	public static java.util.List<String> spellingsOf(String internalName) {
+		if (internalName == null) return java.util.List.of();
+		String official = classRenamedTo(internalName);
+		java.util.LinkedHashSet<String> all = new java.util.LinkedHashSet<>();
+		all.add(official);
+		for (java.util.Map.Entry<String, String> row : CLASS_RENAMES.entrySet()) {
+			if (official.equals(row.getValue())) all.add(row.getKey());
+		}
+		return new java.util.ArrayList<>(all);
 	}
 
 	private static String mapRefmapValues(String json, Set<String> seen) {

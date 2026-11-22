@@ -150,13 +150,20 @@ public final class MixinMergedTwin {
 	static void unpinInjectionPointOwners(ClassNode mixin, Set<String> twinned) {
 		List<String> prefixes = new ArrayList<>();
 		for (String owner : twinned) {
-			String internal = owner.replace('.', '/');
-			// Both spellings Mixin accepts for an owner: `owner/Name.method(desc)` and `Lowner/Name;method(desc)`.
-			// The second is what MinecraftDev writes and most mods ship (fabric-networking-api-v1's
-			// CustomPayloadStreamCodecMixin on CustomPacketPayload$1 among them); matching only the first left those
-			// pinned to the half nothing runs, with the handler merged and never called.
-			prefixes.add(internal + ".");
-			prefixes.add("L" + internal + ";");
+			// Round 205: every spelling the guest jars' refmaps gave for this class, not just the one the merge and
+			// the mixin happen to agree on. fabric-networking-api-v1's CustomPayloadPacketCodecMixin pins the Yarn
+			// owner (Lnet/minecraft/network/packet/CustomPayload$1;getCodec(…)…), which matched no prefix, so the
+			// owner survived and MixinExtras refused the point outright ("specifies a target class … which is not
+			// supported"), taking the whole class and its siblings with it.
+			for (String spelling : net.forbric.kernel.remap.GuestJarRemap.spellingsOf(owner)) {
+				String internal = spelling.replace('.', '/');
+				// Both spellings Mixin accepts for an owner: `owner/Name.method(desc)` and `Lowner/Name;method(desc)`.
+				// The second is what MinecraftDev writes and most mods ship (fabric-networking-api-v1's
+				// CustomPayloadStreamCodecMixin on CustomPacketPayload$1 among them); matching only the first left those
+				// pinned to the half nothing runs, with the handler merged and never called.
+				prefixes.add(internal + ".");
+				prefixes.add("L" + internal + ";");
+			}
 		}
 		int unpinned = 0;
 		for (MethodNode method : mixin.methods) {
