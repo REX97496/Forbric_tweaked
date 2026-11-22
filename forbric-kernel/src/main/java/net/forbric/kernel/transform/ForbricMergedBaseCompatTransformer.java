@@ -94,7 +94,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 	}
 
 	/** The repairs {@link #transform} runs, in its order; a test pins the two lists against each other. */
-	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "letFabricFluidsAnswerTheMergedTesselate", "letFabricParticleFactoriesReachTheRegisterTheBaseDeclares", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores", "makeTheGeneratedDispatcherTargetsPublic", "mirrorTheDefaultedRegistriesTheMergeWidened", "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", "answerTheStreamCodecCastTheGuestCalls", "readTheStageIdTheGuestRebuiltAsTheIdItAlreadyIs");
+	static final List<String> REPAIRS = List.of("repairLambdaBootstrapHandles", "addBlockStateModelConflictResolvers", "addBlockStateAppearanceResolver", "addMissingForgeFluidTypeBridge", "addMissingForgeKeyMappingLookupInitializer", "routeKeyMappingClickToPopulatedLookup", "giveKeyMappingItsMinecraftForgeFace", "giveKeyMappingItsVanillaMap", "giveTheVanillaParticleMapAViewOfTheLiveOne", "letDungeonsGenerateWithoutTheDataMap", "restoreDoublePrecisionToTheRandomSources", "convertRadiansWithVanillasFoldedConstant", "restoreTheRegistriesKnownSetInitialiser", "callVanillasWriteByteAgain", "saveTheHeightmapsVanillaSaves", "guardNeoForgesWorldModifierPass", "letForeignResourceConditionsThrough", "letForeignResourceConditionsThroughMinecraftForge", "letFabricResourceConditionsDecide", "translateAGuestsPrivateSkipMarker", "serveDefaultAttributesBothEcosystems", "restoreForgeClientInit", "restoreForgeGeometryReload", "nameTheReloadListenersNeoForgeRefusesToName", "dropInterfaceDefaultShadowingOverrides", "tolerateEmptyCreativeTabStacks", "routePlaceItemHookToNeoForge", "bridgeOrphanedPipRenderers", "keepForgeOutboundProtocolCurrent", "surviveTheMissingForgeModelDataManager", "dropTheWindowTitlesLoaderBrand", "keepTheSaveOffTheTeardownsFailurePath", "postNeoForgesItemTooltipEvent", "askNeoForgeWhatAnItemsAttributesAre", "readTheSpawnReasonThatIsActuallyWritten", "giveTheUnwrittenLoggerAValue", "addTheMissingCapabilityLifecycleStubs", "addTheMissingNbtBuilderFactory", "addMissingNoArgToForgeClientPlayerEvent", "pointSelfReadsAtTheFieldsTheClassActuallyDeclares", "unwrapOptionalHolderValues", "reportWhatTheAtlasActuallyGot", "reportWhatTheStitcherWasHanded", "postMinecraftForgesReloadListenerEvent", "giveMinecraftForgesReloadEventItsConditionContext", "letMinecraftForgeIngredientTypesDecode", "letMinecraftForgeFluidsChooseTheirModel", "letFabricFluidsAnswerTheMergedTesselate", "letFabricParticleFactoriesReachTheRegisterTheBaseDeclares", "letFabricPayloadTypesReachTheMergedCodec", "giveMinecraftForgesParticleLookupItsFirstVariant", "dropStubsThatBypassARealSuperclassMethod", "inlineTheSwitchMapTheMergeLost", "vetoUnjudgeableOverlayConditions", "hideTheLegacyLootModifierIndexFromTheDirectoryScan", "letModdedFeatureFlagsRegister", "dropTheKeyModifierSuffixBeforeParsingAKeyName", "letTheAtlasLowerItsMipLevelLikeVanilla", "wrapTheStreamsVanillaWraps", "returnFromANestedBootstrapBeforeItsTail", "letBothEcosystemsSetBurnTime", "letMinecraftForgeSeeSpawnerMobs", "letMinecraftForgeAddPackFinders", "routeItemComponentsThroughTheGate", "answerTheForgeVersionForgeCannotRead", "giveForgeServerEventsTheNoArgConstructorTheyAreProbedWith", "delegateAProbedEventsNoArgConstructorToItsOwnShortestOne", "runTheSplashTickOnlyWhenItExists", "answerTheLoadingOverlayWhenNoEarlyWindowExists", "serveEveryNamespaceTheMergedBaseCarries", "resolveDeferredHoldersThroughTheWritableRoot", "keyTheColourMapByWhatItStores", "makeTheGeneratedDispatcherTargetsPublic", "mirrorTheDefaultedRegistriesTheMergeWidened", "aliasTheVanillaLambdaTheGuestCallsByItsOfficialName", "answerTheStreamCodecCastTheGuestCalls", "readTheStageIdTheGuestRebuiltAsTheIdItAlreadyIs");
 
 	private static final String NEO_EVENT_HOOKS_BINARY = "net.neoforged.neoforge.event.EventHooks";
 
@@ -271,6 +271,13 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		out.add(scanned("letFabricParticleFactoriesReachTheRegisterTheBaseDeclares",
 				"fabric-particles-v1's own registry class is a guest jar's, not the base's; there is nothing of it in "
 						+ "either staged base to hand this anchor, which is the expected outcome"));
+		// Scanned, not fixed: the class it edits is a base class, but the seam it edits is NeoForge's four-argument
+		// codec overload, which is this line's shape. On 26.2 the same packets build their codec another way and
+		// the repair correctly finds nothing to hand over, so a REQUIRED anchor would report that as broken.
+		out.add(scanned("letFabricPayloadTypesReachTheMergedCodec",
+				"the four-argument CustomPacketPayload.codec is NeoForge's 1.21.1 shape; a line whose packets build "
+						+ "their codec another way has nothing for this repair to hand fabric's registry, and that is "
+						+ "the expected outcome"));
 		out.add(fixed("giveMinecraftForgesParticleLookupItsFirstVariant", WEIGHTED_VARIANTS,
 				"WeightedVariants.first is never written — MinecraftForge's particle lookup reads null"));
 		out.add(scanned("dropStubsThatBypassARealSuperclassMethod", "native-absent delegates with a proved public current superclass implementation"));
@@ -490,6 +497,7 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 		changed |= claim(reporter, "letFabricFluidsAnswerTheMergedTesselate", letFabricFluidsAnswerTheMergedTesselate(node));
 		changed |= claim(reporter, "letFabricParticleFactoriesReachTheRegisterTheBaseDeclares",
 				letFabricParticleFactoriesReachTheRegisterTheBaseDeclares(node));
+			changed |= claim(reporter, "letFabricPayloadTypesReachTheMergedCodec", letFabricPayloadTypesReachTheMergedCodec(node));
 			changed |= claim(reporter, "giveMinecraftForgesParticleLookupItsFirstVariant", giveMinecraftForgesParticleLookupItsFirstVariant(node));
 			changed |= claim(reporter, "dropStubsThatBypassARealSuperclassMethod", dropStubsThatBypassARealSuperclassMethod(node));
 			changed |= claim(reporter, "inlineTheSwitchMapTheMergeLost", inlineTheSwitchMapTheMergeLost(node));
@@ -673,6 +681,19 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 			"net/neoforged/neoforge/client/extensions/common/IClientFluidTypeExtensions";
 	private static final String NEO_TINT_DESC = "(" + FLUID_STATE
 			+ "Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/core/BlockPos;)I";
+	/** The bridge that supplies the payload-type provider fabric's two codec wrappers would have installed. */
+	private static final String KERNEL_FABRIC_PAYLOADS = "net/forbric/kernel/runtime/KernelFabricPayloads";
+	/** The two packets whose {@code <clinit>} builds a custom-payload codec, and the class it is built by. */
+	private static final String SERVERBOUND_CUSTOM_PAYLOAD =
+			"net/minecraft/network/protocol/common/ServerboundCustomPayloadPacket";
+	private static final String CLIENTBOUND_CUSTOM_PAYLOAD =
+			"net/minecraft/network/protocol/common/ClientboundCustomPayloadPacket";
+	private static final String CUSTOM_PAYLOAD = "net/minecraft/network/protocol/common/custom/CustomPacketPayload";
+	/** NeoForge's overload — the one this base's two packet classes call, and the one vanilla and Forge do not. */
+	private static final String NEO_CUSTOM_PAYLOAD_CODEC_DESC =
+			"(Lnet/minecraft/network/protocol/common/custom/CustomPacketPayload$FallbackProvider;Ljava/util/List;"
+					+ "Lnet/minecraft/network/ConnectionProtocol;Lnet/minecraft/network/protocol/PacketFlow;)"
+					+ "Lnet/minecraft/network/codec/StreamCodec;";
 	private static final String WEIGHTED_VARIANTS = "net/minecraft/client/renderer/block/dispatch/WeightedVariants";
 	private static final String BLOCK_STATE_MODEL = "net/minecraft/client/renderer/block/dispatch/BlockStateModel";
 	/** NeoForge-only: MinecraftForge composes its ingredient codec in ForgeHooks, so ForeignType has no pair. */
@@ -1566,6 +1587,71 @@ public final class ForbricMergedBaseCompatTransformer implements ClassTransforme
 				+ "base's ParticleEngine.register(ParticleType, ParticleProvider) instead of storing by particle-type "
 				+ "id — both patches key that field by ResourceLocation, so the accessor it used bound to nothing and "
 				+ "every Fabric mod's particle factory was written where nothing reads");
+		return true;
+	}
+
+	/**
+	 * Hands the merged custom-payload codec the payload-type provider fabric-networking-api-v1 would have installed.
+	 *
+	 * <p>Fabric installs it from two mixins that wrap the call building a packet's codec
+	 * ({@code CustomPayloadC2SPacketMixin}, {@code CustomPayloadS2CPacketMixin}); both wrap
+	 * {@code CustomPacketPayload.codec(FallbackProvider, List)}, which is the shape vanilla and Forge call — the
+	 * base's untouched copies under {@code META-INF/forbric/native-reference/{FABRIC,FORGE}} call it, at two sites in
+	 * each packet's {@code <clinit>} on the clientbound class and one on the serverbound one. The merged base carries
+	 * NeoForge's patch, whose copies call the four-argument
+	 * {@code codec(FallbackProvider, List, ConnectionProtocol, PacketFlow)} instead, so those two handlers have no
+	 * anchor to attach to and the provider is never installed:
+	 * {@code wrapCodec … did not attach (final handler references=0)} three times, and
+	 * {@code CustomPayloadC2SPacketMixin applies only partially … missing: @At(INVOKE) …createCodec in
+	 * ServerboundCustomPayloadPacket.<clinit>}. The codec they wanted to configure is still reachable: the merge
+	 * builds NeoForge's copy of the codec class ({@code CustomPacketPayload$1$forbricneo}), the kernel appends that
+	 * copy to the mixin's target list, and Mixin therefore adds fabric's interface, field and setter to it.
+	 *
+	 * <p>So each four-argument call's answer is passed through {@code KernelFabricPayloads.install}, which calls that
+	 * setter with fabric's own decision (play registry for a registry-backed buffer, configuration otherwise, flow of
+	 * the enclosing class). Nothing is inserted when a call is already wired, and a class with no four-argument call
+	 * is left alone with a warning. The seam is one push of a constant plus one call plus the cast that restores the
+	 * stack's exact type, so no branch and no frame is introduced.
+	 */
+	private static boolean letFabricPayloadTypesReachTheMergedCodec(ClassNode node) {
+		boolean serverbound;
+		if (SERVERBOUND_CUSTOM_PAYLOAD.equals(node.name)) {
+			serverbound = true;
+		} else if (CLIENTBOUND_CUSTOM_PAYLOAD.equals(node.name)) {
+			serverbound = false;
+		} else {
+			return false;
+		}
+		MethodNode clinit = findMethod(node, "<clinit>", "()V");
+		if (clinit == null) return false;
+
+		List<MethodInsnNode> sites = new ArrayList<>();
+		for (AbstractInsnNode insn = clinit.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (!(insn instanceof MethodInsnNode call)) continue;
+			if (KERNEL_FABRIC_PAYLOADS.equals(call.owner)) return false; // already wired
+			if (call.getOpcode() == Opcodes.INVOKESTATIC && CUSTOM_PAYLOAD.equals(call.owner)
+					&& "codec".equals(call.name) && NEO_CUSTOM_PAYLOAD_CODEC_DESC.equals(call.desc)) {
+				sites.add(call);
+			}
+		}
+		if (sites.isEmpty()) {
+			ForbricLog.warn("[Forbric/MergedBaseCompat] {} does not call CustomPacketPayload's four-argument codec, so "
+					+ "there is nothing to hand fabric's payload registry — leaving the class alone", node.name);
+			return false;
+		}
+		for (MethodInsnNode site : sites) {
+			InsnList hook = new InsnList();
+			hook.add(new InsnNode(serverbound ? Opcodes.ICONST_1 : Opcodes.ICONST_0));
+			hook.add(new MethodInsnNode(Opcodes.INVOKESTATIC, KERNEL_FABRIC_PAYLOADS, "install",
+					"(Ljava/lang/Object;Z)Ljava/lang/Object;", false));
+			hook.add(new TypeInsnNode(Opcodes.CHECKCAST, "net/minecraft/network/codec/StreamCodec"));
+			clinit.instructions.insert(site, hook);
+		}
+		clinit.maxStack += 1;
+		ForbricLog.info("[Forbric/MergedBaseCompat] %s's custom-payload codec now asks "
+				+ "fabric-networking-api-v1's payload registry for the ids vanilla's table does not carry (%d call "
+				+ "site(s)) — fabric's two wrappers anchor on the two-argument codec vanilla and Forge call, and this "
+				+ "base calls NeoForge's four-argument overload instead", node.name, sites.size());
 		return true;
 	}
 
